@@ -59,6 +59,20 @@ pub fn find(conn: &Connection, id: i64) -> Result<Option<User>, AppError> {
         .map(|(user, _)| user))
 }
 
+pub fn find_with_hash(conn: &Connection, id: i64) -> Result<Option<(User, String)>, AppError> {
+    Ok(conn
+        .query_row(&format!("SELECT {COLUMNS} FROM users WHERE id = ?1"), [id], map_user)
+        .optional()?)
+}
+
+pub fn set_active(tx: &Transaction, id: i64, active: bool) -> Result<(), AppError> {
+    tx.execute(
+        "UPDATE users SET active = ?1, version = version + 1, updated_at = ?2 WHERE id = ?3",
+        params![active, now(), id],
+    )?;
+    Ok(())
+}
+
 /// Troca a senha se a versão do registro ainda for a consultada; senão, `Conflict`.
 pub fn update_password(
     tx: &Transaction,

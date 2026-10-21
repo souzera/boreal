@@ -12,6 +12,10 @@ pub enum AppError {
     Validation(String),
     #[error("É preciso entrar no sistema para continuar.")]
     Unauthorized,
+    #[error("Usuário ou senha inválidos.")]
+    InvalidCredentials,
+    #[error("Conta bloqueada temporariamente por tentativas inválidas. Tente novamente mais tarde.")]
+    AccountLocked { until: String },
     #[error("A sessão está bloqueada por inatividade. Informe a senha para continuar.")]
     Locked,
     #[error("Você não tem permissão para executar esta operação.")]
@@ -27,6 +31,8 @@ impl AppError {
             AppError::Database(_) => "database",
             AppError::Validation(_) => "validation",
             AppError::Unauthorized => "unauthorized",
+            AppError::InvalidCredentials => "invalid_credentials",
+            AppError::AccountLocked { .. } => "account_locked",
             AppError::Locked => "locked",
             AppError::Forbidden => "forbidden",
             AppError::Conflict => "conflict",
@@ -42,9 +48,16 @@ impl From<rusqlite::Error> for AppError {
 
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut s = serializer.serialize_struct("AppError", 2)?;
+        let until = match self {
+            AppError::AccountLocked { until } => Some(until),
+            _ => None,
+        };
+        let mut s = serializer.serialize_struct("AppError", if until.is_some() { 3 } else { 2 })?;
         s.serialize_field("code", self.code())?;
         s.serialize_field("message", &self.to_string())?;
+        if let Some(until) = until {
+            s.serialize_field("until", until)?;
+        }
         s.end()
     }
 }

@@ -78,6 +78,15 @@ impl SessionManager {
         Ok(session.info)
     }
 
+    /// Consulta a sessão sem exigir que esteja desbloqueada (usado para reautenticar).
+    pub fn peek(&self, token: &str) -> Result<SessionInfo, AppError> {
+        let sessions = self.sessions.lock().unwrap();
+        sessions
+            .get(token)
+            .map(|s| s.info)
+            .ok_or(AppError::Unauthorized)
+    }
+
     /// Só deve ser chamado depois de o serviço reautenticar o usuário.
     pub fn unlock(&self, token: &str, now: Instant) -> Result<SessionInfo, AppError> {
         let mut sessions = self.sessions.lock().unwrap();
