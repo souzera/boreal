@@ -336,6 +336,7 @@ dependencies = [
 name = "boreal-pms"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "keyring",
  "rand",
  "rusqlite",
