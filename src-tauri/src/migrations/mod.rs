@@ -13,6 +13,15 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
     sql: include_str!("sql/0001_foundation.sql"),
 }];
 
+/// Versão atual do esquema (0 se nenhuma migração foi aplicada).
+pub fn current_version(conn: &Connection) -> Result<u32, AppError> {
+    Ok(conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+        [],
+        |r| r.get(0),
+    )?)
+}
+
 /// Aplica as migrações pendentes e retorna a versão atual do esquema.
 pub fn run_migrations(conn: &mut Connection) -> Result<u32, AppError> {
     run_with(conn, MIGRATIONS)

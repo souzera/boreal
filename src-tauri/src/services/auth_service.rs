@@ -24,6 +24,12 @@ pub struct LoginResult {
     pub must_change_password: bool,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SessionStatus {
+    pub state: &'static str,
+    pub user: Option<User>,
+}
+
 #[derive(Clone)]
 pub struct AuthService {
     ctx: Ctx,
@@ -155,6 +161,18 @@ impl AuthService {
     /// Valida a sessão e registra atividade; `Locked` se estiver bloqueada por inatividade.
     pub fn session_status(&self, token: &str) -> Result<SessionInfo, AppError> {
         self.ctx.sessions.touch(token, self.ctx.clock.now())
+    }
+
+    /// Estado da sessão para a interface: ativa ou bloqueada por inatividade.
+    pub fn session_state(&self, token: &str) -> Result<SessionStatus, AppError> {
+        let (state, info) = match self.session_status(token) {
+            Ok(info) => ("active", info),
+            Err(AppError::Locked) => ("locked", self.ctx.sessions.peek(token)?),
+            Err(other) => return Err(other),
+        };
+        let conn = self.ctx.db.lock().unwrap();
+        let user = user_repo::find(&conn, info.user_id)?;
+        Ok(SessionStatus { state, user })
     }
 
     pub fn change_own_password(
@@ -405,6 +423,26 @@ mod tests {
         assert!(matches!(h.auth.session_status(&token), Err(AppError::Locked)));
         h.auth.unlock_session(&token, ADMIN_PASSWORD).unwrap();
         assert!(h.auth.session_status(&token).is_ok());
+    }
+
+    #[test]
+    fn session_state_reports_active_then_locked() {
+        let h = harness();
+        let token = admin_token(&h);
+
+        let active = h.auth.session_state(&token).unwrap();
+        assert_eq!(active.state, "active");
+        assert_eq!(active.user.unwrap().username, "admin");
+
+        h.clock.advance(Duration::from_secs(601));
+        let locked = h.auth.session_state(&token).unwrap();
+        assert_eq!(locked.state, "locked");
+        assert!(locked.user.is_some());
+
+        assert!(matches!(
+            h.auth.session_state("token-invalido"),
+            Err(AppError::Unauthorized)
+        ));
     }
 
     #[test]

@@ -2,7 +2,7 @@ use serde::{ser::SerializeStruct, Serialize, Serializer};
 
 /// Erro único exposto pelo backend. As mensagens são em linguagem simples e
 /// nunca carregam senhas ou dados de autenticação.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
     #[error("A chave de criptografia do banco não está disponível neste computador. Os dados não foram alterados.")]
     KeyUnavailable,
