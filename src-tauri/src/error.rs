@@ -12,6 +12,8 @@ pub enum AppError {
     Validation(String),
     #[error("É preciso entrar no sistema para continuar.")]
     Unauthorized,
+    #[error("A sessão está bloqueada por inatividade. Informe a senha para continuar.")]
+    Locked,
     #[error("Você não tem permissão para executar esta operação.")]
     Forbidden,
     #[error("O registro foi alterado por outra operação. Revise e tente novamente.")]
@@ -25,6 +27,7 @@ impl AppError {
             AppError::Database(_) => "database",
             AppError::Validation(_) => "validation",
             AppError::Unauthorized => "unauthorized",
+            AppError::Locked => "locked",
             AppError::Forbidden => "forbidden",
             AppError::Conflict => "conflict",
         }
