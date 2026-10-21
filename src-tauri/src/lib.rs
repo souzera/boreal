@@ -1,7 +1,10 @@
 pub mod audit;
+pub mod auth;
 pub mod db;
 pub mod error;
 pub mod migrations;
+pub mod models;
+pub mod repositories;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
