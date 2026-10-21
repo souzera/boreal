@@ -219,12 +219,15 @@ impl AuthService {
             user_repo::find_with_hash(&conn, info.user_id)?.ok_or(AppError::Unauthorized)?;
         let tx = conn.transaction()?;
 
-        if let Some(until) = user.locked_until.as_deref().and_then(parse_utc) {
-            if until > now {
-                return Err(AppError::AccountLocked {
-                    until: format_utc(until),
-                });
-            }
+        if let Some(until) = user
+            .locked_until
+            .as_deref()
+            .and_then(parse_utc)
+            .filter(|until| *until > now)
+        {
+            return Err(AppError::AccountLocked {
+                until: format_utc(until),
+            });
         }
         if !verify_password(password, &hash) {
             register_failure(&tx, &user, user.failed_attempts, now)?;
