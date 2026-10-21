@@ -14,7 +14,7 @@ import { useSessionStore } from "@/stores/session";
 const schema = z
   .object({
     current: z.string().min(1, "Informe a senha atual."),
-    next: z.string().min(8, "A senha deve ter pelo menos 8 caracteres."),
+    next: z.string().min(6, "A senha deve ter pelo menos 6 caracteres."),
     confirm: z.string().min(1, "Confirme a nova senha."),
   })
   .refine((v) => v.next === v.confirm, { path: ["confirm"], message: "As senhas não conferem." });

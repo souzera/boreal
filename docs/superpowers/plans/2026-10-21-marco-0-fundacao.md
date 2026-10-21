@@ -14,7 +14,7 @@
 
 Branch `marco-0-fundacao`; 11 tarefas implementadas com TDD e revisão final da branch inteira.
 
-- **Testes na última execução:** 43 unitários + 3 de integração (Rust), 21 (Vitest); `clippy -D warnings` e `vite build` sem erros.
+- **Testes na última execução:** 43 unitários + 3 de integração (Rust), 22 (Vitest); `clippy -D warnings` e `vite build` sem erros.
 - **Pendente de verificação manual:** `npm run tauri dev` (abrir janela, primeira execução → login → bloqueio por inatividade). Rodar antes de abrir o Marco 1.
 - **Integração:** aguardando decisão (merge local, PR ou manter).
 
@@ -25,6 +25,7 @@ Branch `marco-0-fundacao`; 11 tarefas implementadas com TDD e revisão final da 
 - `SessionManager::create(user_id, role, now)` recebe o perfil; novos erros: `Locked`, `InvalidCredentials`, `AccountLocked`, `KeyInvalid`, `SchemaTooNew`, `PasswordChangeRequired`.
 - Tarefa 8: descartado o `last_seen_utc` (voltar o relógio só alonga o bloqueio); adicionados `settings_repo`, `Ctx`, `user_repo::{find_with_hash, set_active}`; senha errada no desbloqueio conta para o bloqueio da conta.
 - Dependência extra `chrono`; `argon2` compilado com `opt-level = 3` em dev (testes ~20x mais rápidos).
+- Política de senha alterada a pedido: mínimo de **6** caracteres (era 8), no backend (`MIN_PASSWORD_CHARS`) e nos schemas Zod de `FirstRun` e `ChangePassword`.
 - CI e templates do GitHub (`.github/`) foram criados antes da Tarefa 11.
 
 ### Correções da revisão final (todas com teste vermelho → verde)
@@ -226,7 +227,7 @@ README.md
 
 **Interfaces:**
 - Produces:
-  - `hash_password(plain: &str) -> Result<String, AppError>` (Argon2id); `verify_password(plain: &str, hash: &str) -> bool`; `validate_password_policy(plain: &str) -> Result<(), AppError>` (mínimo 8 caracteres Unicode; rejeita vazia/só espaços; **não** faz trim nem normalização).
+  - `hash_password(plain: &str) -> Result<String, AppError>` (Argon2id); `verify_password(plain: &str, hash: &str) -> bool`; `validate_password_policy(plain: &str) -> Result<(), AppError>` (mínimo 6 caracteres Unicode; rejeita vazia/só espaços; **não** faz trim nem normalização).
   - `enum Role { Admin, Recepcao }`; `struct User { id: i64, username: String, display_name: String, role: Role, active: bool, must_change_password: bool, failed_attempts: u32, locked_until: Option<String>, version: i64 }`
   - `UserRepo`: `insert(tx, &NewUser) -> Result<i64>`, `find_by_username(conn, &str) -> Result<Option<(User, String /*hash*/)>>`, `find(conn, i64) -> Result<Option<User>>`, `update_password(tx, id, hash, must_change: bool, expected_version: i64) -> Result<()>` (falha com `Conflict` se a versão mudou), `record_failed_attempt(tx, id, locked_until: Option<&str>)`, `reset_attempts(tx, id)`, `count(conn) -> Result<i64>`.
 

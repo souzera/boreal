@@ -54,6 +54,18 @@ describe("ChangePassword", () => {
     expect(api.changeOwnPassword).not.toHaveBeenCalled();
   });
 
+  it("exige no mínimo 6 caracteres na nova senha", async () => {
+    renderPage();
+
+    await userEvent.type(screen.getByLabelText(/Senha atual/), "Temp-Senha-123");
+    await userEvent.type(screen.getByLabelText(/^Nova senha/), "12345");
+    await userEvent.type(screen.getByLabelText(/Confirmar nova senha/), "12345");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar nova senha" }));
+
+    expect(await screen.findByText("A senha deve ter pelo menos 6 caracteres.")).toBeInTheDocument();
+    expect(api.changeOwnPassword).not.toHaveBeenCalled();
+  });
+
   it("troca a senha, limpa a exigência e vai ao início", async () => {
     vi.mocked(api.changeOwnPassword).mockResolvedValue(null);
     renderPage();

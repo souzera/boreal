@@ -5,7 +5,7 @@ use argon2::{
 
 use crate::error::AppError;
 
-const MIN_PASSWORD_CHARS: usize = 8;
+const MIN_PASSWORD_CHARS: usize = 6;
 
 /// Gera o hash Argon2id (formato PHC) com salt aleatório. A senha não é normalizada.
 pub fn hash_password(plain: &str) -> Result<String, AppError> {
@@ -24,11 +24,11 @@ pub fn verify_password(plain: &str, hash: &str) -> bool {
     }
 }
 
-/// Mínimo de 8 caracteres e não pode ser vazia ou só espaços. Sem trim nem normalização.
+/// Mínimo de 6 caracteres e não pode ser vazia ou só espaços. Sem trim nem normalização.
 pub fn validate_password_policy(plain: &str) -> Result<(), AppError> {
     if plain.trim().is_empty() || plain.chars().count() < MIN_PASSWORD_CHARS {
         return Err(AppError::Validation(
-            "A senha deve ter pelo menos 8 caracteres.".into(),
+            "A senha deve ter pelo menos 6 caracteres.".into(),
         ));
     }
     Ok(())
@@ -53,7 +53,8 @@ mod tests {
         assert!(validate_password_policy("abc").is_err());
         assert!(validate_password_policy("").is_err());
         assert!(validate_password_policy("        ").is_err());
-        assert!(validate_password_policy("12345678").is_ok());
-        assert!(validate_password_policy("sénha🔑ok").is_ok());
+        assert!(validate_password_policy("12345").is_err());
+        assert!(validate_password_policy("123456").is_ok());
+        assert!(validate_password_policy("sénha🔑").is_ok());
     }
 }
