@@ -29,6 +29,7 @@ struct Session {
     info: SessionInfo,
     last_activity: Instant,
     locked: bool,
+    must_change_password: bool,
 }
 
 /// Sessões em memória. O bloqueio por inatividade usa relógio monotônico,
@@ -60,13 +61,25 @@ impl SessionManager {
                 info: SessionInfo { user_id, role },
                 last_activity: now,
                 locked: false,
+                must_change_password: false,
             },
         );
         token
     }
 
-    /// Registra atividade. Sessão ociosa além do limite passa a `Locked`.
+    /// Registra atividade. Sessão ociosa além do limite passa a `Locked`;
+    /// sessão com troca de senha pendente é recusada (`PasswordChangeRequired`).
     pub fn touch(&self, token: &str, now: Instant) -> Result<SessionInfo, AppError> {
+        self.touch_inner(token, now, false)
+    }
+
+    /// Como `touch`, mas aceita a sessão com troca de senha pendente
+    /// (só para trocar a senha, consultar o estado e sair).
+    pub fn touch_allow_pending(&self, token: &str, now: Instant) -> Result<SessionInfo, AppError> {
+        self.touch_inner(token, now, true)
+    }
+
+    fn touch_inner(&self, token: &str, now: Instant, allow_pending: bool) -> Result<SessionInfo, AppError> {
         let idle_lock = *self.idle_lock.lock().unwrap();
         let mut sessions = self.sessions.lock().unwrap();
         let session = sessions.get_mut(token).ok_or(AppError::Unauthorized)?;
@@ -75,7 +88,24 @@ impl SessionManager {
             return Err(AppError::Locked);
         }
         session.last_activity = now;
+        if session.must_change_password && !allow_pending {
+            return Err(AppError::PasswordChangeRequired);
+        }
         Ok(session.info)
+    }
+
+    pub fn set_must_change(&self, token: &str, value: bool) {
+        if let Some(session) = self.sessions.lock().unwrap().get_mut(token) {
+            session.must_change_password = value;
+        }
+    }
+
+    /// Encerra todas as sessões de um usuário (ex.: ao desativá-lo).
+    pub fn destroy_user(&self, user_id: i64) {
+        self.sessions
+            .lock()
+            .unwrap()
+            .retain(|_, s| s.info.user_id != user_id);
     }
 
     /// Consulta a sessão sem exigir que esteja desbloqueada (usado para reautenticar).
@@ -162,6 +192,34 @@ mod tests {
 
         assert_ne!(a, b);
         assert_eq!(a.len(), 64);
+    }
+
+    #[test]
+    fn pending_password_change_blocks_strict_touch() {
+        let m = manager();
+        let now = Instant::now();
+        let token = m.create(1, Role::Admin, now);
+        m.set_must_change(&token, true);
+
+        assert!(matches!(m.touch(&token, now), Err(AppError::PasswordChangeRequired)));
+        assert!(m.touch_allow_pending(&token, now).is_ok());
+        m.set_must_change(&token, false);
+        assert!(m.touch(&token, now).is_ok());
+    }
+
+    #[test]
+    fn destroy_user_ends_all_sessions_of_that_user() {
+        let m = manager();
+        let now = Instant::now();
+        let a1 = m.create(1, Role::Admin, now);
+        let a2 = m.create(1, Role::Admin, now);
+        let b = m.create(2, Role::Recepcao, now);
+
+        m.destroy_user(1);
+
+        assert!(matches!(m.touch(&a1, now), Err(AppError::Unauthorized)));
+        assert!(matches!(m.touch(&a2, now), Err(AppError::Unauthorized)));
+        assert!(m.touch(&b, now).is_ok());
     }
 
     #[test]

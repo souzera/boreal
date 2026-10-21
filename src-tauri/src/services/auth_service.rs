@@ -147,6 +147,9 @@ impl AuthService {
             .ctx
             .sessions
             .create(user.id, user.role, self.ctx.clock.now());
+        if user.must_change_password {
+            self.ctx.sessions.set_must_change(&token, true);
+        }
         Ok(LoginResult {
             token,
             must_change_password: user.must_change_password,
@@ -160,7 +163,9 @@ impl AuthService {
 
     /// Valida a sessão e registra atividade; `Locked` se estiver bloqueada por inatividade.
     pub fn session_status(&self, token: &str) -> Result<SessionInfo, AppError> {
-        self.ctx.sessions.touch(token, self.ctx.clock.now())
+        self.ctx
+            .sessions
+            .touch_allow_pending(token, self.ctx.clock.now())
     }
 
     /// Estado da sessão para a interface: ativa ou bloqueada por inatividade.
@@ -207,6 +212,7 @@ impl AuthService {
             },
         )?;
         tx.commit()?;
+        self.ctx.sessions.set_must_change(token, false);
         Ok(())
     }
 
@@ -217,6 +223,10 @@ impl AuthService {
         let mut conn = self.ctx.db.lock().unwrap();
         let (user, hash) =
             user_repo::find_with_hash(&conn, info.user_id)?.ok_or(AppError::Unauthorized)?;
+        if !user.active {
+            self.ctx.sessions.destroy_user(user.id);
+            return Err(AppError::Unauthorized);
+        }
         let tx = conn.transaction()?;
 
         if let Some(until) = user

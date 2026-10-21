@@ -32,7 +32,8 @@ pub fn open_database(path: &Path, keys: &dyn KeyStore) -> Result<Connection, App
     let conn = Connection::open(path)?;
     conn.pragma_update(None, "key", format!("x'{}'", hex(&key)))?;
     // Falha aqui se a chave estiver errada ou o arquivo não for um banco cifrado.
-    conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))?;
+    conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
+        .map_err(|_| AppError::KeyInvalid)?;
     conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
     Ok(conn)
 }
@@ -87,6 +88,6 @@ mod tests {
 
         let result = open_database(&path, &MemoryKeyStore::with_key(&[7u8; 32]));
 
-        assert!(matches!(result, Err(AppError::Database(_))));
+        assert!(matches!(result, Err(AppError::KeyInvalid)));
     }
 }

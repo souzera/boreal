@@ -6,6 +6,12 @@ use serde::{ser::SerializeStruct, Serialize, Serializer};
 pub enum AppError {
     #[error("A chave de criptografia do banco não está disponível neste computador. Os dados não foram alterados.")]
     KeyUnavailable,
+    #[error("A chave de criptografia guardada neste computador não abre o banco de dados. Os dados não foram alterados.")]
+    KeyInvalid,
+    #[error("O banco de dados é de uma versão mais nova que este aplicativo. Atualize o aplicativo; os dados não foram alterados.")]
+    SchemaTooNew,
+    #[error("É preciso trocar a senha temporária antes de continuar.")]
+    PasswordChangeRequired,
     #[error("Erro no banco de dados: {0}")]
     Database(String),
     #[error("{0}")]
@@ -28,6 +34,9 @@ impl AppError {
     pub fn code(&self) -> &'static str {
         match self {
             AppError::KeyUnavailable => "key_unavailable",
+            AppError::KeyInvalid => "key_invalid",
+            AppError::SchemaTooNew => "schema_too_new",
+            AppError::PasswordChangeRequired => "password_change_required",
             AppError::Database(_) => "database",
             AppError::Validation(_) => "validation",
             AppError::Unauthorized => "unauthorized",

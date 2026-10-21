@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { useSessionStore } from "@/stores/session";
@@ -46,8 +47,27 @@ describe("AppShell", () => {
     useSessionStore.getState().lock();
     renderShell();
 
-    expect(screen.queryByText("Conteúdo do dashboard")).not.toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "Menu principal" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/Senha/)).toBeInTheDocument();
+    expect(screen.getByText("Conteúdo do dashboard")).not.toBeVisible();
+    expect(screen.getByRole("navigation", { name: "Menu principal", hidden: true })).not.toBeVisible();
+    expect(screen.getByLabelText(/Senha/)).toBeVisible();
+  });
+
+  it("bloquear e desbloquear não descarta o que foi digitado na página", async () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route path="/" element={<input aria-label="Observação" />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    await userEvent.type(screen.getByLabelText("Observação"), "rascunho");
+
+    act(() => useSessionStore.getState().lock());
+    expect(screen.getByLabelText("Observação", { selector: "input" })).not.toBeVisible();
+    act(() => useSessionStore.getState().unlock());
+
+    expect(screen.getByLabelText("Observação")).toHaveValue("rascunho");
   });
 });

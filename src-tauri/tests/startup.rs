@@ -52,6 +52,9 @@ fn full_flow() {
         )
         .unwrap();
     let maria = app.auth.login("maria", "Temp-Senha-123").unwrap();
+    app.auth
+        .change_own_password(&maria.token, "Temp-Senha-123", "Definitiva-456")
+        .unwrap();
 
     let denied = app.users.create_user(
         &maria.token,

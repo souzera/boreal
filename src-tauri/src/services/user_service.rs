@@ -142,6 +142,9 @@ impl UserService {
             },
         )?;
         tx.commit()?;
+        if !active {
+            self.ctx.sessions.destroy_user(user.id);
+        }
         Ok(())
     }
 }
@@ -188,6 +191,9 @@ mod tests {
         let admin = admin_token(&h);
         let maria_id = h.users.create_user(&admin, input("maria")).unwrap();
         let maria = h.auth.login("maria", "Temp-Senha-123").unwrap().token;
+        h.auth
+            .change_own_password(&maria, "Temp-Senha-123", "Definitiva-456")
+            .unwrap();
 
         assert!(matches!(
             h.users.create_user(&maria, input("joao")),
@@ -247,6 +253,64 @@ mod tests {
         ));
         let admin_id = h.auth.login("admin", ADMIN_PASSWORD).unwrap().user.id;
         assert!(h.users.set_active(&admin, admin_id, false).is_err());
+    }
+
+    #[test]
+    fn temporary_password_session_cannot_manage_users_until_changed() {
+        let h = harness();
+        let admin = admin_token(&h);
+        h.users
+            .create_user(
+                &admin,
+                NewUserInput {
+                    role: Role::Admin,
+                    ..input("chefe2")
+                },
+            )
+            .unwrap();
+        let chefe = h.auth.login("chefe2", "Temp-Senha-123").unwrap();
+        assert!(chefe.must_change_password);
+
+        assert!(matches!(
+            h.users.create_user(&chefe.token, input("joao")),
+            Err(AppError::PasswordChangeRequired)
+        ));
+        h.auth
+            .change_own_password(&chefe.token, "Temp-Senha-123", "Definitiva-456")
+            .unwrap();
+        assert!(h.users.create_user(&chefe.token, input("joao")).is_ok());
+    }
+
+    #[test]
+    fn deactivating_user_ends_their_sessions() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let id = h.users.create_user(&admin, input("maria")).unwrap();
+        let maria = h.auth.login("maria", "Temp-Senha-123").unwrap().token;
+        assert!(h.auth.session_status(&maria).is_ok());
+
+        h.users.set_active(&admin, id, false).unwrap();
+
+        assert!(matches!(h.auth.session_status(&maria), Err(AppError::Unauthorized)));
+    }
+
+    #[test]
+    fn locked_session_of_deactivated_user_cannot_unlock() {
+        let h = harness();
+        let admin = admin_token(&h);
+        h.users.create_user(&admin, input("maria")).unwrap();
+        let maria = h.auth.login("maria", "Temp-Senha-123").unwrap().token;
+        h.clock.advance(std::time::Duration::from_secs(601));
+        assert!(matches!(h.auth.session_status(&maria), Err(AppError::Locked)));
+        h.db.lock()
+            .unwrap()
+            .execute("UPDATE users SET active = 0 WHERE username = 'maria'", [])
+            .unwrap();
+
+        assert!(matches!(
+            h.auth.unlock_session(&maria, "Temp-Senha-123"),
+            Err(AppError::Unauthorized)
+        ));
     }
 
     #[test]

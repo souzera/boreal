@@ -42,6 +42,11 @@ pub fn run_with(conn: &mut Connection, migrations: &[Migration]) -> Result<u32, 
         |r| r.get(0),
     )?;
 
+    let latest_known = migrations.iter().map(|m| m.version).max().unwrap_or(0);
+    if current > latest_known {
+        return Err(AppError::SchemaTooNew);
+    }
+
     for m in migrations.iter().filter(|m| m.version > current) {
         let tx = conn.transaction()?;
         tx.execute_batch(m.sql)?;
@@ -107,6 +112,21 @@ mod tests {
             .unwrap();
         assert_eq!(b_exists, 0);
         assert_eq!(applied_rows(&conn), 1);
+    }
+
+    #[test]
+    fn refuses_database_newer_than_app() {
+        let mut conn = memory();
+        let both = [
+            Migration { version: 1, sql: "CREATE TABLE a(x INTEGER);" },
+            Migration { version: 2, sql: "CREATE TABLE b(x INTEGER);" },
+        ];
+        run_with(&mut conn, &both).unwrap();
+
+        let result = run_with(&mut conn, &both[..1]);
+
+        assert!(matches!(result, Err(crate::error::AppError::SchemaTooNew)));
+        assert_eq!(applied_rows(&conn), 2);
     }
 
     #[test]
