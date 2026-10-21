@@ -21,7 +21,7 @@ Branch `marco-0-fundacao`; 11 tarefas implementadas com TDD e revisão final da 
 ### Desvios do plano (decididos durante a execução)
 
 - `npm install --legacy-peer-deps` (peer opcional de `@hookform/resolvers`); o CI usa o mesmo.
-- Strawberry Perl é pré-requisito para compilar o SQLCipher/OpenSSL no Windows (`C:\Strawberry\perlin` antes do Perl do Git no PATH).
+- Strawberry Perl é pré-requisito para compilar o SQLCipher/OpenSSL no Windows (`C:\Strawberry\perlbin` antes do Perl do Git no PATH).
 - `SessionManager::create(user_id, role, now)` recebe o perfil; novos erros: `Locked`, `InvalidCredentials`, `AccountLocked`, `KeyInvalid`, `SchemaTooNew`, `PasswordChangeRequired`.
 - Tarefa 8: descartado o `last_seen_utc` (voltar o relógio só alonga o bloqueio); adicionados `settings_repo`, `Ctx`, `user_repo::{find_with_hash, set_active}`; senha errada no desbloqueio conta para o bloqueio da conta.
 - Dependência extra `chrono`; `argon2` compilado com `opt-level = 3` em dev (testes ~20x mais rápidos).
