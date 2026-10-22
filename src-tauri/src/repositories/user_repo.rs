@@ -121,6 +121,98 @@ pub fn count(conn: &Connection) -> Result<i64, AppError> {
     Ok(conn.query_row("SELECT count(*) FROM users", [], |r| r.get(0))?)
 }
 
+/// Linha de listagem de usuários (sem hash nem dados de sessão).
+#[derive(Debug, serde::Serialize)]
+pub struct UserRow {
+    pub id: i64,
+    pub username: String,
+    pub display_name: String,
+    pub role: Role,
+    pub active: bool,
+    pub must_change_password: bool,
+    pub version: i64,
+    pub extra_permissions: Vec<String>,
+}
+
+pub struct UserListFilter<'a> {
+    pub text: Option<&'a str>,
+    pub active: Option<bool>,
+    pub sort: Option<&'a str>,
+    pub descending: bool,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+/// Colunas aceitas na ordenação: nunca se interpola texto vindo do cliente.
+fn sort_column(sort: Option<&str>) -> &'static str {
+    match sort {
+        Some("username") => "username COLLATE NOCASE",
+        Some("role") => "role",
+        Some("active") => "active",
+        _ => "display_name COLLATE NOCASE",
+    }
+}
+
+pub fn list(conn: &Connection, filter: &UserListFilter) -> Result<(Vec<UserRow>, u64), AppError> {
+    let pattern = filter.text.filter(|t| !t.trim().is_empty()).map(crate::models::page::like_pattern);
+    let direction = if filter.descending { "DESC" } else { "ASC" };
+    let where_clause = "(?1 IS NULL OR username LIKE ?1 ESCAPE '\\' OR display_name LIKE ?1 ESCAPE '\\')
+                        AND (?2 IS NULL OR active = ?2)";
+    let total: i64 = conn.query_row(
+        &format!("SELECT count(*) FROM users WHERE {where_clause}"),
+        params![pattern, filter.active],
+        |r| r.get(0),
+    )?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, username, display_name, role, active, must_change_password, version
+         FROM users WHERE {where_clause}
+         ORDER BY {} {direction}, id LIMIT ?3 OFFSET ?4",
+        sort_column(filter.sort)
+    ))?;
+    let rows = stmt
+        .query_map(params![pattern, filter.active, filter.limit, filter.offset], |r| {
+            let role: String = r.get(3)?;
+            Ok(UserRow {
+                id: r.get(0)?,
+                username: r.get(1)?,
+                display_name: r.get(2)?,
+                role: Role::from_db(&role).ok_or(rusqlite::Error::InvalidQuery)?,
+                active: r.get::<_, i64>(4)? == 1,
+                must_change_password: r.get::<_, i64>(5)? == 1,
+                version: r.get(6)?,
+                extra_permissions: Vec::new(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((rows, total.max(0) as u64))
+}
+
+pub fn count_active_admins(conn: &Connection) -> Result<i64, AppError> {
+    Ok(conn.query_row(
+        "SELECT count(*) FROM users WHERE role = 'admin' AND active = 1",
+        [],
+        |r| r.get(0),
+    )?)
+}
+
+/// Troca o perfil se a versão ainda for a consultada; senão, `Conflict`.
+pub fn set_role(
+    tx: &Transaction,
+    id: i64,
+    role: Role,
+    expected_version: i64,
+    at: DateTime<Utc>,
+) -> Result<(), AppError> {
+    let changed = tx.execute(
+        "UPDATE users SET role = ?1, version = version + 1, updated_at = ?2 WHERE id = ?3 AND version = ?4",
+        params![role.as_str(), stamp(at), id, expected_version],
+    )?;
+    if changed == 0 {
+        return Err(AppError::Conflict);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{count, find, find_by_username, insert, update_password};

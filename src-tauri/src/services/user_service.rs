@@ -7,7 +7,9 @@ use crate::auth::password::{hash_password, validate_password_policy};
 use crate::auth::permissions::Permission;
 use crate::auth::session::{require, SessionInfo};
 use crate::error::AppError;
+use crate::models::page::{clamp_paging, Page};
 use crate::models::user::{NewUser, Role};
+use crate::repositories::user_repo::{UserListFilter, UserRow};
 use crate::repositories::{permission_repo, user_repo};
 
 #[derive(Deserialize)]
@@ -16,6 +18,17 @@ pub struct NewUserInput {
     pub display_name: String,
     pub role: Role,
     pub initial_password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UserQuery {
+    pub text: Option<String>,
+    pub active: Option<bool>,
+    pub page: u32,
+    pub page_size: u32,
+    pub sort: Option<String>,
+    /// `"asc"` (padrão) ou `"desc"`.
+    pub direction: Option<String>,
 }
 
 impl std::fmt::Debug for NewUserInput {
@@ -43,6 +56,85 @@ impl UserService {
         let info = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
         require(&info, Permission::ManageUsers)?;
         Ok(info)
+    }
+
+    /// Impede ficar sem nenhum administrador ativo.
+    fn ensure_not_last_active_admin(conn: &rusqlite::Connection, user: &crate::models::user::User) -> Result<(), AppError> {
+        if user.role == Role::Admin && user.active && user_repo::count_active_admins(conn)? <= 1 {
+            return Err(AppError::Validation(
+                "O sistema precisa de pelo menos um administrador ativo.".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Lista usuários com busca, filtro e paginação (exige `ManageUsers`).
+    pub fn list(&self, token: &str, query: UserQuery) -> Result<Page<UserRow>, AppError> {
+        self.authorize(token)?;
+        let (page, page_size, offset) = clamp_paging(query.page, query.page_size);
+        let conn = self.ctx.db.lock().unwrap();
+        let (mut items, total) = user_repo::list(
+            &conn,
+            &UserListFilter {
+                text: query.text.as_deref(),
+                active: query.active,
+                sort: query.sort.as_deref(),
+                descending: query.direction.as_deref() == Some("desc"),
+                limit: i64::from(page_size),
+                offset,
+            },
+        )?;
+        for row in &mut items {
+            row.extra_permissions = permission_repo::list(&conn, row.id)?
+                .iter()
+                .map(|p| p.as_str().to_string())
+                .collect();
+        }
+        Ok(Page { items, total, page, page_size })
+    }
+
+    /// Troca o perfil de um usuário. Não permite mudar o próprio perfil nem
+    /// rebaixar o último administrador ativo.
+    pub fn set_role(
+        &self,
+        token: &str,
+        user_id: i64,
+        role: Role,
+        expected_version: i64,
+    ) -> Result<(), AppError> {
+        let actor = self.authorize(token)?;
+        if actor.user_id == user_id {
+            return Err(AppError::Validation("Você não pode alterar o próprio perfil.".into()));
+        }
+        let mut conn = self.ctx.db.lock().unwrap();
+        let user = user_repo::find(&conn, user_id)?
+            .ok_or_else(|| AppError::Validation("Usuário não encontrado.".into()))?;
+        if role != Role::Admin {
+            Self::ensure_not_last_active_admin(&conn, &user)?;
+        }
+        let tx = conn.transaction()?;
+        user_repo::set_role(&tx, user.id, role, expected_version, self.ctx.utc.now_utc())?;
+        if role == Role::Admin {
+            // Administradores têm todas as permissões; extras deixam de fazer sentido.
+            permission_repo::replace(&tx, user.id, &[], actor.user_id, self.ctx.utc.now_utc())?;
+        }
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at: self.ctx.utc.now_utc(),
+                user_id: Some(actor.user_id),
+                module: "users",
+                operation: "set_role",
+                entity: "user",
+                entity_id: Some(user.id),
+                before: Some(json!({ "role": user.role.as_str() })),
+                after: Some(json!({ "role": role.as_str() })),
+                justification: None,
+            },
+        )?;
+        tx.commit()?;
+        self.ctx.sessions.destroy_user(user.id);
+        Ok(())
     }
 
     /// Cria o usuário com senha temporária: a troca é exigida no primeiro acesso.
@@ -191,6 +283,9 @@ impl UserService {
         let mut conn = self.ctx.db.lock().unwrap();
         let user = user_repo::find(&conn, user_id)?
             .ok_or_else(|| AppError::Validation("Usuário não encontrado.".into()))?;
+        if !active {
+            Self::ensure_not_last_active_admin(&conn, &user)?;
+        }
         let tx = conn.transaction()?;
         user_repo::set_active(&tx, user.id, active, self.ctx.utc.now_utc())?;
         audit::record(
@@ -217,7 +312,7 @@ impl UserService {
 
 #[cfg(test)]
 mod tests {
-    use super::NewUserInput;
+    use super::{NewUserInput, UserQuery};
     use crate::auth::permissions::Permission;
     use crate::auth::session::require;
     use crate::error::AppError;
@@ -483,6 +578,115 @@ mod tests {
             )
             .unwrap();
         assert!(after.contains("apply_discount") && after.contains("release_room"));
+    }
+
+    fn query(text: Option<&str>, page: u32, page_size: u32) -> UserQuery {
+        UserQuery {
+            text: text.map(String::from),
+            active: None,
+            page,
+            page_size,
+            sort: None,
+            direction: None,
+        }
+    }
+
+    #[test]
+    fn list_requires_manage_users() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let rec = crate::services::test_support::recepcao_token(&h, &admin);
+
+        assert!(matches!(h.users.list(&rec, query(None, 1, 10)), Err(AppError::Forbidden)));
+        assert!(h.users.list(&admin, query(None, 1, 10)).is_ok());
+    }
+
+    #[test]
+    fn list_filters_paginates_and_shows_extra_permissions() {
+        let h = harness();
+        let admin = admin_token(&h);
+        for name in ["ana", "bia", "caio"] {
+            h.users.create_user(&admin, input(name)).unwrap();
+        }
+        let ana = h.users.list(&admin, query(Some("ANA"), 1, 10)).unwrap();
+        assert_eq!(ana.total, 1);
+        assert_eq!(ana.items[0].username, "ana");
+
+        let first = h.users.list(&admin, query(None, 1, 2)).unwrap();
+        let second = h.users.list(&admin, query(None, 2, 2)).unwrap();
+        assert_eq!((first.total, first.items.len(), second.items.len()), (4, 2, 2));
+
+        let id = ana.items[0].id;
+        h.users.set_extra_permissions(&admin, id, &[Permission::ApplyDiscount]).unwrap();
+        let again = h.users.list(&admin, query(Some("ana"), 1, 10)).unwrap();
+        assert_eq!(again.items[0].extra_permissions, vec!["apply_discount".to_string()]);
+    }
+
+    #[test]
+    fn list_ignores_unknown_sort_column() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let mut q = query(None, 1, 10);
+        q.sort = Some("password_hash; DROP TABLE users".into());
+
+        assert!(h.users.list(&admin, q).is_ok());
+    }
+
+    #[test]
+    fn cannot_remove_last_active_admin() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let admin_id = h.auth.login("admin", ADMIN_PASSWORD).unwrap().user.id;
+        let other_id = h
+            .users
+            .create_user(&admin, NewUserInput { role: Role::Admin, ..input("chefe2") })
+            .unwrap();
+        // O ator deixa de estar ativo no banco (cenário de corrida): o outro vira o último admin ativo.
+        h.db.lock()
+            .unwrap()
+            .execute("UPDATE users SET active = 0 WHERE id = ?1", [admin_id])
+            .unwrap();
+
+        assert!(matches!(
+            h.users.set_role(&admin, other_id, Role::Recepcao, 1),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(h.users.set_active(&admin, other_id, false), Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn admin_cannot_change_own_role() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let admin_id = h.auth.login("admin", ADMIN_PASSWORD).unwrap().user.id;
+
+        assert!(matches!(
+            h.users.set_role(&admin, admin_id, Role::Recepcao, 1),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn set_role_conflicts_on_stale_version_and_is_audited() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let id = h.users.create_user(&admin, input("maria")).unwrap();
+
+        assert!(matches!(
+            h.users.set_role(&admin, id, Role::Admin, 99),
+            Err(AppError::Conflict)
+        ));
+        h.users.set_role(&admin, id, Role::Admin, 1).unwrap();
+
+        let conn = h.db.lock().unwrap();
+        let (before, after): (String, String) = conn
+            .query_row(
+                "SELECT before_json, after_json FROM audit_log WHERE operation = 'set_role'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!(before.contains("recepcao") && after.contains("admin"));
     }
 
     #[test]
