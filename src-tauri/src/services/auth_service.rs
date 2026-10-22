@@ -76,10 +76,12 @@ impl AuthService {
                 role: Role::Admin,
                 must_change_password: false,
             },
+            self.ctx.utc.now_utc(),
         )?;
         audit::record(
             &tx,
             &AuditEntry {
+                at: self.ctx.utc.now_utc(),
                 user_id: Some(id),
                 module: "users",
                 operation: "bootstrap_admin",
@@ -111,7 +113,7 @@ impl AuthService {
                     until: format_utc(until),
                 });
             }
-            user_repo::reset_attempts(&tx, user.id)?;
+            user_repo::reset_attempts(&tx, user.id, self.ctx.utc.now_utc())?;
             attempts = 0;
         }
 
@@ -126,11 +128,12 @@ impl AuthService {
         }
 
         if attempts > 0 || user.locked_until.is_some() {
-            user_repo::reset_attempts(&tx, user.id)?;
+            user_repo::reset_attempts(&tx, user.id, self.ctx.utc.now_utc())?;
         }
         audit::record(
             &tx,
             &AuditEntry {
+                at: self.ctx.utc.now_utc(),
                 user_id: Some(user.id),
                 module: "auth",
                 operation: "login",
@@ -197,10 +200,11 @@ impl AuthService {
             return Err(AppError::Validation("A senha atual está incorreta.".into()));
         }
         let tx = conn.transaction()?;
-        user_repo::update_password(&tx, user.id, &new_hash, false, user.version)?;
+        user_repo::update_password(&tx, user.id, &new_hash, false, user.version, self.ctx.utc.now_utc())?;
         audit::record(
             &tx,
             &AuditEntry {
+                at: self.ctx.utc.now_utc(),
                 user_id: Some(user.id),
                 module: "auth",
                 operation: "password_changed",
@@ -245,11 +249,12 @@ impl AuthService {
             return Err(AppError::InvalidCredentials);
         }
         if user.failed_attempts > 0 {
-            user_repo::reset_attempts(&tx, user.id)?;
+            user_repo::reset_attempts(&tx, user.id, self.ctx.utc.now_utc())?;
         }
         audit::record(
             &tx,
             &AuditEntry {
+                at: self.ctx.utc.now_utc(),
                 user_id: Some(user.id),
                 module: "auth",
                 operation: "session_unlock",
@@ -277,10 +282,11 @@ fn register_failure(
     let minutes = settings_repo::get_u32(tx, "lockout_minutes")?;
     let locks = attempts + 1 >= max;
     let until = locks.then(|| format_utc(now + chrono::Duration::minutes(i64::from(minutes))));
-    user_repo::record_failed_attempt(tx, user.id, until.as_deref())?;
+    user_repo::record_failed_attempt(tx, user.id, until.as_deref(), now)?;
     audit::record(
         tx,
         &AuditEntry {
+            at: now,
             user_id: Some(user.id),
             module: "auth",
             operation: if locks { "login_lockout" } else { "login_failed" },
@@ -308,6 +314,29 @@ mod tests {
             .unwrap()
             .map(|r| r.unwrap())
             .collect()
+    }
+
+    #[test]
+    fn audit_and_user_timestamps_use_injected_clock() {
+        let h = harness();
+        let token = admin_token(&h);
+        h.auth
+            .change_own_password(&token, ADMIN_PASSWORD, "Nova-Senha-22")
+            .unwrap();
+
+        let conn = h.db.lock().unwrap();
+        let wrong: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM audit_log WHERE at <> '2026-10-21T12:00:00Z'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let updated: String = conn
+            .query_row("SELECT updated_at FROM users", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(wrong, 0);
+        assert_eq!(updated, "2026-10-21T12:00:00Z");
     }
 
     #[test]

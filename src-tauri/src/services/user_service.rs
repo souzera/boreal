@@ -58,6 +58,7 @@ impl UserService {
                 role: input.role,
                 must_change_password: true,
             },
+            self.ctx.utc.now_utc(),
         )
         .map_err(|e| match e {
             AppError::Database(msg) if msg.contains("UNIQUE") => {
@@ -68,6 +69,7 @@ impl UserService {
         audit::record(
             &tx,
             &AuditEntry {
+                at: self.ctx.utc.now_utc(),
                 user_id: Some(actor.user_id),
                 module: "users",
                 operation: "create_user",
@@ -97,11 +99,12 @@ impl UserService {
         let user = user_repo::find(&conn, user_id)?
             .ok_or_else(|| AppError::Validation("Usuário não encontrado.".into()))?;
         let tx = conn.transaction()?;
-        user_repo::update_password(&tx, user.id, &hash, true, user.version)?;
-        user_repo::reset_attempts(&tx, user.id)?;
+        user_repo::update_password(&tx, user.id, &hash, true, user.version, self.ctx.utc.now_utc())?;
+        user_repo::reset_attempts(&tx, user.id, self.ctx.utc.now_utc())?;
         audit::record(
             &tx,
             &AuditEntry {
+                at: self.ctx.utc.now_utc(),
                 user_id: Some(actor.user_id),
                 module: "users",
                 operation: "reset_password",
@@ -127,10 +130,11 @@ impl UserService {
         let user = user_repo::find(&conn, user_id)?
             .ok_or_else(|| AppError::Validation("Usuário não encontrado.".into()))?;
         let tx = conn.transaction()?;
-        user_repo::set_active(&tx, user.id, active)?;
+        user_repo::set_active(&tx, user.id, active, self.ctx.utc.now_utc())?;
         audit::record(
             &tx,
             &AuditEntry {
+                at: self.ctx.utc.now_utc(),
                 user_id: Some(actor.user_id),
                 module: "users",
                 operation: "set_active",

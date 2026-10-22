@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 
 use crate::error::AppError;
@@ -5,8 +6,8 @@ use crate::models::user::{NewUser, Role, User};
 
 const COLUMNS: &str = "id, username, display_name, role, active, must_change_password,                        failed_attempts, locked_until, version, password_hash";
 
-fn now() -> String {
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+fn stamp(at: DateTime<Utc>) -> String {
+    at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
 fn map_user(row: &Row) -> rusqlite::Result<(User, String)> {
@@ -25,8 +26,8 @@ fn map_user(row: &Row) -> rusqlite::Result<(User, String)> {
     Ok((user, row.get(9)?))
 }
 
-pub fn insert(tx: &Transaction, user: &NewUser) -> Result<i64, AppError> {
-    let at = now();
+pub fn insert(tx: &Transaction, user: &NewUser, at: DateTime<Utc>) -> Result<i64, AppError> {
+    let at = stamp(at);
     tx.execute(
         "INSERT INTO users (username, display_name, password_hash, role, must_change_password, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
@@ -65,10 +66,10 @@ pub fn find_with_hash(conn: &Connection, id: i64) -> Result<Option<(User, String
         .optional()?)
 }
 
-pub fn set_active(tx: &Transaction, id: i64, active: bool) -> Result<(), AppError> {
+pub fn set_active(tx: &Transaction, id: i64, active: bool, at: DateTime<Utc>) -> Result<(), AppError> {
     tx.execute(
         "UPDATE users SET active = ?1, version = version + 1, updated_at = ?2 WHERE id = ?3",
-        params![active, now(), id],
+        params![active, stamp(at), id],
     )?;
     Ok(())
 }
@@ -80,11 +81,12 @@ pub fn update_password(
     hash: &str,
     must_change: bool,
     expected_version: i64,
+    at: DateTime<Utc>,
 ) -> Result<(), AppError> {
     let changed = tx.execute(
         "UPDATE users SET password_hash = ?1, must_change_password = ?2, version = version + 1, updated_at = ?3
          WHERE id = ?4 AND version = ?5",
-        params![hash, must_change, now(), id, expected_version],
+        params![hash, must_change, stamp(at), id, expected_version],
     )?;
     if changed == 0 {
         return Err(AppError::Conflict);
@@ -92,20 +94,25 @@ pub fn update_password(
     Ok(())
 }
 
-pub fn record_failed_attempt(tx: &Transaction, id: i64, locked_until: Option<&str>) -> Result<(), AppError> {
+pub fn record_failed_attempt(
+    tx: &Transaction,
+    id: i64,
+    locked_until: Option<&str>,
+    at: DateTime<Utc>,
+) -> Result<(), AppError> {
     tx.execute(
         "UPDATE users SET failed_attempts = failed_attempts + 1,
                           locked_until = COALESCE(?1, locked_until), updated_at = ?2
          WHERE id = ?3",
-        params![locked_until, now(), id],
+        params![locked_until, stamp(at), id],
     )?;
     Ok(())
 }
 
-pub fn reset_attempts(tx: &Transaction, id: i64) -> Result<(), AppError> {
+pub fn reset_attempts(tx: &Transaction, id: i64, at: DateTime<Utc>) -> Result<(), AppError> {
     tx.execute(
         "UPDATE users SET failed_attempts = 0, locked_until = NULL, updated_at = ?1 WHERE id = ?2",
-        params![now(), id],
+        params![stamp(at), id],
     )?;
     Ok(())
 }
@@ -121,6 +128,11 @@ mod tests {
     use crate::migrations::run_migrations;
     use crate::models::user::{NewUser, Role};
     use rusqlite::Connection;
+
+    fn at() -> chrono::DateTime<chrono::Utc> {
+        use chrono::TimeZone;
+        chrono::Utc.with_ymd_and_hms(2026, 10, 21, 12, 0, 0).unwrap()
+    }
 
     fn db() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();
@@ -142,7 +154,7 @@ mod tests {
     fn find_by_username_is_case_insensitive() {
         let mut conn = db();
         let tx = conn.transaction().unwrap();
-        let id = insert(&tx, &new_user("Ana")).unwrap();
+        let id = insert(&tx, &new_user("Ana"), at()).unwrap();
         tx.commit().unwrap();
 
         let (user, hash) = find_by_username(&conn, "ANA").unwrap().unwrap();
@@ -160,9 +172,9 @@ mod tests {
     fn update_password_conflicts_on_stale_version() {
         let mut conn = db();
         let tx = conn.transaction().unwrap();
-        let id = insert(&tx, &new_user("ana")).unwrap();
-        update_password(&tx, id, "hash1", false, 1).unwrap();
-        let stale = update_password(&tx, id, "hash2", false, 1);
+        let id = insert(&tx, &new_user("ana"), at()).unwrap();
+        update_password(&tx, id, "hash1", false, 1, at()).unwrap();
+        let stale = update_password(&tx, id, "hash2", false, 1, at());
         tx.commit().unwrap();
 
         assert!(matches!(stale, Err(AppError::Conflict)));

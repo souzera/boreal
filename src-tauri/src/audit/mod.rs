@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use rusqlite::Transaction;
 use serde_json::Value;
 
@@ -6,6 +7,7 @@ use crate::error::AppError;
 const SENSITIVE_KEYS: &[&str] = &["password", "password_hash", "new_password"];
 
 pub struct AuditEntry {
+    pub at: DateTime<Utc>,
     pub user_id: Option<i64>,
     pub module: &'static str,
     pub operation: &'static str,
@@ -32,7 +34,7 @@ pub fn scrub(value: Value) -> Value {
 
 /// Grava o evento na mesma transação da operação auditada.
 pub fn record(tx: &Transaction, entry: &AuditEntry) -> Result<(), AppError> {
-    let at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let at = entry.at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     let json = |v: &Option<Value>| v.clone().map(|v| scrub(v).to_string());
     tx.execute(
         "INSERT INTO audit_log
@@ -62,6 +64,7 @@ mod tests {
 
     fn entry() -> AuditEntry {
         AuditEntry {
+            at: chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 10, 21, 12, 0, 0).unwrap(),
             user_id: None,
             module: "auth",
             operation: "login",
