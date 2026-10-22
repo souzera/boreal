@@ -12,7 +12,7 @@ pub enum AppError {
     SchemaTooNew,
     #[error("É preciso trocar a senha temporária antes de continuar.")]
     PasswordChangeRequired,
-    #[error("Erro no banco de dados: {0}")]
+    #[error("Não foi possível concluir a operação. Tente novamente.")]
     Database(String),
     #[error("{0}")]
     Validation(String),
@@ -68,5 +68,18 @@ impl Serialize for AppError {
             s.serialize_field("until", until)?;
         }
         s.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AppError;
+
+    #[test]
+    fn database_error_message_is_plain() {
+        let e = AppError::Database("UNIQUE constraint failed: x.y".into());
+
+        assert!(!e.to_string().contains("UNIQUE"));
+        assert!(format!("{e:?}").contains("UNIQUE"));
     }
 }

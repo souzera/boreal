@@ -108,6 +108,14 @@ impl SessionManager {
             .retain(|_, s| s.info.user_id != user_id);
     }
 
+    /// Encerra as sessões de um usuário, exceto a do token informado.
+    pub fn destroy_user_except(&self, user_id: i64, keep_token: &str) {
+        self.sessions
+            .lock()
+            .unwrap()
+            .retain(|token, s| s.info.user_id != user_id || token == keep_token);
+    }
+
     /// Consulta a sessão sem exigir que esteja desbloqueada (usado para reautenticar).
     pub fn peek(&self, token: &str) -> Result<SessionInfo, AppError> {
         let sessions = self.sessions.lock().unwrap();

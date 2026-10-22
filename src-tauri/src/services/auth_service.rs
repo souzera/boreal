@@ -17,11 +17,21 @@ use crate::repositories::{settings_repo, user_repo};
 static DUMMY_HASH: LazyLock<String> =
     LazyLock::new(|| hash_password("senha-ficticia-para-igualar-tempo").unwrap_or_default());
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 pub struct LoginResult {
     pub token: String,
     pub user: User,
     pub must_change_password: bool,
+}
+
+impl std::fmt::Debug for LoginResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoginResult")
+            .field("token", &"[oculto]")
+            .field("user", &self.user)
+            .field("must_change_password", &self.must_change_password)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -37,6 +47,9 @@ pub struct AuthService {
 
 impl AuthService {
     pub fn new(ctx: Ctx) -> Self {
+        // Calcula o hash fictício agora, para o primeiro login de usuário inexistente
+        // não ser mais lento que os demais.
+        LazyLock::force(&DUMMY_HASH);
         Self { ctx }
     }
 
@@ -193,13 +206,22 @@ impl AuthService {
         validate_password_policy(new)?;
         let new_hash = hash_password(new)?;
 
+        let now = self.ctx.utc.now_utc();
         let mut conn = self.ctx.db.lock().unwrap();
         let (user, hash) =
             user_repo::find_with_hash(&conn, info.user_id)?.ok_or(AppError::Unauthorized)?;
+        let tx = conn.transaction()?;
+        let attempts = check_lock(&tx, &user, now)?;
         if !verify_password(current, &hash) {
+            register_failure(&tx, &user, attempts, now)?;
+            tx.commit()?;
             return Err(AppError::Validation("A senha atual está incorreta.".into()));
         }
-        let tx = conn.transaction()?;
+        if verify_password(new, &hash) {
+            return Err(AppError::Validation(
+                "A nova senha deve ser diferente da atual.".into(),
+            ));
+        }
         user_repo::update_password(&tx, user.id, &new_hash, false, user.version, self.ctx.utc.now_utc())?;
         audit::record(
             &tx,
@@ -216,6 +238,7 @@ impl AuthService {
             },
         )?;
         tx.commit()?;
+        self.ctx.sessions.destroy_user_except(user.id, token);
         self.ctx.sessions.set_must_change(token, false);
         Ok(())
     }
@@ -232,23 +255,13 @@ impl AuthService {
             return Err(AppError::Unauthorized);
         }
         let tx = conn.transaction()?;
-
-        if let Some(until) = user
-            .locked_until
-            .as_deref()
-            .and_then(parse_utc)
-            .filter(|until| *until > now)
-        {
-            return Err(AppError::AccountLocked {
-                until: format_utc(until),
-            });
-        }
+        let attempts = check_lock(&tx, &user, now)?;
         if !verify_password(password, &hash) {
-            register_failure(&tx, &user, user.failed_attempts, now)?;
+            register_failure(&tx, &user, attempts, now)?;
             tx.commit()?;
             return Err(AppError::InvalidCredentials);
         }
-        if user.failed_attempts > 0 {
+        if attempts > 0 {
             user_repo::reset_attempts(&tx, user.id, self.ctx.utc.now_utc())?;
         }
         audit::record(
@@ -269,6 +282,21 @@ impl AuthService {
         self.ctx.sessions.unlock(token, self.ctx.clock.now())?;
         Ok(())
     }
+}
+
+/// Recusa se a conta está bloqueada; se o bloqueio já expirou, zera as tentativas.
+/// Retorna o número de tentativas inválidas a considerar.
+fn check_lock(tx: &Transaction, user: &User, now: DateTime<Utc>) -> Result<u32, AppError> {
+    let Some(until) = user.locked_until.as_deref().and_then(parse_utc) else {
+        return Ok(user.failed_attempts);
+    };
+    if until > now {
+        return Err(AppError::AccountLocked {
+            until: format_utc(until),
+        });
+    }
+    user_repo::reset_attempts(tx, user.id, now)?;
+    Ok(0)
 }
 
 /// Conta a tentativa inválida e bloqueia a conta ao atingir o limite configurado.
@@ -485,6 +513,66 @@ mod tests {
             h.auth.session_state("token-invalido"),
             Err(AppError::Unauthorized)
         ));
+    }
+
+    #[test]
+    fn unlock_after_lock_expiry_does_not_relock_on_one_typo() {
+        let h = harness();
+        let token = admin_token(&h);
+        for _ in 0..5 {
+            let _ = h.auth.login("admin", "errada-errada");
+        }
+        h.utc.set(t0() + chrono::Duration::minutes(6));
+        h.clock.advance(Duration::from_secs(601));
+
+        assert!(matches!(
+            h.auth.unlock_session(&token, "errada-errada"),
+            Err(AppError::InvalidCredentials)
+        ));
+
+        assert!(h.auth.login("admin", ADMIN_PASSWORD).is_ok());
+    }
+
+    #[test]
+    fn change_own_password_counts_wrong_current_and_locks() {
+        let h = harness();
+        let token = admin_token(&h);
+        for _ in 0..5 {
+            assert!(h
+                .auth
+                .change_own_password(&token, "errada-errada", "Nova-Senha-22")
+                .is_err());
+        }
+
+        assert!(matches!(
+            h.auth.login("admin", ADMIN_PASSWORD),
+            Err(AppError::AccountLocked { .. })
+        ));
+    }
+
+    #[test]
+    fn change_own_password_rejects_same_password() {
+        let h = harness();
+        let token = admin_token(&h);
+
+        assert!(matches!(
+            h.auth.change_own_password(&token, ADMIN_PASSWORD, ADMIN_PASSWORD),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn change_own_password_ends_other_sessions_but_keeps_current() {
+        let h = harness();
+        let current = admin_token(&h);
+        let other = h.auth.login("admin", ADMIN_PASSWORD).unwrap().token;
+
+        h.auth
+            .change_own_password(&current, ADMIN_PASSWORD, "Nova-Senha-22")
+            .unwrap();
+
+        assert!(h.auth.session_status(&current).is_ok());
+        assert!(matches!(h.auth.session_status(&other), Err(AppError::Unauthorized)));
     }
 
     #[test]

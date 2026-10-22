@@ -76,8 +76,9 @@ pub fn reset_password(
     token: String,
     user_id: i64,
     temp_password: String,
+    expected_version: i64,
 ) -> Result<(), AppError> {
     app.state()?
         .users
-        .reset_password(&token, user_id, &temp_password)
+        .reset_password(&token, user_id, &temp_password, expected_version)
 }

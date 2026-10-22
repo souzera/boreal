@@ -10,12 +10,23 @@ use crate::error::AppError;
 use crate::models::user::{NewUser, Role};
 use crate::repositories::user_repo;
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct NewUserInput {
     pub username: String,
     pub display_name: String,
     pub role: Role,
     pub initial_password: String,
+}
+
+impl std::fmt::Debug for NewUserInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewUserInput")
+            .field("username", &self.username)
+            .field("display_name", &self.display_name)
+            .field("role", &self.role)
+            .field("initial_password", &"[oculto]")
+            .finish()
+    }
 }
 
 #[derive(Clone)]
@@ -90,6 +101,7 @@ impl UserService {
         token: &str,
         user_id: i64,
         temp_password: &str,
+        expected_version: i64,
     ) -> Result<(), AppError> {
         let actor = self.authorize(token)?;
         validate_password_policy(temp_password)?;
@@ -99,7 +111,7 @@ impl UserService {
         let user = user_repo::find(&conn, user_id)?
             .ok_or_else(|| AppError::Validation("Usuário não encontrado.".into()))?;
         let tx = conn.transaction()?;
-        user_repo::update_password(&tx, user.id, &hash, true, user.version, self.ctx.utc.now_utc())?;
+        user_repo::update_password(&tx, user.id, &hash, true, expected_version, self.ctx.utc.now_utc())?;
         user_repo::reset_attempts(&tx, user.id, self.ctx.utc.now_utc())?;
         audit::record(
             &tx,
@@ -116,6 +128,7 @@ impl UserService {
             },
         )?;
         tx.commit()?;
+        self.ctx.sessions.destroy_user(user.id);
         Ok(())
     }
 
@@ -204,7 +217,7 @@ mod tests {
             Err(AppError::Forbidden)
         ));
         assert!(matches!(
-            h.users.reset_password(&maria, maria_id, "Outra-Senha-789"),
+            h.users.reset_password(&maria, maria_id, "Outra-Senha-789", 1),
             Err(AppError::Forbidden)
         ));
     }
@@ -234,7 +247,7 @@ mod tests {
             Err(AppError::AccountLocked { .. })
         ));
 
-        h.users.reset_password(&admin, id, "Reset-Senha-321").unwrap();
+        h.users.reset_password(&admin, id, "Reset-Senha-321", 1).unwrap();
 
         assert!(
             h.auth
@@ -318,11 +331,42 @@ mod tests {
     }
 
     #[test]
+    fn reset_password_rejects_stale_version_and_ends_user_sessions() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let id = h.users.create_user(&admin, input("maria")).unwrap();
+        let maria = h.auth.login("maria", "Temp-Senha-123").unwrap().token;
+
+        assert!(matches!(
+            h.users.reset_password(&admin, id, "Reset-Senha-321", 99),
+            Err(AppError::Conflict)
+        ));
+        assert!(h.auth.session_status(&maria).is_ok());
+
+        h.users.reset_password(&admin, id, "Reset-Senha-321", 1).unwrap();
+        assert!(matches!(h.auth.session_status(&maria), Err(AppError::Unauthorized)));
+    }
+
+    #[test]
+    fn debug_output_never_contains_secrets() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let user_input = input("maria");
+        let dbg = format!("{user_input:?}");
+        assert!(!dbg.contains("Temp-Senha-123"));
+        h.users.create_user(&admin, user_input).unwrap();
+
+        let login = h.auth.login("maria", "Temp-Senha-123").unwrap();
+        let dbg = format!("{login:?}");
+        assert!(!dbg.contains(&login.token));
+    }
+
+    #[test]
     fn audit_never_contains_password() {
         let h = harness();
         let admin = admin_token(&h);
         let id = h.users.create_user(&admin, input("maria")).unwrap();
-        h.users.reset_password(&admin, id, "Reset-Senha-321").unwrap();
+        h.users.reset_password(&admin, id, "Reset-Senha-321", 1).unwrap();
         h.auth
             .change_own_password(&admin, ADMIN_PASSWORD, "Nova-Admin-654")
             .unwrap();
