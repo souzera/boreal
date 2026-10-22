@@ -1,4 +1,4 @@
-import { formatDate, formatMoney, formatTime, parseMoney } from "./format";
+import { formatCpf, formatDate, formatMoney, formatPhone, formatTime, onlyDigits, parseMoney } from "./format";
 
 describe("formatMoney", () => {
   it("formata centavos no padrão brasileiro", () => {
@@ -33,5 +33,25 @@ describe("formatDate", () => {
 describe("formatTime", () => {
   it("exibe HH:MM no fuso informado", () => {
     expect(formatTime("2026-10-21T15:30:00Z", "America/Sao_Paulo")).toBe("12:30");
+  });
+});
+
+describe("onlyDigits / formatCpf / formatPhone", () => {
+  it("mantém só os dígitos", () => {
+    expect(onlyDigits("(11) 99999-0000")).toBe("11999990000");
+    expect(onlyDigits("abc")).toBe("");
+  });
+
+  it("formata CPF, inclusive parcial", () => {
+    expect(formatCpf("12345678909")).toBe("123.456.789-09");
+    expect(formatCpf("123456")).toBe("123.456");
+    expect(formatCpf("")).toBe("");
+  });
+
+  it("formata telefone de 10 e 11 dígitos, inclusive parcial", () => {
+    expect(formatPhone("11999990000")).toBe("(11) 99999-0000");
+    expect(formatPhone("1133334444")).toBe("(11) 3333-4444");
+    expect(formatPhone("119")).toBe("(11) 9");
+    expect(formatPhone("")).toBe("");
   });
 });

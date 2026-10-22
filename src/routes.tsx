@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Navigate, Outlet, type RouteObject } from "react-router-dom";
 
 import AppShell from "@/components/layout/AppShell";
 import LockGate from "@/components/layout/LockGate";
@@ -17,26 +17,24 @@ function RequireSession({ allowPendingPasswordChange = false }: { allowPendingPa
   return <Outlet />;
 }
 
-export default function AppRoutes() {
-  return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route element={<RequireSession allowPendingPasswordChange />}>
-        <Route
-          path="/change-password"
-          element={
-            <LockGate>
-              <ChangePassword />
-            </LockGate>
-          }
-        />
-      </Route>
-      <Route element={<RequireSession />}>
-        <Route element={<AppShell />}>
-          <Route path="/" element={<Dashboard />} />
-        </Route>
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
-}
+export const appRoutes: RouteObject[] = [
+  { path: "/login", element: <Login /> },
+  {
+    element: <RequireSession allowPendingPasswordChange />,
+    children: [
+      {
+        path: "/change-password",
+        element: (
+          <LockGate>
+            <ChangePassword />
+          </LockGate>
+        ),
+      },
+    ],
+  },
+  {
+    element: <RequireSession />,
+    children: [{ element: <AppShell />, children: [{ path: "/", element: <Dashboard /> }] }],
+  },
+  { path: "*", element: <Navigate to="/" replace /> },
+];

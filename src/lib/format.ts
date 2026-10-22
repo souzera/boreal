@@ -34,3 +34,26 @@ export function formatTime(utcIso: string, timeZone?: string): string {
     timeZone,
   }).format(new Date(utcIso));
 }
+
+/** Mantém só os dígitos de um texto. */
+export function onlyDigits(input: string): string {
+  return input.replace(/\D/g, "");
+}
+
+/** Formata CPF ("123.456.789-09"), também enquanto está sendo digitado. */
+export function formatCpf(input: string): string {
+  const d = onlyDigits(input).slice(0, 11);
+  const parts = [d.slice(0, 3), d.slice(3, 6), d.slice(6, 9)].filter(Boolean).join(".");
+  return d.length > 9 ? `${parts}-${d.slice(9)}` : parts;
+}
+
+/** Formata telefone brasileiro de 10 ou 11 dígitos, também enquanto está sendo digitado. */
+export function formatPhone(input: string): string {
+  const d = onlyDigits(input).slice(0, 11);
+  if (d.length === 0) return "";
+  if (d.length <= 2) return `(${d}`;
+  const rest = d.slice(2);
+  const split = d.length > 10 ? 5 : 4;
+  const local = rest.length > split ? `${rest.slice(0, split)}-${rest.slice(split)}` : rest;
+  return `(${d.slice(0, 2)}) ${local}`;
+}

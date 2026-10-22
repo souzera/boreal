@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { HashRouter } from "react-router-dom";
+import { useMemo } from "react";
+import { createHashRouter, RouterProvider } from "react-router-dom";
 
 import { needsBootstrap, startupStatus, type ApiError } from "@/lib/api";
 import FirstRun from "@/pages/FirstRun";
 import StartupError from "@/pages/StartupError";
-import AppRoutes from "@/routes";
+import { appRoutes } from "@/routes";
 
 async function loadStartup(): Promise<{ bootstrap: boolean }> {
   await startupStatus();
@@ -12,6 +13,7 @@ async function loadStartup(): Promise<{ bootstrap: boolean }> {
 }
 
 export default function App() {
+  const router = useMemo(() => createHashRouter(appRoutes), []);
   const startup = useQuery({ queryKey: ["startup"], queryFn: loadStartup, retry: false });
 
   if (startup.isPending) return null;
@@ -20,9 +22,5 @@ export default function App() {
   }
   if (startup.data.bootstrap) return <FirstRun />;
 
-  return (
-    <HashRouter>
-      <AppRoutes />
-    </HashRouter>
-  );
+  return <RouterProvider router={router} />;
 }
