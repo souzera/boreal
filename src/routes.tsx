@@ -6,6 +6,7 @@ import ChangePassword from "@/pages/ChangePassword";
 import Dashboard from "@/pages/Dashboard";
 import Login from "@/pages/Login";
 import SettingsPage from "@/pages/settings/SettingsPage";
+import UsersPage from "@/pages/users/UsersPage";
 import { useSessionStore } from "@/stores/session";
 
 /** Exige sessão (ativa ou bloqueada) e, se pendente, a troca de senha obrigatória. */
@@ -41,6 +42,7 @@ export const appRoutes: RouteObject[] = [
         children: [
           { path: "/", element: <Dashboard /> },
           { path: "/configuracoes", element: <SettingsPage /> },
+          { path: "/usuarios", element: <UsersPage /> },
         ],
       },
     ],

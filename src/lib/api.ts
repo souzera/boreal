@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import { useSessionStore, type LoginResult, type User } from "@/stores/session";
+import { useSessionStore, type LoginResult, type Role, type User } from "@/stores/session";
 
 /** Erro normalizado do backend: `code` estável e `message` em linguagem simples. */
 export class ApiError extends Error {
@@ -112,3 +112,55 @@ export const getPousada = (token: string) => call<PousadaView>("get_pousada", { 
 export const getPousadaLogo = (token: string) => call<LogoData | null>("get_pousada_logo", { token });
 export const updatePousada = (token: string, input: UpdatePousadaInput, expectedVersion: number) =>
   call<number>("update_pousada", { token, input, expectedVersion });
+
+// ---- Listagens ----
+
+export interface Page<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// ---- Usuários ----
+
+export interface UserRow {
+  id: number;
+  username: string;
+  display_name: string;
+  role: Role;
+  active: boolean;
+  must_change_password: boolean;
+  version: number;
+  extra_permissions: string[];
+}
+
+export interface UserQuery {
+  text?: string;
+  active?: boolean;
+  page: number;
+  page_size: number;
+  sort?: string;
+  direction?: "asc" | "desc";
+}
+
+export interface NewUserInput {
+  username: string;
+  display_name: string;
+  role: Role;
+  initial_password: string;
+}
+
+export const listUsers = (token: string, query: UserQuery) =>
+  call<Page<UserRow>>("list_users", { token, query });
+export const createUser = (token: string, input: NewUserInput) =>
+  call<number>("create_user", { token, input });
+export const resetPassword = (token: string, userId: number, tempPassword: string, expectedVersion: number) =>
+  call<null>("reset_password", { token, userId, tempPassword, expectedVersion });
+export const setUserRole = (token: string, userId: number, role: Role, expectedVersion: number) =>
+  call<null>("set_user_role", { token, userId, role, expectedVersion });
+export const setUserActive = (token: string, userId: number, active: boolean) =>
+  call<null>("set_user_active", { token, userId, active });
+export const grantablePermissions = () => call<string[]>("grantable_permissions");
+export const setExtraPermissions = (token: string, userId: number, permissions: string[]) =>
+  call<null>("set_extra_permissions", { token, userId, permissions });

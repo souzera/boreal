@@ -36,9 +36,14 @@ export default function Sidebar() {
         </span>
       ))}
       {role === "admin" && (
-        <NavLink to="/configuracoes" className={linkClass}>
-          Configurações
-        </NavLink>
+        <>
+          <NavLink to="/usuarios" className={linkClass}>
+            Usuários
+          </NavLink>
+          <NavLink to="/configuracoes" className={linkClass}>
+            Configurações
+          </NavLink>
+        </>
       )}
     </nav>
   );
