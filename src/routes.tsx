@@ -6,6 +6,8 @@ import ChangePassword from "@/pages/ChangePassword";
 import CategoriesPage from "@/pages/catalog/CategoriesPage";
 import RoomsPage from "@/pages/catalog/RoomsPage";
 import Dashboard from "@/pages/Dashboard";
+import GuestFormPage from "@/pages/guests/GuestFormPage";
+import GuestsPage from "@/pages/guests/GuestsPage";
 import Login from "@/pages/Login";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import UsersPage from "@/pages/users/UsersPage";
@@ -45,6 +47,8 @@ export const appRoutes: RouteObject[] = [
           { path: "/", element: <Dashboard /> },
           { path: "/configuracoes", element: <SettingsPage /> },
           { path: "/usuarios", element: <UsersPage /> },
+          { path: "/hospedes", element: <GuestsPage /> },
+          { path: "/hospedes/:id", element: <GuestFormPage /> },
           { path: "/quartos", element: <RoomsPage /> },
           { path: "/quartos/categorias", element: <CategoriesPage /> },
         ],

@@ -224,3 +224,54 @@ export const updateRoom = (token: string, id: number, input: RoomInput, expected
   call<null>("update_room", { token, id, input, expectedVersion });
 export const setRoomActive = (token: string, id: number, active: boolean) =>
   call<null>("set_room_active", { token, id, active });
+
+// ---- Hóspedes ----
+
+export interface Guest {
+  id: number;
+  code: string;
+  full_name: string;
+  phone: string;
+  cpf: string | null;
+  email: string;
+  address: string;
+  active: boolean;
+  version: number;
+}
+
+export interface GuestInput {
+  full_name: string;
+  phone: string;
+  cpf: string | null;
+  email: string;
+  address: string;
+}
+
+export type DuplicateReason = "name" | "phone" | "cpf";
+
+export interface DuplicateMatch {
+  guest: Guest;
+  reasons: DuplicateReason[];
+}
+
+export type CreateGuestOutcome =
+  | { status: "created"; id: number; code: string }
+  | { status: "duplicates"; matches: DuplicateMatch[] };
+
+export interface GuestQuery {
+  text?: string;
+  active?: boolean;
+  page: number;
+  page_size: number;
+  sort?: string;
+  direction?: "asc" | "desc";
+}
+
+export const listGuests = (token: string, query: GuestQuery) => call<Page<Guest>>("list_guests", { token, query });
+export const getGuest = (token: string, id: number) => call<Guest>("get_guest", { token, id });
+export const createGuest = (token: string, input: GuestInput, confirmDuplicates: boolean) =>
+  call<CreateGuestOutcome>("create_guest", { token, input, confirmDuplicates });
+export const updateGuest = (token: string, id: number, input: GuestInput, expectedVersion: number) =>
+  call<null>("update_guest", { token, id, input, expectedVersion });
+export const setGuestActive = (token: string, id: number, active: boolean) =>
+  call<null>("set_guest_active", { token, id, active });
