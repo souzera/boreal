@@ -3,6 +3,7 @@ pub mod audit;
 pub mod auth;
 pub mod commands;
 pub mod db;
+pub mod domain;
 pub mod error;
 pub mod migrations;
 pub mod models;
@@ -59,6 +60,12 @@ pub fn run() {
             commands::catalog::update_room,
             commands::catalog::set_room_active,
             commands::catalog::delete_room,
+            commands::guests::list_guests,
+            commands::guests::get_guest,
+            commands::guests::find_guest_duplicates,
+            commands::guests::create_guest,
+            commands::guests::update_guest,
+            commands::guests::set_guest_active,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

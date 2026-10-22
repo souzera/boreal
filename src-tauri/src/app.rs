@@ -6,6 +6,7 @@ use crate::error::AppError;
 use crate::migrations::{current_version, last_applied_at, run_migrations};
 use crate::services::auth_service::AuthService;
 use crate::services::catalog_service::CatalogService;
+use crate::services::guest_service::GuestService;
 use crate::services::pousada_service::PousadaService;
 use crate::services::settings_service::SettingsService;
 use crate::services::user_service::UserService;
@@ -25,6 +26,7 @@ pub struct AppState {
     pub settings: SettingsService,
     pub pousada: PousadaService,
     pub catalog: CatalogService,
+    pub guests: GuestService,
     ctx: Ctx,
 }
 
@@ -56,6 +58,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         settings: SettingsService::new(ctx.clone()),
         pousada: PousadaService::new(ctx.clone()),
         catalog: CatalogService::new(ctx.clone()),
+        guests: GuestService::new(ctx.clone()),
         ctx,
     })
 }
