@@ -8,7 +8,9 @@ import LockGate from "./LockGate";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return { ...actual, logout: vi.fn().mockResolvedValue(null), sessionStatus: vi.fn().mockResolvedValue({ state: "active", user: null }) };
+  return { ...actual, logout: vi.fn().mockResolvedValue(null), sessionStatus: vi.fn().mockResolvedValue({ state: "active", user: null }),
+    getSessionPolicy: vi.fn().mockResolvedValue({ idle_lock_minutes: 1 }),
+  };
 });
 
 const user = {
@@ -30,6 +32,28 @@ beforeEach(() => {
 });
 
 describe("LockGate", () => {
+  it("trava pelo tempo de inatividade vindo do backend", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(
+        <LockGate>
+          <p>Conteúdo</p>
+        </LockGate>,
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(61_000);
+      });
+
+      expect(useSessionStore.getState().state).toBe("locked");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("sem bloqueio mostra os filhos", () => {
     render(
       <LockGate>

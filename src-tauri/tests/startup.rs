@@ -19,6 +19,19 @@ fn startup_creates_db_and_runs_migrations() {
 }
 
 #[test]
+fn app_info_reports_version_schema_and_last_migration() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = initialize(&dir.path().join("boreal.db"), &MemoryKeyStore::empty()).unwrap();
+
+    let info = app.app_info().unwrap();
+
+    assert_eq!(info.app_version, env!("CARGO_PKG_VERSION"));
+    assert!(info.schema_version >= 3);
+    let at = info.last_migration_at.expect("há migração aplicada");
+    assert!(at.ends_with('Z') && at.len() == 20, "formato RFC 3339 UTC: {at}");
+}
+
+#[test]
 fn startup_with_missing_key_reports_error_and_leaves_file_untouched() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("boreal.db");

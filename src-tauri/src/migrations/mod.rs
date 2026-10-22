@@ -32,6 +32,11 @@ pub fn current_version(conn: &Connection) -> Result<u32, AppError> {
     )?)
 }
 
+/// Quando a última migração foi aplicada (RFC 3339 UTC), se houver.
+pub fn last_applied_at(conn: &Connection) -> Result<Option<String>, AppError> {
+    Ok(conn.query_row("SELECT MAX(applied_at) FROM schema_migrations", [], |r| r.get(0))?)
+}
+
 /// Aplica as migrações pendentes e retorna a versão atual do esquema.
 pub fn run_migrations(conn: &mut Connection) -> Result<u32, AppError> {
     run_with(conn, MIGRATIONS)

@@ -43,6 +43,7 @@ export interface SessionStatus {
 export interface AppInfo {
   app_version: string;
   schema_version: number;
+  last_migration_at: string | null;
 }
 
 export const startupStatus = () => call<null>("startup_status");
@@ -58,3 +59,56 @@ export const unlockSession = (token: string, password: string) =>
   call<null>("unlock_session", { token, password });
 export const sessionStatus = (token: string) => call<SessionStatus>("session_status", { token });
 export const getAppInfo = () => call<AppInfo>("get_app_info");
+
+// ---- Configurações e dados da pousada ----
+
+export interface AppSettings {
+  max_failed_attempts: number;
+  lockout_minutes: number;
+  idle_lock_minutes: number;
+  default_check_in_time: string;
+  default_check_out_time: string;
+  late_checkout_tolerance_minutes: number;
+  no_show_tolerance_minutes: number;
+  cleaning_interval_minutes: number;
+}
+
+export interface SettingsView {
+  settings: AppSettings;
+  version: number;
+}
+
+export interface PousadaView {
+  name: string;
+  address: string;
+  phone: string;
+  has_logo: boolean;
+  version: number;
+}
+
+export interface LogoData {
+  mime: string;
+  base64: string;
+}
+
+export type LogoChange =
+  | { kind: "keep" }
+  | { kind: "remove" }
+  | { kind: "set"; mime: string; base64: string };
+
+export interface UpdatePousadaInput {
+  name: string;
+  address: string;
+  phone: string;
+  logo: LogoChange;
+}
+
+export const getSettings = (token: string) => call<SettingsView>("get_settings", { token });
+export const getSessionPolicy = (token: string) =>
+  call<{ idle_lock_minutes: number }>("get_session_policy", { token });
+export const updateSettings = (token: string, settings: AppSettings, expectedVersion: number) =>
+  call<number>("update_settings", { token, input: { settings, expected_version: expectedVersion } });
+export const getPousada = (token: string) => call<PousadaView>("get_pousada", { token });
+export const getPousadaLogo = (token: string) => call<LogoData | null>("get_pousada_logo", { token });
+export const updatePousada = (token: string, input: UpdatePousadaInput, expectedVersion: number) =>
+  call<number>("update_pousada", { token, input, expectedVersion });

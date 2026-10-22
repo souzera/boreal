@@ -3,12 +3,19 @@ use std::path::Path;
 use crate::db::keystore::KeyStore;
 use crate::db::open_database;
 use crate::error::AppError;
-use crate::migrations::{current_version, run_migrations};
+use crate::migrations::{current_version, last_applied_at, run_migrations};
 use crate::services::auth_service::AuthService;
 use crate::services::pousada_service::PousadaService;
 use crate::services::settings_service::SettingsService;
 use crate::services::user_service::UserService;
 use crate::services::Ctx;
+
+#[derive(Debug, serde::Serialize)]
+pub struct AppInfo {
+    pub app_version: &'static str,
+    pub schema_version: u32,
+    pub last_migration_at: Option<String>,
+}
 
 /// Serviços prontos depois de abrir o banco criptografado e aplicar as migrações.
 pub struct AppState {
@@ -20,6 +27,15 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub fn app_info(&self) -> Result<AppInfo, AppError> {
+        let conn = self.ctx.db.lock().unwrap();
+        Ok(AppInfo {
+            app_version: env!("CARGO_PKG_VERSION"),
+            schema_version: current_version(&conn)?,
+            last_migration_at: last_applied_at(&conn)?,
+        })
+    }
+
     pub fn schema_version(&self) -> Result<u32, AppError> {
         let conn = self.ctx.db.lock().unwrap();
         current_version(&conn)

@@ -57,3 +57,10 @@ export function formatPhone(input: string): string {
   const local = rest.length > split ? `${rest.slice(0, split)}-${rest.slice(split)}` : rest;
   return `(${d.slice(0, 2)}) ${local}`;
 }
+
+/** Data de calendário local (`YYYY-MM-DD`) de um instante. */
+export function toLocalIsoDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}

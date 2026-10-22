@@ -5,6 +5,7 @@ import LockGate from "@/components/layout/LockGate";
 import ChangePassword from "@/pages/ChangePassword";
 import Dashboard from "@/pages/Dashboard";
 import Login from "@/pages/Login";
+import SettingsPage from "@/pages/settings/SettingsPage";
 import { useSessionStore } from "@/stores/session";
 
 /** Exige sessão (ativa ou bloqueada) e, se pendente, a troca de senha obrigatória. */
@@ -34,7 +35,15 @@ export const appRoutes: RouteObject[] = [
   },
   {
     element: <RequireSession />,
-    children: [{ element: <AppShell />, children: [{ path: "/", element: <Dashboard /> }] }],
+    children: [
+      {
+        element: <AppShell />,
+        children: [
+          { path: "/", element: <Dashboard /> },
+          { path: "/configuracoes", element: <SettingsPage /> },
+        ],
+      },
+    ],
   },
   { path: "*", element: <Navigate to="/" replace /> },
 ];
