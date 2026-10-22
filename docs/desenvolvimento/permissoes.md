@@ -1,0 +1,31 @@
+# Permissões
+
+Controle de acesso é aplicado **no backend**; esconder botões na interface é só conveniência.
+
+## Perfis
+
+- **Administrador**: todas as permissões.
+- **Recepção**: nenhuma permissão sensível por padrão; opera reservas, hospedagens, limpeza, lançamentos e consultas dos marcos seguintes.
+
+## Permissões (`auth::permissions::Permission`)
+
+`ManageUsers`, `ManageSettings`, `ManageCatalog`, `ViewFinancialReports`, `RestoreBackup` (somente administrador) e as **concedíveis** a usuários da recepção, uma a uma: `ApplyDiscount`, `ExceedCapacity`, `ReverseEntry`, `CancellationException`, `ChangeReservation`, `ReleaseRoom` (`Permission::grantable()`).
+
+## Como funciona
+
+1. No login, as permissões extras do usuário (`user_permissions`) são carregadas na sessão como `PermissionSet` (máscara de bits, `Copy`).
+2. Todo serviço chama `require(&info, Permission::X)`: passa se o perfil tem a permissão **ou** se ela está no conjunto extra.
+3. `UserService::set_extra_permissions` (exige `ManageUsers`) recusa permissões fora de `grantable()` e usuários administradores, audita antes/depois e **encerra as sessões do usuário**, para a mudança valer na hora do próximo login.
+
+## Regras de proteção
+
+- Sempre existe pelo menos um administrador ativo (`set_role` e `set_active` recusam o contrário).
+- Ninguém altera o próprio perfil nem se desativa.
+- Sessão com troca de senha pendente só chama trocar senha, consultar estado e sair (`SessionManager::touch` estrito × `touch_allow_pending`).
+- Desativar ou redefinir a senha de um usuário encerra as sessões dele.
+
+## Adicionando uma permissão nova
+
+1. Incluir a variante em `Permission`, em `ALL` e em `as_str` (nome estável gravado no banco).
+2. Se for concedível, incluir em `grantable()` e em `pages/users/labels.ts` (rótulo em português).
+3. Chamar `require` no serviço e testar `Forbidden` para recepção sem a permissão e sucesso com ela.
