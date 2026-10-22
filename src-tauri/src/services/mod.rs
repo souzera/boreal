@@ -1,4 +1,5 @@
 pub mod auth_service;
+pub mod catalog_service;
 pub mod pousada_service;
 pub mod settings_service;
 pub mod user_service;

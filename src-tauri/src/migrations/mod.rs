@@ -21,6 +21,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 3,
         sql: include_str!("sql/0003_pousada_settings.sql"),
     },
+    Migration {
+        version: 4,
+        sql: include_str!("sql/0004_catalog.sql"),
+    },
 ];
 
 /// Versão atual do esquema (0 se nenhuma migração foi aplicada).

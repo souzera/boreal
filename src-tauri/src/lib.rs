@@ -49,6 +49,16 @@ pub fn run() {
             commands::pousada::get_pousada,
             commands::pousada::get_pousada_logo,
             commands::pousada::update_pousada,
+            commands::catalog::list_categories,
+            commands::catalog::create_category,
+            commands::catalog::update_category,
+            commands::catalog::set_category_active,
+            commands::catalog::delete_category,
+            commands::catalog::list_rooms,
+            commands::catalog::create_room,
+            commands::catalog::update_room,
+            commands::catalog::set_room_active,
+            commands::catalog::delete_room,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -5,6 +5,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
 use super::auth_service::AuthService;
+use super::catalog_service::CatalogService;
 use super::pousada_service::PousadaService;
 use super::settings_service::SettingsService;
 use super::user_service::UserService;
@@ -48,6 +49,7 @@ pub struct Harness {
     pub users: UserService,
     pub settings: SettingsService,
     pub pousada: PousadaService,
+    pub catalog: CatalogService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -75,7 +77,8 @@ pub fn harness() -> Harness {
         auth: AuthService::new(ctx.clone()),
         users: UserService::new(ctx.clone()),
         settings: SettingsService::new(ctx.clone()),
-        pousada: PousadaService::new(ctx),
+        pousada: PousadaService::new(ctx.clone()),
+        catalog: CatalogService::new(ctx),
         utc,
         clock,
         db,
