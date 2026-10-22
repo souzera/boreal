@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 
 import AppShell from "@/components/layout/AppShell";
+import LockGate from "@/components/layout/LockGate";
 import ChangePassword from "@/pages/ChangePassword";
 import Dashboard from "@/pages/Dashboard";
 import Login from "@/pages/Login";
@@ -21,7 +22,14 @@ export default function AppRoutes() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route element={<RequireSession allowPendingPasswordChange />}>
-        <Route path="/change-password" element={<ChangePassword />} />
+        <Route
+          path="/change-password"
+          element={
+            <LockGate>
+              <ChangePassword />
+            </LockGate>
+          }
+        />
       </Route>
       <Route element={<RequireSession />}>
         <Route element={<AppShell />}>

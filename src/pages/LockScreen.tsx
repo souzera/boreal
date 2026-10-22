@@ -7,7 +7,7 @@ import { FormField, RequiredLegend } from "@/components/FormField";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { unlockSession, type ApiError } from "@/lib/api";
+import { logout, unlockSession, type ApiError } from "@/lib/api";
 import { useSessionStore } from "@/stores/session";
 
 const schema = z.object({ password: z.string().min(1, "Informe a senha.") });
@@ -23,6 +23,14 @@ export default function LockScreen() {
     reset,
     formState: { errors, isSubmitting },
   } = useForm<Values>({ resolver: zodResolver(schema) });
+
+  const onLogout = async () => {
+    try {
+      if (token) await logout(token);
+    } finally {
+      clear();
+    }
+  };
 
   const onSubmit = handleSubmit(async ({ password }) => {
     setFormError(null);
@@ -64,7 +72,7 @@ export default function LockScreen() {
             <Button type="submit" disabled={isSubmitting}>
               Desbloquear
             </Button>
-            <Button type="button" variant="ghost" onClick={clear}>
+            <Button type="button" variant="ghost" onClick={onLogout}>
               Sair
             </Button>
           </form>
