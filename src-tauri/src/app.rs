@@ -5,6 +5,8 @@ use crate::db::open_database;
 use crate::error::AppError;
 use crate::migrations::{current_version, run_migrations};
 use crate::services::auth_service::AuthService;
+use crate::services::pousada_service::PousadaService;
+use crate::services::settings_service::SettingsService;
 use crate::services::user_service::UserService;
 use crate::services::Ctx;
 
@@ -12,6 +14,8 @@ use crate::services::Ctx;
 pub struct AppState {
     pub auth: AuthService,
     pub users: UserService,
+    pub settings: SettingsService,
+    pub pousada: PousadaService,
     ctx: Ctx,
 }
 
@@ -31,6 +35,8 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
     Ok(AppState {
         auth: AuthService::new(ctx.clone()),
         users: UserService::new(ctx.clone()),
+        settings: SettingsService::new(ctx.clone()),
+        pousada: PousadaService::new(ctx.clone()),
         ctx,
     })
 }

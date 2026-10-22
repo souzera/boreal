@@ -17,6 +17,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 2,
         sql: include_str!("sql/0002_sequences_permissions.sql"),
     },
+    Migration {
+        version: 3,
+        sql: include_str!("sql/0003_pousada_settings.sql"),
+    },
 ];
 
 /// Versão atual do esquema (0 se nenhuma migração foi aplicada).

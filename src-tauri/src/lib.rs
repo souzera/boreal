@@ -40,6 +40,12 @@ pub fn run() {
             commands::auth::reset_password,
             commands::users::grantable_permissions,
             commands::users::set_extra_permissions,
+            commands::settings::get_settings,
+            commands::settings::get_session_policy,
+            commands::settings::update_settings,
+            commands::pousada::get_pousada,
+            commands::pousada::get_pousada_logo,
+            commands::pousada::update_pousada,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

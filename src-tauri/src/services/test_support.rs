@@ -5,6 +5,8 @@ use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
 use super::auth_service::AuthService;
+use super::pousada_service::PousadaService;
+use super::settings_service::SettingsService;
 use super::user_service::UserService;
 use super::{Ctx, UtcClock};
 use crate::auth::session::{Clock, SessionManager};
@@ -44,6 +46,8 @@ impl Clock for FakeClock {
 pub struct Harness {
     pub auth: AuthService,
     pub users: UserService,
+    pub settings: SettingsService,
+    pub pousada: PousadaService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -69,7 +73,9 @@ pub fn harness() -> Harness {
     };
     Harness {
         auth: AuthService::new(ctx.clone()),
-        users: UserService::new(ctx),
+        users: UserService::new(ctx.clone()),
+        settings: SettingsService::new(ctx.clone()),
+        pousada: PousadaService::new(ctx),
         utc,
         clock,
         db,
@@ -82,4 +88,26 @@ pub fn admin_token(h: &Harness) -> String {
         .bootstrap_admin("admin", "Administrador", ADMIN_PASSWORD)
         .unwrap();
     h.auth.login("admin", ADMIN_PASSWORD).unwrap().token
+}
+
+/// Cria um usuário da recepção (`rec`) já com a senha definitiva e entra com ele.
+pub fn recepcao_token(h: &Harness, admin: &str) -> String {
+    use crate::models::user::Role;
+    use crate::services::user_service::NewUserInput;
+    h.users
+        .create_user(
+            admin,
+            NewUserInput {
+                username: "rec".into(),
+                display_name: "Recepção".into(),
+                role: Role::Recepcao,
+                initial_password: "Temp-Senha-123".into(),
+            },
+        )
+        .unwrap();
+    let token = h.auth.login("rec", "Temp-Senha-123").unwrap().token;
+    h.auth
+        .change_own_password(&token, "Temp-Senha-123", "Definitiva-456")
+        .unwrap();
+    token
 }
