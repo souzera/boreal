@@ -3,6 +3,8 @@ import { Navigate, Outlet, type RouteObject } from "react-router-dom";
 import AppShell from "@/components/layout/AppShell";
 import LockGate from "@/components/layout/LockGate";
 import ChangePassword from "@/pages/ChangePassword";
+import CategoriesPage from "@/pages/catalog/CategoriesPage";
+import RoomsPage from "@/pages/catalog/RoomsPage";
 import Dashboard from "@/pages/Dashboard";
 import Login from "@/pages/Login";
 import SettingsPage from "@/pages/settings/SettingsPage";
@@ -43,6 +45,8 @@ export const appRoutes: RouteObject[] = [
           { path: "/", element: <Dashboard /> },
           { path: "/configuracoes", element: <SettingsPage /> },
           { path: "/usuarios", element: <UsersPage /> },
+          { path: "/quartos", element: <RoomsPage /> },
+          { path: "/quartos/categorias", element: <CategoriesPage /> },
         ],
       },
     ],

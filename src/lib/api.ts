@@ -164,3 +164,63 @@ export const setUserActive = (token: string, userId: number, active: boolean) =>
 export const grantablePermissions = () => call<string[]>("grantable_permissions");
 export const setExtraPermissions = (token: string, userId: number, permissions: string[]) =>
   call<null>("set_extra_permissions", { token, userId, permissions });
+
+// ---- Categorias e quartos ----
+
+export interface Category {
+  id: number;
+  name: string;
+  description: string;
+  active: boolean;
+  version: number;
+}
+
+export interface CategoryInput {
+  name: string;
+  description: string;
+}
+
+export interface Room {
+  id: number;
+  code: string;
+  category_id: number;
+  category_name: string;
+  max_capacity: number;
+  description: string;
+  notes: string;
+  active: boolean;
+  version: number;
+}
+
+export interface RoomInput {
+  code: string;
+  category_id: number;
+  max_capacity: number;
+  description: string;
+  notes: string;
+}
+
+export interface RoomQuery {
+  text?: string;
+  category_id?: number;
+  active?: boolean;
+  page: number;
+  page_size: number;
+  sort?: string;
+  direction?: "asc" | "desc";
+}
+
+export const listCategories = (token: string, activeOnly: boolean) =>
+  call<Category[]>("list_categories", { token, activeOnly });
+export const createCategory = (token: string, input: CategoryInput) =>
+  call<number>("create_category", { token, input });
+export const updateCategory = (token: string, id: number, input: CategoryInput, expectedVersion: number) =>
+  call<null>("update_category", { token, id, input, expectedVersion });
+export const setCategoryActive = (token: string, id: number, active: boolean) =>
+  call<null>("set_category_active", { token, id, active });
+export const listRooms = (token: string, query: RoomQuery) => call<Page<Room>>("list_rooms", { token, query });
+export const createRoom = (token: string, input: RoomInput) => call<number>("create_room", { token, input });
+export const updateRoom = (token: string, id: number, input: RoomInput, expectedVersion: number) =>
+  call<null>("update_room", { token, id, input, expectedVersion });
+export const setRoomActive = (token: string, id: number, active: boolean) =>
+  call<null>("set_room_active", { token, id, active });
