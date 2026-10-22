@@ -8,10 +8,16 @@ pub struct Migration {
 }
 
 /// Migrações embutidas, em ordem crescente de versão.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    sql: include_str!("sql/0001_foundation.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        sql: include_str!("sql/0001_foundation.sql"),
+    },
+    Migration {
+        version: 2,
+        sql: include_str!("sql/0002_sequences_permissions.sql"),
+    },
+];
 
 /// Versão atual do esquema (0 se nenhuma migração foi aplicada).
 pub fn current_version(conn: &Connection) -> Result<u32, AppError> {
