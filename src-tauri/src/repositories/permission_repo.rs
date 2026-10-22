@@ -11,7 +11,7 @@ pub fn list(conn: &Connection, user_id: i64) -> Result<Vec<Permission>, AppError
     let names = stmt
         .query_map([user_id], |r| r.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(names.iter().filter_map(|n| Permission::from_str(n)).collect())
+    Ok(names.iter().filter_map(|n| Permission::parse(n)).collect())
 }
 
 /// Substitui o conjunto de permissões extras do usuário.

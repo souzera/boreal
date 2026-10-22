@@ -59,7 +59,7 @@ impl Permission {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Permission> {
+    pub fn parse(value: &str) -> Option<Permission> {
         Permission::ALL.iter().copied().find(|p| p.as_str() == value)
     }
 }
@@ -118,9 +118,9 @@ mod tests {
         assert!(set.contains(Permission::ReleaseRoom));
         assert!(!set.contains(Permission::ReverseEntry));
         for p in Permission::ALL {
-            assert_eq!(Permission::from_str(p.as_str()), Some(*p));
+            assert_eq!(Permission::parse(p.as_str()), Some(*p));
         }
-        assert_eq!(Permission::from_str("inexistente"), None);
+        assert_eq!(Permission::parse("inexistente"), None);
     }
 
     #[test]

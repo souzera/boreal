@@ -20,7 +20,7 @@ pub fn set_extra_permissions(
     let parsed = permissions
         .iter()
         .map(|name| {
-            Permission::from_str(name)
+            Permission::parse(name)
                 .ok_or_else(|| AppError::Validation("Permissão desconhecida.".into()))
         })
         .collect::<Result<Vec<_>, _>>()?;
