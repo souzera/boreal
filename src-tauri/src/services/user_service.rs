@@ -8,7 +8,7 @@ use crate::auth::permissions::Permission;
 use crate::auth::session::{require, SessionInfo};
 use crate::error::AppError;
 use crate::models::user::{NewUser, Role};
-use crate::repositories::user_repo;
+use crate::repositories::{permission_repo, user_repo};
 
 #[derive(Deserialize)]
 pub struct NewUserInput {
@@ -132,6 +132,55 @@ impl UserService {
         Ok(())
     }
 
+    /// Substitui as permissões extras de um usuário da recepção. Vale a partir do
+    /// próximo login: as sessões abertas do usuário são encerradas.
+    pub fn set_extra_permissions(
+        &self,
+        token: &str,
+        user_id: i64,
+        permissions: &[Permission],
+    ) -> Result<(), AppError> {
+        let actor = self.authorize(token)?;
+        if let Some(p) = permissions
+            .iter()
+            .find(|p| !Permission::grantable().contains(p))
+        {
+            return Err(AppError::Validation(format!(
+                "A permissão \"{}\" não pode ser concedida individualmente.",
+                p.as_str()
+            )));
+        }
+        let mut conn = self.ctx.db.lock().unwrap();
+        let user = user_repo::find(&conn, user_id)?
+            .ok_or_else(|| AppError::Validation("Usuário não encontrado.".into()))?;
+        if user.role == Role::Admin {
+            return Err(AppError::Validation(
+                "Administradores já têm todas as permissões.".into(),
+            ));
+        }
+        let before = permission_repo::list(&conn, user_id)?;
+        let tx = conn.transaction()?;
+        permission_repo::replace(&tx, user_id, permissions, actor.user_id, self.ctx.utc.now_utc())?;
+        let names = |list: &[Permission]| json!(list.iter().map(|p| p.as_str()).collect::<Vec<_>>());
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at: self.ctx.utc.now_utc(),
+                user_id: Some(actor.user_id),
+                module: "users",
+                operation: "set_extra_permissions",
+                entity: "user",
+                entity_id: Some(user_id),
+                before: Some(names(&before)),
+                after: Some(names(permissions)),
+                justification: None,
+            },
+        )?;
+        tx.commit()?;
+        self.ctx.sessions.destroy_user(user_id);
+        Ok(())
+    }
+
     pub fn set_active(&self, token: &str, user_id: i64, active: bool) -> Result<(), AppError> {
         let actor = self.authorize(token)?;
         if !active && actor.user_id == user_id {
@@ -169,6 +218,8 @@ impl UserService {
 #[cfg(test)]
 mod tests {
     use super::NewUserInput;
+    use crate::auth::permissions::Permission;
+    use crate::auth::session::require;
     use crate::error::AppError;
     use crate::models::user::Role;
     use crate::services::test_support::{admin_token, harness, ADMIN_PASSWORD};
@@ -359,6 +410,79 @@ mod tests {
         let login = h.auth.login("maria", "Temp-Senha-123").unwrap();
         let dbg = format!("{login:?}");
         assert!(!dbg.contains(&login.token));
+    }
+
+    fn maria_with_password_changed(h: &crate::services::test_support::Harness, admin: &str) -> (i64, String) {
+        let id = h.users.create_user(admin, input("maria")).unwrap();
+        let token = h.auth.login("maria", "Temp-Senha-123").unwrap().token;
+        h.auth
+            .change_own_password(&token, "Temp-Senha-123", "Definitiva-456")
+            .unwrap();
+        (id, token)
+    }
+
+    #[test]
+    fn extra_permissions_apply_on_next_login_and_revoking_ends_sessions() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let (id, old_token) = maria_with_password_changed(&h, &admin);
+
+        h.users
+            .set_extra_permissions(&admin, id, &[Permission::ApplyDiscount])
+            .unwrap();
+        assert!(matches!(h.auth.session_status(&old_token), Err(AppError::Unauthorized)));
+
+        let token = h.auth.login("maria", "Definitiva-456").unwrap().token;
+        let info = h.auth.session_status(&token).unwrap();
+        assert!(require(&info, Permission::ApplyDiscount).is_ok());
+
+        h.users.set_extra_permissions(&admin, id, &[]).unwrap();
+        assert!(matches!(h.auth.session_status(&token), Err(AppError::Unauthorized)));
+        let again = h.auth.login("maria", "Definitiva-456").unwrap().token;
+        let info = h.auth.session_status(&again).unwrap();
+        assert!(matches!(require(&info, Permission::ApplyDiscount), Err(AppError::Forbidden)));
+    }
+
+    #[test]
+    fn cannot_grant_admin_only_permissions_or_to_admins() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let (id, _) = maria_with_password_changed(&h, &admin);
+        let admin_id = h.auth.login("admin", ADMIN_PASSWORD).unwrap().user.id;
+
+        assert!(matches!(
+            h.users.set_extra_permissions(&admin, id, &[Permission::ManageUsers]),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            h.users.set_extra_permissions(&admin, admin_id, &[Permission::ApplyDiscount]),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn set_extra_permissions_requires_manage_users_and_is_audited() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let (id, maria) = maria_with_password_changed(&h, &admin);
+
+        assert!(matches!(
+            h.users.set_extra_permissions(&maria, id, &[Permission::ApplyDiscount]),
+            Err(AppError::Forbidden)
+        ));
+        h.users
+            .set_extra_permissions(&admin, id, &[Permission::ApplyDiscount, Permission::ReleaseRoom])
+            .unwrap();
+
+        let conn = h.db.lock().unwrap();
+        let after: String = conn
+            .query_row(
+                "SELECT after_json FROM audit_log WHERE operation = 'set_extra_permissions'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(after.contains("apply_discount") && after.contains("release_room"));
     }
 
     #[test]

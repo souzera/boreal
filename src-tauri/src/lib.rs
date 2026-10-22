@@ -38,6 +38,8 @@ pub fn run() {
             commands::auth::session_status,
             commands::auth::create_user,
             commands::auth::reset_password,
+            commands::users::grantable_permissions,
+            commands::users::set_extra_permissions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

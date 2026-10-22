@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use crate::auth::permissions::{role_has, Permission};
+use crate::auth::permissions::{role_has, Permission, PermissionSet};
 use crate::error::AppError;
 use crate::models::user::Role;
 
@@ -23,6 +23,7 @@ impl Clock for SystemClock {
 pub struct SessionInfo {
     pub user_id: i64,
     pub role: Role,
+    pub extra: PermissionSet,
 }
 
 struct Session {
@@ -52,13 +53,17 @@ impl SessionManager {
     }
 
     pub fn create(&self, user_id: i64, role: Role, now: Instant) -> String {
+        self.create_with(user_id, role, PermissionSet::empty(), now)
+    }
+
+    pub fn create_with(&self, user_id: i64, role: Role, extra: PermissionSet, now: Instant) -> String {
         let mut bytes = [0u8; 32];
         rand::fill(&mut bytes[..]);
         let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
         self.sessions.lock().unwrap().insert(
             token.clone(),
             Session {
-                info: SessionInfo { user_id, role },
+                info: SessionInfo { user_id, role, extra },
                 last_activity: now,
                 locked: false,
                 must_change_password: false,
@@ -140,7 +145,7 @@ impl SessionManager {
 }
 
 pub fn require(info: &SessionInfo, permission: Permission) -> Result<(), AppError> {
-    if role_has(info.role, permission) {
+    if role_has(info.role, permission) || info.extra.contains(permission) {
         Ok(())
     } else {
         Err(AppError::Forbidden)
@@ -150,7 +155,7 @@ pub fn require(info: &SessionInfo, permission: Permission) -> Result<(), AppErro
 #[cfg(test)]
 mod tests {
     use super::{require, SessionManager};
-    use crate::auth::permissions::Permission;
+    use crate::auth::permissions::{Permission, PermissionSet};
     use crate::error::AppError;
     use crate::models::user::Role;
     use std::time::{Duration, Instant};
@@ -228,6 +233,18 @@ mod tests {
         assert!(matches!(m.touch(&a1, now), Err(AppError::Unauthorized)));
         assert!(matches!(m.touch(&a2, now), Err(AppError::Unauthorized)));
         assert!(m.touch(&b, now).is_ok());
+    }
+
+    #[test]
+    fn extra_permission_allows_recepcao_operation() {
+        let m = manager();
+        let now = Instant::now();
+        let extra = PermissionSet::empty().with(Permission::ApplyDiscount);
+        let info = m.touch(&m.create_with(2, Role::Recepcao, extra, now), now).unwrap();
+
+        assert!(require(&info, Permission::ApplyDiscount).is_ok());
+        assert!(matches!(require(&info, Permission::ReleaseRoom), Err(AppError::Forbidden)));
+        assert!(matches!(require(&info, Permission::ManageUsers), Err(AppError::Forbidden)));
     }
 
     #[test]

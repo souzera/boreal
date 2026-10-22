@@ -8,10 +8,11 @@ use serde_json::json;
 use super::{format_utc, parse_utc, Ctx};
 use crate::audit::{self, AuditEntry};
 use crate::auth::password::{hash_password, validate_password_policy, verify_password};
+use crate::auth::permissions::PermissionSet;
 use crate::auth::session::SessionInfo;
 use crate::error::AppError;
 use crate::models::user::{NewUser, Role, User};
-use crate::repositories::{settings_repo, user_repo};
+use crate::repositories::{permission_repo, settings_repo, user_repo};
 
 /// Hash usado para igualar o tempo de resposta quando o usuário não existe.
 static DUMMY_HASH: LazyLock<String> =
@@ -159,10 +160,13 @@ impl AuthService {
         )?;
         tx.commit()?;
 
+        let extra = permission_repo::list(&conn, user.id)?
+            .into_iter()
+            .fold(PermissionSet::empty(), PermissionSet::with);
         let token = self
             .ctx
             .sessions
-            .create(user.id, user.role, self.ctx.clock.now());
+            .create_with(user.id, user.role, extra, self.ctx.clock.now());
         if user.must_change_password {
             self.ctx.sessions.set_must_change(&token, true);
         }
