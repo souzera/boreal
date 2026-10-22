@@ -9,6 +9,7 @@ import Dashboard from "@/pages/Dashboard";
 import GuestFormPage from "@/pages/guests/GuestFormPage";
 import GuestsPage from "@/pages/guests/GuestsPage";
 import Login from "@/pages/Login";
+import Search from "@/pages/Search";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import UsersPage from "@/pages/users/UsersPage";
 import { useSessionStore } from "@/stores/session";
@@ -47,6 +48,7 @@ export const appRoutes: RouteObject[] = [
           { path: "/", element: <Dashboard /> },
           { path: "/configuracoes", element: <SettingsPage /> },
           { path: "/usuarios", element: <UsersPage /> },
+          { path: "/busca", element: <Search /> },
           { path: "/hospedes", element: <GuestsPage /> },
           { path: "/hospedes/:id", element: <GuestFormPage /> },
           { path: "/quartos", element: <RoomsPage /> },
