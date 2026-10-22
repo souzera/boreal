@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { FormField, RequiredLegend } from "@/components/FormField";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ApiError, login } from "@/lib/api";
+import { ApiError, login, logout } from "@/lib/api";
 import { useSessionStore } from "@/stores/session";
 
 const schema = z.object({
@@ -20,6 +20,17 @@ type Values = z.infer<typeof schema>;
 export default function Login() {
   const navigate = useNavigate();
   const setSession = useSessionStore((s) => s.setSession);
+  const clear = useSessionStore((s) => s.clear);
+  const tokenOnArrival = useRef(useSessionStore.getState().token);
+
+  // Chegar aqui com uma sessão aberta (botão Sair) encerra essa sessão.
+  useEffect(() => {
+    const stale = tokenOnArrival.current;
+    if (!stale) return;
+    logout(stale)
+      .catch(() => undefined)
+      .finally(clear);
+  }, [clear]);
   const [formError, setFormError] = useState<string | null>(null);
   const {
     register,

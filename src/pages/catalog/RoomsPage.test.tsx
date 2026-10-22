@@ -180,4 +180,33 @@ describe("RoomsPage", () => {
     await waitFor(() => expect(api.setRoomActive).toHaveBeenCalledWith("t", 10, false));
     expect(await screen.findByText("Quarto 101 desativado.")).toBeInTheDocument();
   });
+
+  it("fechar o formulário com dados digitados pede confirmação; Continuar editando mantém tudo", async () => {
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Novo quarto" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.type(dialog.getByLabelText(/Código do quarto/), "777");
+
+    await userEvent.keyboard("{Escape}");
+    expect(await screen.findByText("Descartar as alterações?")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+
+    expect(screen.queryByText("Descartar as alterações?")).toBeNull();
+    expect(screen.getByLabelText(/Código do quarto/)).toHaveValue("777");
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Descartar alterações" }));
+    await waitFor(() => expect(screen.queryByLabelText(/Código do quarto/)).toBeNull());
+  });
+
+  it("fechar o formulário sem digitar nada não pergunta", async () => {
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Novo quarto" }));
+    await screen.findByRole("dialog");
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => expect(screen.queryByLabelText(/Código do quarto/)).toBeNull());
+    expect(screen.queryByText("Descartar as alterações?")).toBeNull();
+  });
 });

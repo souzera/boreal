@@ -1,5 +1,8 @@
 "use client"
 
+import { useContext } from "react"
+
+import { LockContext } from "@/lib/lock-context"
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
@@ -47,6 +50,9 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
 }) {
+  // Bloqueada a sessão, nenhum diálogo pode ficar visível por cima da tela de bloqueio.
+  const locked = useContext(LockContext)
+  if (locked) return null
   return (
     <DialogPortal>
       <DialogOverlay />

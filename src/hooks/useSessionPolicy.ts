@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { getSessionPolicy } from "@/lib/api";
+import { useSessionStore } from "@/stores/session";
 
-// Valor provisório usado até o backend responder (spec §13.3, pendência §25.5).
-const DEFAULT_IDLE_MINUTES = 10;
-
-/** Minutos de inatividade configurados no backend para o bloqueio da sessão. */
+/**
+ * Minutos de inatividade para o bloqueio da sessão. Vem do backend ao entrar e é atualizado
+ * quando um administrador altera a configuração (`setIdleMinutes`).
+ */
 export function useSessionPolicy(token: string | null): number {
-  const [idleMinutes, setIdleMinutes] = useState(DEFAULT_IDLE_MINUTES);
+  const idleMinutes = useSessionStore((s) => s.idleMinutes);
+  const setIdleMinutes = useSessionStore((s) => s.setIdleMinutes);
 
   useEffect(() => {
     if (!token) return;
@@ -20,7 +22,7 @@ export function useSessionPolicy(token: string | null): number {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, setIdleMinutes]);
 
   return idleMinutes;
 }

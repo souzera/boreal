@@ -188,4 +188,52 @@ describe("UsersPage", () => {
     expect(row.queryByRole("button", { name: "Alterar perfil" })).toBeNull();
     expect(row.queryByRole("button", { name: "Desativar" })).toBeNull();
   });
+
+  it("fechar o novo usuário com dados digitados pede confirmação", async () => {
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Novo usuário" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.type(dialog.getByLabelText(/^Usuário/), "joao");
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(await screen.findByText("Descartar as alterações?")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(screen.getByLabelText(/^Usuário/)).toHaveValue("joao");
+  });
+
+  it("fechar permissões com seleção alterada pede confirmação", async () => {
+    await open();
+    await userEvent.click(within(rowOf("Maria Souza")).getByRole("button", { name: "Permissões" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.click(await dialog.findByRole("checkbox", { name: "Liberar quartos" }));
+
+    await userEvent.click(dialog.getByRole("button", { name: "Cancelar" }));
+
+    expect(await screen.findByText("Descartar as alterações?")).toBeInTheDocument();
+  });
+
+  it("fechar redefinição de senha com senha digitada pede confirmação", async () => {
+    await open();
+    await userEvent.click(within(rowOf("Maria Souza")).getByRole("button", { name: "Redefinir senha" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.type(dialog.getByLabelText(/Senha temporária/), "abc");
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(await screen.findByText("Descartar as alterações?")).toBeInTheDocument();
+  });
+
+  it("descartar o novo usuário limpa o formulário para a próxima vez", async () => {
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Novo usuário" }));
+    await userEvent.type(within(await screen.findByRole("dialog")).getByLabelText(/^Usuário/), "joao");
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(await screen.findByRole("button", { name: "Descartar alterações" }));
+    await waitFor(() => expect(screen.queryByLabelText(/^Usuário/)).toBeNull());
+
+    await userEvent.click(screen.getByRole("button", { name: "Novo usuário" }));
+
+    expect(within(await screen.findByRole("dialog")).getByLabelText(/^Usuário/)).toHaveValue("");
+  });
 });

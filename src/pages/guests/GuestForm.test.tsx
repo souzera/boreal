@@ -198,4 +198,21 @@ describe("GuestFormPage", () => {
 
     await waitFor(() => expect(api.setGuestActive).toHaveBeenCalledWith("t", 7, false));
   });
+
+  it("clique duplo em Criar outro cadastro cria só um hóspede", async () => {
+    let release: (value: api.CreateGuestOutcome) => void = () => undefined;
+    vi.mocked(api.createGuest)
+      .mockResolvedValueOnce({ status: "duplicates", matches: [{ guest: ana, reasons: ["phone"] }] })
+      .mockReturnValueOnce(new Promise<api.CreateGuestOutcome>((resolve) => (release = resolve)));
+    openNew();
+    await fillRequired();
+    await userEvent.click(screen.getByRole("button", { name: "Salvar hóspede" }));
+    const dialog = within(await screen.findByRole("dialog"));
+
+    await userEvent.dblClick(dialog.getByRole("button", { name: "Criar outro cadastro" }));
+    release({ status: "created", id: 8, code: "HOS-000008" });
+
+    await waitFor(() => expect(api.createGuest).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Lista de hóspedes")).toBeInTheDocument();
+  });
 });

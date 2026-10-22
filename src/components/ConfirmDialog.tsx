@@ -14,6 +14,8 @@ interface Props {
   description: string;
   /** Texto específico da ação, por exemplo "Desativar quarto". */
   confirmLabel: string;
+  /** Texto do botão que mantém a situação atual; padrão "Cancelar". */
+  cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
   destructive?: boolean;
@@ -25,6 +27,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = "Cancelar",
   onConfirm,
   onCancel,
   destructive,
@@ -38,7 +41,7 @@ export function ConfirmDialog({
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>
-            Cancelar
+            {cancelLabel}
           </Button>
           <Button variant={destructive ? "destructive" : "default"} onClick={onConfirm}>
             {confirmLabel}

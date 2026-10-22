@@ -88,4 +88,17 @@ describe("CategoriesPage", () => {
 
     expect(await screen.findByText(/Há 3 quarto\(s\) ativo\(s\)/)).toBeInTheDocument();
   });
+
+  it("fechar o formulário com dados digitados pede confirmação", async () => {
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Nova categoria" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.type(dialog.getByLabelText(/Nome da categoria/), "Suíte");
+
+    await userEvent.click(dialog.getByRole("button", { name: "Cancelar" }));
+
+    expect(await screen.findByText("Descartar as alterações?")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Descartar alterações" }));
+    await waitFor(() => expect(screen.queryByLabelText(/Nome da categoria/)).toBeNull());
+  });
 });

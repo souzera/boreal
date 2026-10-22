@@ -54,6 +54,8 @@ export default function SystemForm({ onDirtyChange }: { onDirtyChange: (dirty: b
       await updateSettings(token, values, data?.version ?? 0);
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
       reset(values);
+      // O backend já aplica o novo limite; a interface passa a usá-lo na hora.
+      useSessionStore.getState().setIdleMinutes(values.idle_lock_minutes);
       setMessage({ kind: "ok", text: "Configurações salvas." });
     } catch (e) {
       const error = e as ApiError;

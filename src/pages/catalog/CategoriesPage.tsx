@@ -8,6 +8,7 @@ import { z } from "zod";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormField, RequiredLegend } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
+import { useGuardedClose } from "@/hooks/useGuardedClose";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -44,8 +45,9 @@ function CategoryForm({
     register,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isDirty, isSubmitting },
   } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { name: "", description: "" } });
+  const { requestClose, confirm } = useGuardedClose(isDirty, onClose);
 
   useEffect(() => {
     if (open) {
@@ -64,7 +66,8 @@ function CategoryForm({
   });
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <>
+    <Dialog open={open} onOpenChange={(next) => !next && requestClose()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{category ? `Editar categoria ${category.name}` : "Nova categoria"}</DialogTitle>
@@ -83,7 +86,7 @@ function CategoryForm({
           )}
           <RequiredLegend />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={requestClose}>
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting}>
@@ -93,6 +96,8 @@ function CategoryForm({
         </form>
       </DialogContent>
     </Dialog>
+    {confirm}
+    </>
   );
 }
 

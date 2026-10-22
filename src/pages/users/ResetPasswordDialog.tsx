@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useGuardedClose } from "@/hooks/useGuardedClose";
 import type { ApiError, UserRow } from "@/lib/api";
 
 const schema = z.object({ password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres.") });
@@ -31,8 +32,18 @@ export default function ResetPasswordDialog({ user, onClose, onSubmit }: Props) 
     register,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isDirty, isSubmitting },
   } = useForm<Values>({ resolver: zodResolver(schema) });
+  const { requestClose, confirm } = useGuardedClose(isDirty, () => {
+    reset();
+    onClose();
+  });
+
+  // Cada abertura começa sem senha digitada.
+  useEffect(() => {
+    reset();
+    setFormError(null);
+  }, [user, reset]);
 
   const submit = handleSubmit(async ({ password }) => {
     if (!user) return;
@@ -46,7 +57,8 @@ export default function ResetPasswordDialog({ user, onClose, onSubmit }: Props) 
   });
 
   return (
-    <Dialog open={user !== null} onOpenChange={(next) => !next && onClose()}>
+    <>
+    <Dialog open={user !== null} onOpenChange={(next) => !next && requestClose()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Redefinir senha de {user?.display_name}</DialogTitle>
@@ -65,7 +77,7 @@ export default function ResetPasswordDialog({ user, onClose, onSubmit }: Props) 
           )}
           <RequiredLegend />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={requestClose}>
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting}>
@@ -75,5 +87,7 @@ export default function ResetPasswordDialog({ user, onClose, onSubmit }: Props) 
         </form>
       </DialogContent>
     </Dialog>
+    {confirm}
+    </>
   );
 }

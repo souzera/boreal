@@ -28,6 +28,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Desativar ou redefinir a senha de alguém encerra imediatamente as sessões abertas dessa pessoa.
 - Errar a senha na tela de bloqueio ou ao trocar a própria senha passa a contar para o bloqueio da conta.
 
+- Quando um administrador encerra a sessão de alguém (troca de senha, permissões ou perfil), a pessoa vê "Sessão encerrada" e entra de novo na mesma tela, sem perder o que estava digitando.
+- Diálogos abertos (por exemplo, a conferência de hóspedes duplicados) não ficam mais visíveis por cima da tela de bloqueio por inatividade.
+- Fechar um formulário em janela (quarto, categoria, usuário, senha, permissões) com dados digitados agora pergunta antes de descartar.
+- O botão **Sair** respeita as alterações não salvas.
+- Telefones digitados ou colados com +55 não são mais gravados com o número errado.
+- Clicar duas vezes em "Criar outro cadastro" não cria dois hóspedes.
+- O novo tempo de inatividade vale na interface assim que é salvo, e os dados em cache de quem saiu não aparecem para a próxima pessoa.
+
 ### Removed
 - Plugin de abertura de links externos, que não era usado.
 

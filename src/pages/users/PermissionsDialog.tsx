@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useGuardedClose } from "@/hooks/useGuardedClose";
 import { grantablePermissions, type ApiError, type UserRow } from "@/lib/api";
 import { permissionLabel } from "./labels";
 
@@ -32,6 +33,11 @@ export default function PermissionsDialog({ user, onClose, onSubmit }: Props) {
     setFormError(null);
   }, [user]);
 
+  const original = user?.extra_permissions ?? [];
+  const isDirty =
+    selected.length !== original.length || selected.some((name) => !original.includes(name));
+  const { requestClose, confirm } = useGuardedClose(isDirty, onClose);
+
   const toggle = (name: string, checked: boolean) =>
     setSelected((current) => (checked ? [...current, name] : current.filter((n) => n !== name)));
 
@@ -49,7 +55,8 @@ export default function PermissionsDialog({ user, onClose, onSubmit }: Props) {
   };
 
   return (
-    <Dialog open={user !== null} onOpenChange={(next) => !next && onClose()}>
+    <>
+    <Dialog open={user !== null} onOpenChange={(next) => !next && requestClose()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Permissões de {user?.display_name}</DialogTitle>
@@ -75,7 +82,7 @@ export default function PermissionsDialog({ user, onClose, onSubmit }: Props) {
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={requestClose}>
             Cancelar
           </Button>
           <Button disabled={saving} onClick={save}>
@@ -84,5 +91,7 @@ export default function PermissionsDialog({ user, onClose, onSubmit }: Props) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {confirm}
+    </>
   );
 }

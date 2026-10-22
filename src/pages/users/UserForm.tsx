@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useGuardedClose } from "@/hooks/useGuardedClose";
 import type { ApiError, NewUserInput } from "@/lib/api";
 import type { Role } from "@/stores/session";
 import { roleLabel } from "./labels";
@@ -38,8 +39,17 @@ export default function UserForm({ open, onClose, onSubmit }: Props) {
     register,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isDirty, isSubmitting },
   } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { role: "recepcao" } });
+  const { requestClose, confirm } = useGuardedClose(isDirty, onClose);
+
+  // Cada abertura começa com o formulário limpo.
+  useEffect(() => {
+    if (open) {
+      setFormError(null);
+      reset({ role: "recepcao" });
+    }
+  }, [open, reset]);
 
   const submit = handleSubmit(async (values) => {
     setFormError(null);
@@ -52,7 +62,8 @@ export default function UserForm({ open, onClose, onSubmit }: Props) {
   });
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <>
+    <Dialog open={open} onOpenChange={(next) => !next && requestClose()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Novo usuário</DialogTitle>
@@ -90,7 +101,7 @@ export default function UserForm({ open, onClose, onSubmit }: Props) {
           )}
           <RequiredLegend />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={requestClose}>
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting}>
@@ -100,5 +111,7 @@ export default function UserForm({ open, onClose, onSubmit }: Props) {
         </form>
       </DialogContent>
     </Dialog>
+    {confirm}
+    </>
   );
 }

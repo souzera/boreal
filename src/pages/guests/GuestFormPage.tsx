@@ -75,6 +75,7 @@ export default function GuestFormPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+  const [creatingAnother, setCreatingAnother] = useState(false);
   // Sair só depois de a tela ser renderizada sem o aviso de alterações não salvas.
   const [leaveTo, setLeaveTo] = useState<string | null>(null);
   useEffect(() => {
@@ -132,12 +133,16 @@ export default function GuestFormPage() {
   });
 
   const createAnother = async () => {
-    if (!pendingInput) return;
+    // Um segundo clique durante o envio não pode criar um segundo cadastro.
+    if (!pendingInput || creatingAnother) return;
+    setCreatingAnother(true);
     try {
       await submitCreate(pendingInput, true);
     } catch (e) {
       setDuplicates(null);
       setFormError((e as ApiError).message);
+    } finally {
+      setCreatingAnother(false);
     }
   };
 
@@ -207,7 +212,7 @@ export default function GuestFormPage() {
       <UnsavedChangesGuard isDirty={isDirty && leaveTo === null} />
       <DuplicatesDialog
         matches={duplicates}
-        busy={isSubmitting}
+        busy={isSubmitting || creatingAnother}
         onCancel={() => setDuplicates(null)}
         onCreateAnother={createAnother}
         onUseExisting={(g) => {

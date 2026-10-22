@@ -1,22 +1,18 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
-import { logout } from "@/lib/api";
 import { useSessionStore } from "@/stores/session";
 import GlobalSearch from "./GlobalSearch";
 import LockGate from "./LockGate";
 import Sidebar from "./Sidebar";
 
 export default function AppShell() {
-  const { token, user, clear } = useSessionStore();
+  const user = useSessionStore((s) => s.user);
+  const navigate = useNavigate();
 
-  const onLogout = async () => {
-    try {
-      if (token) await logout(token);
-    } finally {
-      clear();
-    }
-  };
+  // Sair é uma navegação: se houver alterações não salvas, o aviso aparece antes.
+  // O encerramento da sessão acontece ao chegar em /login.
+  const onLogout = () => navigate("/login");
 
   return (
     <LockGate>

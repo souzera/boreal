@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import * as api from "@/lib/api";
+import { useSessionStore } from "@/stores/session";
 import { renderPage, signIn } from "@/test/render";
 import SettingsPage from "./SettingsPage";
 
@@ -158,5 +159,17 @@ describe("SettingsPage", () => {
     expect(await screen.findByText("Alterações não salvas")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
     await waitFor(() => expect(screen.queryByText("Alterações não salvas")).toBeNull());
+  });
+
+  it("depois de salvar, a interface passa a usar o novo tempo de inatividade", async () => {
+    await open();
+    const field = screen.getByLabelText(/Minutos de inatividade/);
+
+    await userEvent.clear(field);
+    await userEvent.type(field, "3");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar configurações" }));
+
+    await screen.findByText("Configurações salvas.");
+    expect(useSessionStore.getState().idleMinutes).toBe(3);
   });
 });

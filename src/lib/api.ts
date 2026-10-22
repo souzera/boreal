@@ -30,7 +30,8 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
     const error = toApiError(e);
     // O backend é a autoridade do bloqueio por inatividade.
     if (error.code === "locked") useSessionStore.getState().lock();
-    if (error.code === "unauthorized") useSessionStore.getState().clear();
+    // Sessão encerrada pelo backend: mantém a tela montada para entrar de novo sem perder edições.
+    if (error.code === "unauthorized") useSessionStore.getState().expire();
     throw error;
   }
 }

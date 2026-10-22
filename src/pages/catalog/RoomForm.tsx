@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useGuardedClose } from "@/hooks/useGuardedClose";
 import type { ApiError, Category, Room, RoomInput } from "@/lib/api";
 
 const schema = z.object({
@@ -40,8 +41,9 @@ export default function RoomForm({ open, room, categories, onClose, onSubmit }: 
     register,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isDirty, isSubmitting },
   } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: empty });
+  const { requestClose, confirm } = useGuardedClose(isDirty, onClose);
 
   useEffect(() => {
     if (open) {
@@ -73,7 +75,8 @@ export default function RoomForm({ open, room, categories, onClose, onSubmit }: 
   });
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <>
+    <Dialog open={open} onOpenChange={(next) => !next && requestClose()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{room ? `Editar quarto ${room.code}` : "Novo quarto"}</DialogTitle>
@@ -112,7 +115,7 @@ export default function RoomForm({ open, room, categories, onClose, onSubmit }: 
           )}
           <RequiredLegend />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={requestClose}>
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting}>
@@ -122,5 +125,7 @@ export default function RoomForm({ open, room, categories, onClose, onSubmit }: 
         </form>
       </DialogContent>
     </Dialog>
+    {confirm}
+    </>
   );
 }

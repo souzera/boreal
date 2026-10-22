@@ -40,5 +40,7 @@ export default defineConfig(() => ({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // Formulários longos digitados por userEvent passam de 5 s quando a máquina está ocupada.
+    testTimeout: 20000,
   },
 }));

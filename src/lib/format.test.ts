@@ -54,4 +54,15 @@ describe("onlyDigits / formatCpf / formatPhone", () => {
     expect(formatPhone("119")).toBe("(11) 9");
     expect(formatPhone("")).toBe("");
   });
+
+  it("remove o código do país (55) quando o número vem com 12 ou 13 dígitos", () => {
+    expect(formatPhone("+55 11 99999-0000")).toBe("(11) 99999-0000");
+    expect(formatPhone("5511999990000")).toBe("(11) 99999-0000");
+    expect(formatPhone("551133334444")).toBe("(11) 3333-4444");
+  });
+
+  it("não confunde o DDD 55 com código do país", () => {
+    expect(formatPhone("55999990000")).toBe("(55) 99999-0000");
+    expect(formatPhone("5533334444")).toBe("(55) 3333-4444");
+  });
 });

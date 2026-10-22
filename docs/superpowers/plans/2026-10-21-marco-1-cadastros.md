@@ -12,13 +12,13 @@
 
 **Branch:** `marco-1-cadastros`, criada a partir de `marco-0-fundacao` (a integração do Marco 0 em `main` é decisão pendente e independente).
 
-## Status — Marco 1 implementado (2026-10-21), em revisão final
+## Status — Marco 1 implementado e revisado (2026-10-21)
 
 Branch `marco-1-cadastros` (a partir de `marco-0-fundacao`); 15 tarefas implementadas com TDD.
 
-- **Testes na última execução:** 108 unitários + 4 de integração (Rust), 103 (Vitest); `clippy -D warnings` e `vite build` sem erros.
+- **Testes na última execução:** 108 unitários + 4 de integração (Rust), 128 (Vitest); `clippy -D warnings` e `vite build` sem erros.
 - **Pendente de verificação manual:** `npm run tauri dev` (primeira execução → login → bloqueio por inatividade → telas de Usuários, Configurações, Quartos, Hóspedes, busca; console sem violações de CSP). A sessão de implementação não tinha interface gráfica.
-- **Revisão final da branch:** ver ledger/seção "Revisão final" abaixo quando concluída.
+- **Revisão final da branch:** 1 Crítico e 6 Importantes, todos corrigidos com teste vermelho → verde (ver abaixo); 11 menores adiados.
 
 ### Desvios do plano
 
@@ -33,9 +33,18 @@ Branch `marco-1-cadastros` (a partir de `marco-0-fundacao`); 15 tarefas implemen
 - Migrações: `0002` a `0005` (o roteiro previa uma só); as dos próximos marcos começam em `0006`.
 - Ambiente: `npm install --legacy-peer-deps`; Strawberry Perl antes do Perl do Git no PATH.
 
+### Correções da revisão final
+
+- **C1** diálogos em portal ficavam visíveis sobre a tela de bloqueio → `LockContext`: `DialogContent` não é exibido com a sessão bloqueada/encerrada.
+- **I1** fim de sessão pelo backend desmontava a tela e perdia edições → novo estado `expired` com reentrada na própria tela; **Sair** passou a ser navegação para `/login` (respeita alterações não salvas).
+- **I2** diálogos de formulário fechavam sem checar alterações → `useGuardedClose`.
+- **I3** máscara de telefone com +55; **I4** clique duplo em "Criar outro cadastro"; **I5** tempo de inatividade da interface não atualizava (agora no store); **I6** cache de consultas esvaziado ao sair/trocar de pessoa.
+
 ### Pendências adiadas
 
 - Verificação manual do app (acima).
+- Fechar a janela do aplicativo com formulário alterado ainda não é interceptado (`onCloseRequested` do Tauri, spec §21): planejado para o Marco 8.
+- Menores da revisão: edição de hóspede sem checagem de duplicidade; rótulo "Confirmar desativação" na reativação; "nome parecido" × nome igual; CPF colado com mais de 11 dígitos é truncado; busca por dígitos também casa telefone/CPF; `NOCASE` só ASCII; erro de logotipo renomeado; sem "Recarregar" após conflito na pousada; aviso de logout imediato no diálogo de permissões; semântica de linhas clicáveis no `DataTable`.
 - Mutex envenenável (`lock().unwrap()`): tratar no Marco 2 antes dos fluxos longos.
 - `IDLE_MINUTES` padrão (10) usado na interface até o backend responder.
 

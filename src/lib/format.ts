@@ -49,7 +49,10 @@ export function formatCpf(input: string): string {
 
 /** Formata telefone brasileiro de 10 ou 11 dígitos, também enquanto está sendo digitado. */
 export function formatPhone(input: string): string {
-  const d = onlyDigits(input).slice(0, 11);
+  let digits = onlyDigits(input);
+  // Código do país (+55) só quando sobram 12 ou 13 dígitos; 55 também é um DDD válido.
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) digits = digits.slice(2);
+  const d = digits.slice(0, 11);
   if (d.length === 0) return "";
   if (d.length <= 2) return `(${d}`;
   const rest = d.slice(2);
