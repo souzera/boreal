@@ -4,6 +4,7 @@ pub mod guest_service;
 pub mod policy_service;
 pub mod pousada_service;
 pub mod rate_service;
+pub mod reservation_service;
 pub mod settings_service;
 pub mod user_service;
 
@@ -23,6 +24,11 @@ use crate::repositories::settings_repo;
 /// Relógio de parede em UTC (instantes gravados no banco), injetável nos testes.
 pub trait UtcClock: Send + Sync {
     fn now_utc(&self) -> DateTime<Utc>;
+
+    /// Deslocamento do fuso local do computador (spec §19.1: exibição e "hoje" seguem o horário local).
+    fn local_offset(&self) -> chrono::FixedOffset {
+        *chrono::Local::now().offset()
+    }
 }
 
 pub struct SystemUtc;
@@ -49,6 +55,12 @@ impl Ctx {
         self.db.lock().map_err(|_| {
             AppError::Database("a conexão com o banco ficou indisponível após uma falha".into())
         })
+    }
+
+    /// Data de hoje no fuso local.
+    pub fn today(&self) -> chrono::NaiveDate {
+        let offset = i64::from(self.utc.local_offset().local_minus_utc());
+        (self.utc.now_utc() + chrono::Duration::seconds(offset)).date_naive()
     }
 
     pub fn production(conn: Connection) -> Result<Self, AppError> {

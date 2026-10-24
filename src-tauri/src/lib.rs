@@ -77,6 +77,10 @@ pub fn run() {
             commands::rates::quote_stay,
             commands::policy::get_cancellation_policy,
             commands::policy::update_cancellation_policy,
+            commands::reservations::create_reservation,
+            commands::reservations::get_reservation,
+            commands::reservations::list_reservations,
+            commands::reservations::check_room_availability,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

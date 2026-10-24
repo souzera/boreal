@@ -42,6 +42,17 @@ pub enum AppliedRule {
     Weekday,
 }
 
+impl AppliedRule {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AppliedRule::DateOverride => "date_override",
+            AppliedRule::Holiday => "holiday",
+            AppliedRule::Season => "season",
+            AppliedRule::Weekday => "weekday",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct NightPrice {
     pub date: String,

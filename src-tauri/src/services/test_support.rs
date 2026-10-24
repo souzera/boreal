@@ -8,6 +8,7 @@ use super::auth_service::AuthService;
 use super::catalog_service::CatalogService;
 use super::guest_service::GuestService;
 use super::rate_service::RateService;
+use super::reservation_service::ReservationService;
 use super::policy_service::PolicyService;
 use super::pousada_service::PousadaService;
 use super::settings_service::SettingsService;
@@ -30,6 +31,11 @@ impl FakeUtc {
 impl UtcClock for FakeUtc {
     fn now_utc(&self) -> DateTime<Utc> {
         *self.0.lock().unwrap()
+    }
+
+    // Nos testes a pousada está sempre em UTC-03:00, qualquer que seja o fuso da máquina.
+    fn local_offset(&self) -> chrono::FixedOffset {
+        chrono::FixedOffset::west_opt(3 * 3600).unwrap()
     }
 }
 
@@ -56,6 +62,7 @@ pub struct Harness {
     pub guests: GuestService,
     pub rates: RateService,
     pub policy: PolicyService,
+    pub reservations: ReservationService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -87,7 +94,8 @@ pub fn harness() -> Harness {
         catalog: CatalogService::new(ctx.clone()),
         guests: GuestService::new(ctx.clone()),
         rates: RateService::new(ctx.clone()),
-        policy: PolicyService::new(ctx),
+        policy: PolicyService::new(ctx.clone()),
+        reservations: ReservationService::new(ctx),
         utc,
         clock,
         db,

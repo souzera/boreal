@@ -3,5 +3,6 @@ pub mod guest;
 pub mod page;
 pub mod pousada;
 pub mod rate;
+pub mod reservation;
 pub mod settings;
 pub mod user;

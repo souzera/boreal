@@ -5,5 +5,6 @@ pub mod guests;
 pub mod policy;
 pub mod pousada;
 pub mod rates;
+pub mod reservations;
 pub mod settings;
 pub mod users;
