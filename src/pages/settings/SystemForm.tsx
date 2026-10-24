@@ -35,6 +35,10 @@ const schema = z.object({
     .max(100, "Informe de 0 a 100%."),
   deposit_due_days_after_booking: whole(0, 60, "dias"),
   deposit_due_days_before_arrival: whole(0, 60, "dias"),
+  late_fee_percent: z
+    .number({ error: "Informe um número." })
+    .min(0, "Informe de 0 a 100%.")
+    .max(100, "Informe de 0 a 100%."),
 });
 type Values = z.infer<typeof schema>;
 
@@ -44,11 +48,11 @@ export default function SystemForm({ onDirtyChange }: { onDirtyChange: (dirty: b
   const token = useSessionStore((s) => s.token) ?? "";
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["settings"], queryFn: () => getSettings(token) });
-  // O sinal é guardado em pontos-base (3000 = 30%) e mostrado em percentual.
+  // Sinal e cobrança de saída tardia são guardados em pontos-base (3000 = 30%) e mostrados em percentual.
   const formValues = useMemo<Values | undefined>(() => {
     if (!data) return undefined;
-    const { deposit_percent_bp, ...rest } = data.settings;
-    return { ...rest, deposit_percent: deposit_percent_bp / 100 };
+    const { deposit_percent_bp, late_checkout_fee_bp, ...rest } = data.settings;
+    return { ...rest, deposit_percent: deposit_percent_bp / 100, late_fee_percent: late_checkout_fee_bp / 100 };
   }, [data]);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string; conflict?: boolean } | null>(null);
   const {
@@ -63,8 +67,12 @@ export default function SystemForm({ onDirtyChange }: { onDirtyChange: (dirty: b
   const onSubmit = handleSubmit(async (values) => {
     setMessage(null);
     try {
-      const { deposit_percent, ...rest } = values;
-      await updateSettings(token, { ...rest, deposit_percent_bp: Math.round(deposit_percent * 100) }, data?.version ?? 0);
+      const { deposit_percent, late_fee_percent, ...rest } = values;
+      await updateSettings(
+        token,
+        { ...rest, deposit_percent_bp: Math.round(deposit_percent * 100), late_checkout_fee_bp: Math.round(late_fee_percent * 100) },
+        data?.version ?? 0,
+      );
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
       reset(values);
       // O backend já aplica o novo limite; a interface passa a usá-lo na hora.
@@ -108,6 +116,9 @@ export default function SystemForm({ onDirtyChange }: { onDirtyChange: (dirty: b
           </FormField>
           <FormField id="s-late" label="Tolerância de saída tardia (minutos)" required error={errors.late_checkout_tolerance_minutes?.message}>
             <Input id="s-late" type="number" {...register("late_checkout_tolerance_minutes", number)} />
+          </FormField>
+          <FormField id="s-late-fee" label="Cobrança de saída tardia (% da última diária) — provisório" required error={errors.late_fee_percent?.message}>
+            <Input id="s-late-fee" type="number" step="0.01" {...register("late_fee_percent", number)} />
           </FormField>
           <FormField id="s-noshow" label="Tolerância de no-show (minutos)" required error={errors.no_show_tolerance_minutes?.message}>
             <Input id="s-noshow" type="number" {...register("no_show_tolerance_minutes", number)} />

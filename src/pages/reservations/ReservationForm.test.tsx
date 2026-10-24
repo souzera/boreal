@@ -32,7 +32,7 @@ const settings: api.AppSettings = {
   max_failed_attempts: 5, lockout_minutes: 5, idle_lock_minutes: 10, default_check_in_time: "14:00",
   default_check_out_time: "12:00", late_checkout_tolerance_minutes: 30, no_show_tolerance_minutes: 60,
   cleaning_interval_minutes: 60, deposit_percent_bp: 3000, deposit_due_days_after_booking: 3,
-  deposit_due_days_before_arrival: 1,
+  deposit_due_days_before_arrival: 1, late_checkout_fee_bp: 5000,
 };
 const quote: api.Quote = {
   nights: [

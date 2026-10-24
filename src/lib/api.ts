@@ -75,6 +75,7 @@ export interface AppSettings {
   deposit_percent_bp: number;
   deposit_due_days_after_booking: number;
   deposit_due_days_before_arrival: number;
+  late_checkout_fee_bp: number;
 }
 
 export interface SettingsView {
