@@ -12,6 +12,7 @@ import Login from "@/pages/Login";
 import RatesPage from "@/pages/rates/RatesPage";
 import Search from "@/pages/Search";
 import ReservationFormPage from "@/pages/reservations/ReservationFormPage";
+import ReservationPage from "@/pages/reservations/ReservationPage";
 import ReservationsPage from "@/pages/reservations/ReservationsPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import UsersPage from "@/pages/users/UsersPage";
@@ -56,6 +57,7 @@ export const appRoutes: RouteObject[] = [
           { path: "/hospedes/:id", element: <GuestFormPage /> },
           { path: "/reservas", element: <ReservationsPage /> },
           { path: "/reservas/nova", element: <ReservationFormPage /> },
+          { path: "/reservas/:id", element: <ReservationPage /> },
           { path: "/tarifas", element: <RatesPage /> },
           { path: "/quartos", element: <RoomsPage /> },
           { path: "/quartos/categorias", element: <CategoriesPage /> },
