@@ -9,4 +9,5 @@ pub mod rates;
 pub mod reservations;
 pub mod room_map;
 pub mod settings;
+pub mod stays;
 pub mod users;

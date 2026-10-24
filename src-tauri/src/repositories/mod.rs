@@ -8,4 +8,5 @@ pub mod rate_repo;
 pub mod reservation_repo;
 pub mod sequence_repo;
 pub mod settings_repo;
+pub mod stay_repo;
 pub mod user_repo;

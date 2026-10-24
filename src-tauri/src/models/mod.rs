@@ -7,4 +7,5 @@ pub mod rate;
 pub mod reservation;
 pub mod room_map;
 pub mod settings;
+pub mod stay;
 pub mod user;

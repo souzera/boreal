@@ -23,25 +23,25 @@ fn invalid(message: impl Into<String>) -> AppError {
 }
 
 /// `HH:MM` estrito (cinco caracteres).
-fn parse_time(text: &str) -> Option<NaiveTime> {
+pub(crate) fn parse_time(text: &str) -> Option<NaiveTime> {
     if text.len() != 5 {
         return None;
     }
     NaiveTime::parse_from_str(text, "%H:%M").ok()
 }
 
-fn parse_date(text: &str, label: &str) -> Result<NaiveDate, AppError> {
+pub(crate) fn parse_date(text: &str, label: &str) -> Result<NaiveDate, AppError> {
     dates::parse(text).ok_or_else(|| invalid(format!("{label} inválida. Use uma data válida.")))
 }
 
-fn br(date: &str) -> String {
+pub(crate) fn br(date: &str) -> String {
     match dates::parse(date) {
         Some(d) => d.format("%d/%m/%Y").to_string(),
         None => date.to_string(),
     }
 }
 
-fn conflict_message(conflicts: &[ConflictInfo]) -> String {
+pub(crate) fn conflict_message(conflicts: &[ConflictInfo]) -> String {
     let list = conflicts
         .iter()
         .map(|c| format!("{} ({}, {} a {})", c.code, c.guest_name, br(&c.check_in_date), br(&c.check_out_date)))

@@ -14,6 +14,7 @@ use super::room_map_service::RoomMapService;
 use super::policy_service::PolicyService;
 use super::pousada_service::PousadaService;
 use super::settings_service::SettingsService;
+use super::stay_service::StayService;
 use super::user_service::UserService;
 use super::{Ctx, UtcClock};
 use crate::auth::session::{Clock, SessionManager};
@@ -67,6 +68,7 @@ pub struct Harness {
     pub policy: PolicyService,
     pub reservations: ReservationService,
     pub room_map: RoomMapService,
+    pub stays: StayService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -101,7 +103,8 @@ pub fn harness() -> Harness {
         rates: RateService::new(ctx.clone()),
         policy: PolicyService::new(ctx.clone()),
         reservations: ReservationService::new(ctx.clone()),
-        room_map: RoomMapService::new(ctx),
+        room_map: RoomMapService::new(ctx.clone()),
+        stays: StayService::new(ctx),
         utc,
         clock,
         db,
@@ -136,4 +139,94 @@ pub fn recepcao_token(h: &Harness, admin: &str) -> String {
         .change_own_password(&token, "Temp-Senha-123", "Definitiva-456")
         .unwrap();
     token
+}
+
+/// Categoria, quarto "101", hóspede e tarifa de todos os dias da semana, para testes que precisam de reservas.
+pub struct Seed {
+    pub category_id: i64,
+    pub room_id: i64,
+    pub guest_id: i64,
+}
+
+pub fn seed(h: &Harness, admin: &str, nightly_cents: i64, capacity: i64) -> Seed {
+    use crate::models::catalog::{NewCategory, NewRoom};
+    use crate::models::guest::GuestInput;
+    use crate::models::rate::NewRateRule;
+    use crate::services::guest_service::CreateGuestOutcome;
+
+    let category_id = h
+        .catalog
+        .create_category(admin, NewCategory { name: "Standard".into(), description: String::new() })
+        .unwrap();
+    for day in 0..7 {
+        h.rates
+            .create_rule(
+                admin,
+                NewRateRule {
+                    category_id,
+                    rule_type: "weekday".into(),
+                    weekday: Some(day),
+                    start_date: None,
+                    end_date: None,
+                    date: None,
+                    amount_cents: nightly_cents,
+                    label: String::new(),
+                },
+            )
+            .unwrap();
+    }
+    let room_id = h
+        .catalog
+        .create_room(
+            admin,
+            NewRoom {
+                code: "101".into(),
+                category_id,
+                max_capacity: capacity,
+                description: String::new(),
+                notes: String::new(),
+            },
+        )
+        .unwrap();
+    let guest_id = match h
+        .guests
+        .create(
+            admin,
+            GuestInput {
+                full_name: "Ana Souza".into(),
+                phone: "(11) 99999-0000".into(),
+                cpf: None,
+                email: String::new(),
+                address: String::new(),
+            },
+            true,
+        )
+        .unwrap()
+    {
+        CreateGuestOutcome::Created { id, .. } => id,
+        other => panic!("{other:?}"),
+    };
+    Seed { category_id, room_id, guest_id }
+}
+
+/// Cria uma reserva pendente do hóspede do `Seed` no quarto "101" e devolve o id.
+pub fn book(h: &Harness, admin: &str, seed: &Seed, from: &str, to: &str) -> i64 {
+    use crate::models::reservation::NewReservation;
+    h.reservations
+        .create(
+            admin,
+            NewReservation {
+                room_id: seed.room_id,
+                guest_id: seed.guest_id,
+                check_in_date: from.into(),
+                check_out_date: to.into(),
+                expected_check_in_time: None,
+                expected_check_out_time: None,
+                occupants: 1,
+                notes: String::new(),
+                exceed_capacity: false,
+            },
+        )
+        .unwrap()
+        .id
 }

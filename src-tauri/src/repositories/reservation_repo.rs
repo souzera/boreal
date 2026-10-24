@@ -335,6 +335,14 @@ pub fn insert_change(
     Ok(())
 }
 
+/// Muda a situação da reserva (check-in, conclusão) se a versão ainda for a consultada.
+pub fn set_status(tx: &Transaction, id: i64, status: &str, expected_version: i64, at: DateTime<Utc>) -> Result<(), AppError> {
+    expect_one(tx.execute(
+        "UPDATE reservations SET status = ?1, version = version + 1, updated_at = ?2 WHERE id = ?3 AND version = ?4",
+        params![status, stamp(at), id, expected_version],
+    )?)
+}
+
 /// Encerra a reserva (`cancelled` ou `no_show`) registrando o valor retido.
 pub fn set_closed(
     tx: &Transaction,

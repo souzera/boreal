@@ -14,6 +14,7 @@ use crate::services::rate_service::RateService;
 use crate::services::reservation_service::ReservationService;
 use crate::services::room_map_service::RoomMapService;
 use crate::services::settings_service::SettingsService;
+use crate::services::stay_service::StayService;
 use crate::services::user_service::UserService;
 use crate::services::Ctx;
 
@@ -37,6 +38,7 @@ pub struct AppState {
     pub policy: PolicyService,
     pub reservations: ReservationService,
     pub room_map: RoomMapService,
+    pub stays: StayService,
     ctx: Ctx,
 }
 
@@ -74,6 +76,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         policy: PolicyService::new(ctx.clone()),
         reservations: ReservationService::new(ctx.clone()),
         room_map: RoomMapService::new(ctx.clone()),
+        stays: StayService::new(ctx.clone()),
         ctx,
     })
 }
