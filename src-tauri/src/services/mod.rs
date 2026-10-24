@@ -41,6 +41,14 @@ pub struct Ctx {
 }
 
 impl Ctx {
+    /// Conexão com o banco. Se outra operação entrou em pânico segurando a conexão, devolve erro
+    /// (mensagem genérica) em vez de derrubar o aplicativo.
+    pub fn conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>, AppError> {
+        self.db.lock().map_err(|_| {
+            AppError::Database("a conexão com o banco ficou indisponível após uma falha".into())
+        })
+    }
+
     pub fn production(conn: Connection) -> Result<Self, AppError> {
         let idle_minutes = settings_repo::get_u32(&conn, "idle_lock_minutes")?;
         Ok(Self {
@@ -62,4 +70,30 @@ pub(crate) fn parse_utc(text: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(text)
         .ok()
         .map(|d| d.with_timezone(&Utc))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::{admin_token, harness};
+    use crate::error::AppError;
+    use crate::models::guest::GuestQuery;
+
+    #[test]
+    fn poisoned_db_mutex_returns_error_not_panic() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let db = h.db.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = db.lock().unwrap();
+            panic!("pânico proposital para envenenar o mutex");
+        })
+        .join();
+
+        let result = h.guests.list(
+            &admin,
+            GuestQuery { text: None, active: None, page: 1, page_size: 10, sort: None, direction: None },
+        );
+
+        assert!(matches!(result, Err(AppError::Database(_))));
+    }
 }

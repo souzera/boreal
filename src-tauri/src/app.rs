@@ -32,7 +32,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn app_info(&self) -> Result<AppInfo, AppError> {
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         Ok(AppInfo {
             app_version: env!("CARGO_PKG_VERSION"),
             schema_version: current_version(&conn)?,
@@ -41,7 +41,7 @@ impl AppState {
     }
 
     pub fn schema_version(&self) -> Result<u32, AppError> {
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         current_version(&conn)
     }
 }

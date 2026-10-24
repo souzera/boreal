@@ -72,7 +72,7 @@ impl UserService {
     pub fn list(&self, token: &str, query: UserQuery) -> Result<Page<UserRow>, AppError> {
         self.authorize(token)?;
         let (page, page_size, offset) = clamp_paging(query.page, query.page_size);
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         let (mut items, total) = user_repo::list(
             &conn,
             &UserListFilter {
@@ -106,7 +106,7 @@ impl UserService {
         if actor.user_id == user_id {
             return Err(AppError::Validation("Você não pode alterar o próprio perfil.".into()));
         }
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let user = user_repo::find(&conn, user_id)?
             .ok_or_else(|| AppError::Validation("Usuário não encontrado.".into()))?;
         if role != Role::Admin {
@@ -150,7 +150,7 @@ impl UserService {
         validate_password_policy(&input.initial_password)?;
         let hash = hash_password(&input.initial_password)?;
 
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
         let id = user_repo::insert(
             &tx,
@@ -199,7 +199,7 @@ impl UserService {
         validate_password_policy(temp_password)?;
         let hash = hash_password(temp_password)?;
 
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let user = user_repo::find(&conn, user_id)?
             .ok_or_else(|| AppError::Validation("Usuário não encontrado.".into()))?;
         let tx = conn.transaction()?;
@@ -242,7 +242,7 @@ impl UserService {
                 p.as_str()
             )));
         }
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let user = user_repo::find(&conn, user_id)?
             .ok_or_else(|| AppError::Validation("Usuário não encontrado.".into()))?;
         if user.role == Role::Admin {
@@ -280,7 +280,7 @@ impl UserService {
                 "Você não pode desativar o próprio usuário.".into(),
             ));
         }
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let user = user_repo::find(&conn, user_id)?
             .ok_or_else(|| AppError::Validation("Usuário não encontrado.".into()))?;
         if !active {

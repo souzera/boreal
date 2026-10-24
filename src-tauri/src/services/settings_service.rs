@@ -28,7 +28,7 @@ impl SettingsService {
     /// Qualquer usuário autenticado pode consultar as configurações.
     pub fn get(&self, token: &str) -> Result<SettingsView, AppError> {
         self.ctx.sessions.touch(token, self.ctx.clock.now())?;
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         Ok(SettingsView {
             settings: settings_repo::load(&conn)?,
             version: settings_repo::version(&conn)?,
@@ -38,7 +38,7 @@ impl SettingsService {
     /// Política de sessão para a interface (tempo de inatividade).
     pub fn session_policy(&self, token: &str) -> Result<SessionPolicy, AppError> {
         self.ctx.sessions.touch(token, self.ctx.clock.now())?;
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         Ok(SessionPolicy {
             idle_lock_minutes: settings_repo::get_u32(&conn, "idle_lock_minutes")?,
         })
@@ -50,7 +50,7 @@ impl SettingsService {
         require(&actor, Permission::ManageSettings)?;
         input.settings.validate()?;
 
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
         if settings_repo::version(&tx)? != input.expected_version {
             return Err(AppError::Conflict);

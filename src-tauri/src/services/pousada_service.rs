@@ -59,13 +59,13 @@ impl PousadaService {
 
     pub fn get(&self, token: &str) -> Result<PousadaView, AppError> {
         self.ctx.sessions.touch(token, self.ctx.clock.now())?;
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         pousada_repo::get(&conn)
     }
 
     pub fn get_logo(&self, token: &str) -> Result<Option<LogoData>, AppError> {
         self.ctx.sessions.touch(token, self.ctx.clock.now())?;
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         Ok(pousada_repo::get_logo(&conn)?.map(|(mime, bytes)| LogoData {
             mime,
             base64: base64::engine::general_purpose::STANDARD.encode(bytes),
@@ -98,7 +98,7 @@ impl PousadaService {
             (LogoChange::Set { .. }, None) => unreachable!("logo decodificado acima"),
         };
 
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let before = pousada_repo::get(&conn)?;
         let tx = conn.transaction()?;
         let version = pousada_repo::update(

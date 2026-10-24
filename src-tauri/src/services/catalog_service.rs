@@ -120,7 +120,7 @@ impl CatalogService {
 
     pub fn list_categories(&self, token: &str, active_only: bool) -> Result<Vec<Category>, AppError> {
         self.read(token)?;
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         catalog_repo::list_categories(&conn, active_only)
     }
 
@@ -128,7 +128,7 @@ impl CatalogService {
         let actor = self.write(token)?;
         let name = text(&input.name, 80, "o nome da categoria", true)?;
         let description = text(&input.description, 255, "Descrição", false)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
         let id = catalog_repo::insert_category(&tx, &name, &description, self.ctx.utc.now_utc())
             .map_err(|e| friendly(e, "Já existe uma categoria com este nome.", "Categoria em uso."))?;
@@ -142,7 +142,7 @@ impl CatalogService {
         let actor = self.write(token)?;
         let name = text(&input.name, 80, "o nome da categoria", true)?;
         let description = text(&input.description, 255, "Descrição", false)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let before = catalog_repo::find_category(&conn, id)?.ok_or_else(|| invalid("Categoria não encontrada."))?;
         let tx = conn.transaction()?;
         catalog_repo::update_category(&tx, id, &name, &description, expected_version, self.ctx.utc.now_utc())
@@ -155,7 +155,7 @@ impl CatalogService {
 
     pub fn set_category_active(&self, token: &str, id: i64, active: bool) -> Result<(), AppError> {
         let actor = self.write(token)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let before = catalog_repo::find_category(&conn, id)?.ok_or_else(|| invalid("Categoria não encontrada."))?;
         if !active {
             let rooms = catalog_repo::count_active_rooms_in_category(&conn, id)?;
@@ -176,7 +176,7 @@ impl CatalogService {
     /// Exclusão física só sem histórico: com quartos ligados, o banco recusa e a pessoa é orientada a desativar.
     pub fn delete_category(&self, token: &str, id: i64) -> Result<(), AppError> {
         let actor = self.write(token)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let before = catalog_repo::find_category(&conn, id)?.ok_or_else(|| invalid("Categoria não encontrada."))?;
         let tx = conn.transaction()?;
         catalog_repo::delete_category(&tx, id).map_err(|e| {
@@ -192,7 +192,7 @@ impl CatalogService {
     pub fn list_rooms(&self, token: &str, query: RoomQuery) -> Result<Page<Room>, AppError> {
         self.read(token)?;
         let (page, page_size, offset) = clamp_paging(query.page, query.page_size);
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         let (items, total) = catalog_repo::list_rooms(&conn, &query, i64::from(page_size), offset)?;
         Ok(Page { items, total, page, page_size })
     }
@@ -208,7 +208,7 @@ impl CatalogService {
     pub fn create_room(&self, token: &str, input: NewRoom) -> Result<i64, AppError> {
         let actor = self.write(token)?;
         let r = clean_room(&input.code, input.category_id, input.max_capacity, &input.description, &input.notes)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         Self::require_active_category(&conn, r.category_id)?;
         let tx = conn.transaction()?;
         let id = catalog_repo::insert_room(
@@ -226,7 +226,7 @@ impl CatalogService {
     pub fn update_room(&self, token: &str, id: i64, input: UpdateRoom, expected_version: i64) -> Result<(), AppError> {
         let actor = self.write(token)?;
         let r = clean_room(&input.code, input.category_id, input.max_capacity, &input.description, &input.notes)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let before = catalog_repo::find_room(&conn, id)?.ok_or_else(|| invalid("Quarto não encontrado."))?;
         if before.category_id != r.category_id {
             Self::require_active_category(&conn, r.category_id)?;
@@ -248,7 +248,7 @@ impl CatalogService {
 
     pub fn set_room_active(&self, token: &str, id: i64, active: bool) -> Result<(), AppError> {
         let actor = self.write(token)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let before = catalog_repo::find_room(&conn, id)?.ok_or_else(|| invalid("Quarto não encontrado."))?;
         if active {
             Self::require_active_category(&conn, before.category_id)?;
@@ -263,7 +263,7 @@ impl CatalogService {
 
     pub fn delete_room(&self, token: &str, id: i64) -> Result<(), AppError> {
         let actor = self.write(token)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let before = catalog_repo::find_room(&conn, id)?.ok_or_else(|| invalid("Quarto não encontrado."))?;
         let tx = conn.transaction()?;
         catalog_repo::delete_room(&tx, id).map_err(|e| {

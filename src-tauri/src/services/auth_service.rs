@@ -55,7 +55,7 @@ impl AuthService {
     }
 
     pub fn needs_bootstrap(&self) -> Result<bool, AppError> {
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         Ok(user_repo::count(&conn)? == 0)
     }
 
@@ -76,7 +76,7 @@ impl AuthService {
         validate_password_policy(password)?;
         let hash = hash_password(password)?;
 
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
         if user_repo::count(&tx)? > 0 {
             return Err(AppError::Validation("O sistema já foi configurado.".into()));
@@ -111,7 +111,7 @@ impl AuthService {
     }
 
     pub fn login(&self, username: &str, password: &str) -> Result<LoginResult, AppError> {
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let Some((user, hash)) = user_repo::find_by_username(&conn, username.trim())? else {
             // Usuário inexistente: mesmo custo de verificação, nenhum estado gravado.
             verify_password(password, &DUMMY_HASH);
@@ -195,7 +195,7 @@ impl AuthService {
             Err(AppError::Locked) => ("locked", self.ctx.sessions.peek(token)?),
             Err(other) => return Err(other),
         };
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         let user = user_repo::find(&conn, info.user_id)?;
         Ok(SessionStatus { state, user })
     }
@@ -211,7 +211,7 @@ impl AuthService {
         let new_hash = hash_password(new)?;
 
         let now = self.ctx.utc.now_utc();
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let (user, hash) =
             user_repo::find_with_hash(&conn, info.user_id)?.ok_or(AppError::Unauthorized)?;
         let tx = conn.transaction()?;
@@ -251,7 +251,7 @@ impl AuthService {
     pub fn unlock_session(&self, token: &str, password: &str) -> Result<(), AppError> {
         let info = self.ctx.sessions.peek(token)?;
         let now = self.ctx.utc.now_utc();
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let (user, hash) =
             user_repo::find_with_hash(&conn, info.user_id)?.ok_or(AppError::Unauthorized)?;
         if !user.active {
