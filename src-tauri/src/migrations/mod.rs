@@ -33,6 +33,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 6,
         sql: include_str!("sql/0006_rates.sql"),
     },
+    Migration {
+        version: 7,
+        sql: include_str!("sql/0007_policies.sql"),
+    },
 ];
 
 /// Versão atual do esquema (0 se nenhuma migração foi aplicada).

@@ -75,6 +75,8 @@ pub fn run() {
             commands::rates::create_holiday,
             commands::rates::delete_holiday,
             commands::rates::quote_stay,
+            commands::policy::get_cancellation_policy,
+            commands::policy::update_cancellation_policy,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

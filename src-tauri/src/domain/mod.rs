@@ -1,4 +1,5 @@
 pub mod availability;
+pub mod cancellation;
 pub mod cpf;
 pub mod dates;
 pub mod money;

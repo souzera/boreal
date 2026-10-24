@@ -13,6 +13,12 @@ pub struct AppSettings {
     pub late_checkout_tolerance_minutes: u32,
     pub no_show_tolerance_minutes: u32,
     pub cleaning_interval_minutes: u32,
+    /// Sinal esperado, em pontos-base do total da reserva (3000 = 30%).
+    pub deposit_percent_bp: u32,
+    /// Dias após a reserva em que o sinal vence.
+    pub deposit_due_days_after_booking: u32,
+    /// O sinal vence, no máximo, este número de dias antes da chegada.
+    pub deposit_due_days_before_arrival: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,6 +68,9 @@ impl AppSettings {
         in_range(self.late_checkout_tolerance_minutes, 0, 600, "Tolerância de saída tardia: informe de 0 a 600 minutos.")?;
         in_range(self.no_show_tolerance_minutes, 0, 600, "Tolerância de no-show: informe de 0 a 600 minutos.")?;
         in_range(self.cleaning_interval_minutes, 0, 600, "Intervalo de limpeza: informe de 0 a 600 minutos.")?;
+        in_range(self.deposit_percent_bp, 0, 10_000, "Sinal: informe de 0% a 100%.")?;
+        in_range(self.deposit_due_days_after_booking, 0, 60, "Prazo do sinal após a reserva: informe de 0 a 60 dias.")?;
+        in_range(self.deposit_due_days_before_arrival, 0, 60, "Prazo do sinal antes da chegada: informe de 0 a 60 dias.")?;
         Ok(())
     }
 }

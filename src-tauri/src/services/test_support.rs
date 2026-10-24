@@ -8,6 +8,7 @@ use super::auth_service::AuthService;
 use super::catalog_service::CatalogService;
 use super::guest_service::GuestService;
 use super::rate_service::RateService;
+use super::policy_service::PolicyService;
 use super::pousada_service::PousadaService;
 use super::settings_service::SettingsService;
 use super::user_service::UserService;
@@ -54,6 +55,7 @@ pub struct Harness {
     pub catalog: CatalogService,
     pub guests: GuestService,
     pub rates: RateService,
+    pub policy: PolicyService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -84,7 +86,8 @@ pub fn harness() -> Harness {
         pousada: PousadaService::new(ctx.clone()),
         catalog: CatalogService::new(ctx.clone()),
         guests: GuestService::new(ctx.clone()),
-        rates: RateService::new(ctx),
+        rates: RateService::new(ctx.clone()),
+        policy: PolicyService::new(ctx),
         utc,
         clock,
         db,
