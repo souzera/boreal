@@ -179,3 +179,12 @@ pub struct ReviewItem {
     /// `no_show_candidate` e/ou `deposit_overdue`.
     pub reasons: Vec<String>,
 }
+
+/// Desconto em valor (`kind = "amount"`, com `amount_cents`) ou percentual (`kind = "percent"`, com `percent_bp`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiscountInput {
+    pub kind: String,
+    pub amount_cents: Option<i64>,
+    pub percent_bp: Option<u32>,
+    pub justification: String,
+}

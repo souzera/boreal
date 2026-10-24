@@ -87,6 +87,10 @@ pub fn run() {
             commands::reservations::cancel_reservation,
             commands::reservations::mark_reservation_no_show,
             commands::reservations::list_reservations_needing_review,
+            commands::reservations::apply_reservation_discount,
+            commands::reservations::confirm_reservation,
+            commands::reservations::record_reservation_deposit,
+            commands::reservations::set_reservation_notes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

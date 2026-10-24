@@ -12,8 +12,8 @@ use crate::error::AppError;
 use crate::models::page::{clamp_paging, Page};
 use crate::models::reservation::{
     AvailabilityResult, CancellationOverride, CancellationPreview, CancellationResult, ChangePreview, ChangeRequest,
-    ConflictInfo, CreatedReservation, NewReservation, NightChange, Reservation, ReservationDetail, ReservationQuery,
-    ReviewItem,
+    ConflictInfo, CreatedReservation, DiscountInput, NewReservation, NightChange, Reservation, ReservationDetail,
+    ReservationQuery, ReviewItem,
 };
 use crate::repositories::reservation_repo::{self, ChangedFields, NewRow};
 use crate::repositories::{catalog_repo, guest_repo, policy_repo, sequence_repo, settings_repo};
@@ -707,6 +707,215 @@ impl ReservationService {
     }
 }
 
+// ---- desconto, confirmação, sinal e observações ----
+
+impl ReservationService {
+    /// Carrega a reserva dentro da transação, exigindo estado e versão.
+    fn load_open(
+        &self,
+        tx: &rusqlite::Transaction,
+        id: i64,
+        expected_version: i64,
+        what: &str,
+    ) -> Result<Reservation, AppError> {
+        let reservation =
+            reservation_repo::find(tx, id, self.ctx.today())?.ok_or_else(|| invalid("Reserva não encontrada."))?;
+        if !matches!(reservation.status.as_str(), "pending" | "confirmed") {
+            return Err(invalid(format!("Só reservas pendentes ou confirmadas aceitam {what}.")));
+        }
+        if reservation.version != expected_version {
+            return Err(AppError::Conflict);
+        }
+        Ok(reservation)
+    }
+
+    /// Aplica (ou troca) o desconto da reserva. Sempre calculado sobre o valor de tabela das noites.
+    pub fn apply_discount(
+        &self,
+        token: &str,
+        id: i64,
+        input: DiscountInput,
+        expected_version: i64,
+    ) -> Result<(), AppError> {
+        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        require(&actor, Permission::ApplyDiscount)?;
+        let justification = input.justification.trim().to_string();
+        if justification.is_empty() {
+            return Err(invalid("Informe a justificativa do desconto."));
+        }
+
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        let reservation = self.load_open(&tx, id, expected_version, "desconto")?;
+        let list_total = reservation.list_total_cents;
+        let discount = match (input.kind.as_str(), input.amount_cents, input.percent_bp) {
+            ("amount", Some(cents), None) => cents,
+            ("percent", None, Some(bp)) if bp <= 10_000 => money::percent_of(list_total, bp)?,
+            ("percent", None, Some(_)) => return Err(invalid("O percentual do desconto vai de 0% a 100%.")),
+            _ => return Err(invalid("Informe o desconto em valor ou em percentual.")),
+        };
+        if discount <= 0 {
+            return Err(invalid("Informe um desconto maior que zero."));
+        }
+        if discount > list_total {
+            return Err(invalid("O desconto não pode ser maior que o valor da reserva."));
+        }
+
+        let settings = settings_repo::load(&tx)?;
+        let agreed = list_total - discount;
+        let deposit_expected = money::percent_of(agreed, settings.deposit_percent_bp)?;
+        let at = self.ctx.utc.now_utc();
+        reservation_repo::update_discount(&tx, id, discount, &justification, actor.user_id, agreed, deposit_expected, expected_version, at)?;
+        let before = json!({
+            "list_total_cents": list_total, "discount_cents": reservation.discount_cents,
+            "agreed_total_cents": reservation.agreed_total_cents
+        });
+        let after = json!({
+            "list_total_cents": list_total, "discount_cents": discount, "agreed_total_cents": agreed,
+            "kind": input.kind
+        });
+        reservation_repo::insert_change(
+            &tx, id, at, actor.user_id, "discount", &before.to_string(), &after.to_string(),
+            Some(reservation.agreed_total_cents), Some(agreed), Some(&justification),
+        )?;
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at,
+                user_id: Some(actor.user_id),
+                module: "reservations",
+                operation: "apply_discount",
+                entity: "reservation",
+                entity_id: Some(id),
+                before: Some(before),
+                after: Some(after),
+                justification: Some(justification),
+            },
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Confirma manualmente uma reserva pendente (D-06).
+    pub fn confirm(&self, token: &str, id: i64, expected_version: i64) -> Result<(), AppError> {
+        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        let reservation = self.load_open(&tx, id, expected_version, "confirmação")?;
+        if reservation.status != "pending" {
+            return Err(invalid("A reserva já está confirmada."));
+        }
+        let at = self.ctx.utc.now_utc();
+        reservation_repo::update_payment_state(&tx, id, reservation.deposit_paid_cents, "confirmed", expected_version, at)?;
+        self.record_status_change(&tx, &actor, id, "confirm_reservation", "pending", "confirmed", at)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Registra um valor de sinal recebido. (Provisório até o módulo de recebimentos, Marco 5.)
+    /// Ao atingir o sinal esperado, a reserva pendente passa a confirmada.
+    pub fn record_deposit(&self, token: &str, id: i64, amount_cents: i64, expected_version: i64) -> Result<(), AppError> {
+        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        if amount_cents <= 0 {
+            return Err(invalid("Informe um valor maior que zero."));
+        }
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        let reservation = self.load_open(&tx, id, expected_version, "registro de sinal")?;
+        let paid = money::add(reservation.deposit_paid_cents, amount_cents)?;
+        if paid > reservation.agreed_total_cents {
+            return Err(invalid("O sinal recebido não pode passar do valor total da reserva."));
+        }
+        let new_status = if reservation.status == "pending" && paid >= reservation.deposit_expected_cents {
+            "confirmed"
+        } else {
+            reservation.status.as_str()
+        };
+        let at = self.ctx.utc.now_utc();
+        reservation_repo::update_payment_state(&tx, id, paid, new_status, expected_version, at)?;
+        let before = json!({ "deposit_paid_cents": reservation.deposit_paid_cents, "status": reservation.status });
+        let after = json!({ "deposit_paid_cents": paid, "status": new_status, "received_cents": amount_cents });
+        reservation_repo::insert_change(&tx, id, at, actor.user_id, "deposit", &before.to_string(), &after.to_string(), None, None, None)?;
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at,
+                user_id: Some(actor.user_id),
+                module: "reservations",
+                operation: "record_deposit",
+                entity: "reservation",
+                entity_id: Some(id),
+                before: Some(before),
+                after: Some(after),
+                justification: None,
+            },
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn set_notes(&self, token: &str, id: i64, notes: &str, expected_version: i64) -> Result<(), AppError> {
+        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        let notes = notes.trim();
+        if notes.chars().count() > 1000 {
+            return Err(invalid("Observações: no máximo 1000 caracteres."));
+        }
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        let reservation = reservation_repo::find(&tx, id, self.ctx.today())?.ok_or_else(|| invalid("Reserva não encontrada."))?;
+        if reservation.version != expected_version {
+            return Err(AppError::Conflict);
+        }
+        let at = self.ctx.utc.now_utc();
+        reservation_repo::update_notes(&tx, id, notes, expected_version, at)?;
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at,
+                user_id: Some(actor.user_id),
+                module: "reservations",
+                operation: "update_reservation_notes",
+                entity: "reservation",
+                entity_id: Some(id),
+                before: Some(json!({ "notes": reservation.notes })),
+                after: Some(json!({ "notes": notes })),
+                justification: None,
+            },
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn record_status_change(
+        &self,
+        tx: &rusqlite::Transaction,
+        actor: &crate::auth::session::SessionInfo,
+        id: i64,
+        operation: &'static str,
+        from: &str,
+        to: &str,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), AppError> {
+        let (before, after) = (json!({ "status": from }), json!({ "status": to }));
+        reservation_repo::insert_change(tx, id, at, actor.user_id, "status", &before.to_string(), &after.to_string(), None, None, None)?;
+        audit::record(
+            tx,
+            &AuditEntry {
+                at,
+                user_id: Some(actor.user_id),
+                module: "reservations",
+                operation,
+                entity: "reservation",
+                entity_id: Some(id),
+                before: Some(before),
+                after: Some(after),
+                justification: None,
+            },
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::auth::permissions::Permission;
@@ -714,7 +923,7 @@ mod tests {
     use crate::models::catalog::{NewCategory, NewRoom};
     use crate::models::guest::GuestInput;
     use crate::models::rate::NewRateRule;
-    use crate::models::reservation::{CancellationOverride, ChangeRequest, NewReservation, ReservationQuery};
+    use crate::models::reservation::{CancellationOverride, ChangeRequest, DiscountInput, NewReservation, ReservationQuery};
     use crate::services::guest_service::CreateGuestOutcome;
     use crate::services::test_support::{admin_token, harness, recepcao_token, Harness};
     use std::time::Duration;
@@ -1491,5 +1700,149 @@ mod tests {
         assert_eq!(items[0].reasons, ["no_show_candidate", "deposit_overdue"]);
         assert_eq!(w.h.reservations.get(&w.admin, arriving).unwrap().reservation.status, "pending");
         assert_eq!(counts(&w), before);
+    }
+
+    // ---- desconto, confirmação, sinal e observações ----
+
+    fn amount_discount(cents: i64, why: &str) -> DiscountInput {
+        DiscountInput { kind: "amount".into(), amount_cents: Some(cents), percent_bp: None, justification: why.into() }
+    }
+
+    fn percent_discount(bp: u32, why: &str) -> DiscountInput {
+        DiscountInput { kind: "percent".into(), amount_cents: None, percent_bp: Some(bp), justification: why.into() }
+    }
+
+    #[test]
+    fn a_discount_needs_the_permission_and_a_justification() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-28");
+        let rec = recepcao_token(&w.h, &w.admin);
+
+        assert!(matches!(w.h.reservations.apply_discount(&rec, id, amount_discount(1_000, "x"), 1), Err(AppError::Forbidden)));
+        assert!(matches!(w.h.reservations.apply_discount(&w.admin, id, amount_discount(1_000, "  "), 1), Err(AppError::Validation(_))));
+        assert_eq!(version(&w, id), 1);
+    }
+
+    #[test]
+    fn a_percent_discount_rounds_half_up_once_on_the_total() {
+        let w = world();
+        reprice_all(&w, w.category, 10_035);
+        let id = reservation(&w, "2026-10-25", "2026-10-26"); // 1 noite = R$ 100,35
+
+        w.h.reservations.apply_discount(&w.admin, id, percent_discount(5_000, "Cliente antigo"), 1).unwrap();
+
+        let r = w.h.reservations.get(&w.admin, id).unwrap().reservation;
+        assert_eq!(r.discount_cents, 5_018); // 50,175 -> 50,18
+        assert_eq!(r.agreed_total_cents, 5_017);
+        assert_eq!(r.deposit_expected_cents, 1_505); // 30% de 50,17 = 15,051
+    }
+
+    #[test]
+    fn a_discount_is_bounded_by_the_total_and_must_be_positive() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-28"); // R$ 300,00
+
+        for bad in [amount_discount(30_001, "x"), amount_discount(0, "x"), amount_discount(-5, "x"), percent_discount(10_001, "x"), percent_discount(0, "x")] {
+            assert!(matches!(w.h.reservations.apply_discount(&w.admin, id, bad, 1), Err(AppError::Validation(_))));
+        }
+        let malformed = DiscountInput { kind: "amount".into(), amount_cents: None, percent_bp: Some(100), justification: "x".into() };
+        assert!(matches!(w.h.reservations.apply_discount(&w.admin, id, malformed, 1), Err(AppError::Validation(_))));
+        assert!(w.h.reservations.apply_discount(&w.admin, id, amount_discount(30_000, "Cortesia"), 1).is_ok());
+        assert_eq!(w.h.reservations.get(&w.admin, id).unwrap().reservation.agreed_total_cents, 0);
+    }
+
+    #[test]
+    fn a_discount_records_original_and_final_values_and_replaces_the_previous_one() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-28");
+        w.h.reservations.apply_discount(&w.admin, id, amount_discount(3_000, "Primeiro desconto"), 1).unwrap();
+        w.h.reservations.apply_discount(&w.admin, id, percent_discount(1_000, "Desconto de 10%"), 2).unwrap();
+
+        let detail = w.h.reservations.get(&w.admin, id).unwrap();
+
+        assert_eq!(detail.reservation.list_total_cents, 30_000);
+        assert_eq!((detail.reservation.discount_cents, detail.reservation.agreed_total_cents), (3_000, 27_000));
+        assert_eq!(detail.reservation.discount_reason.as_deref(), Some("Desconto de 10%"));
+        let last = detail.history.last().unwrap();
+        assert_eq!((last.kind.as_str(), last.price_before_cents, last.price_after_cents), ("discount", Some(27_000), Some(27_000)));
+        let (before, after, why): (String, String, String) = w
+            .h
+            .db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT before_json, after_json, justification FROM audit_log WHERE operation = 'apply_discount' ORDER BY id DESC LIMIT 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert!(before.contains("\"list_total_cents\":30000") && after.contains("\"agreed_total_cents\":27000"));
+        assert_eq!(why, "Desconto de 10%");
+    }
+
+    #[test]
+    fn a_discount_is_refused_for_closed_reservations_and_stale_versions() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-28");
+
+        assert!(matches!(w.h.reservations.apply_discount(&w.admin, id, amount_discount(100, "x"), 9), Err(AppError::Conflict)));
+        set_status(&w, id, "cancelled");
+        assert!(matches!(w.h.reservations.apply_discount(&w.admin, id, amount_discount(100, "x"), 1), Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn manual_confirmation_moves_pending_to_confirmed() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-28");
+
+        assert!(matches!(w.h.reservations.confirm(&w.admin, id, 9), Err(AppError::Conflict)));
+        w.h.reservations.confirm(&w.admin, id, 1).unwrap();
+
+        assert_eq!(w.h.reservations.get(&w.admin, id).unwrap().reservation.status, "confirmed");
+        assert!(matches!(w.h.reservations.confirm(&w.admin, id, 2), Err(AppError::Validation(_))));
+        for status in ["checked_in", "completed", "cancelled", "no_show"] {
+            set_status(&w, id, status);
+            assert!(matches!(w.h.reservations.confirm(&w.admin, id, 2), Err(AppError::Validation(_))), "{status}");
+        }
+    }
+
+    #[test]
+    fn notes_are_updated_with_a_version_check_and_a_limit() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-28");
+
+        w.h.reservations.set_notes(&w.admin, id, "  Chegada tarde, após as 22h  ", 1).unwrap();
+
+        assert_eq!(w.h.reservations.get(&w.admin, id).unwrap().reservation.notes, "Chegada tarde, após as 22h");
+        assert!(matches!(w.h.reservations.set_notes(&w.admin, id, "x", 1), Err(AppError::Conflict)));
+        assert!(matches!(w.h.reservations.set_notes(&w.admin, id, &"a".repeat(1001), 2), Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn recording_the_deposit_confirms_the_reservation_when_the_expected_amount_arrives() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-28"); // sinal esperado R$ 90,00
+
+        w.h.reservations.record_deposit(&w.admin, id, 4_000, 1).unwrap();
+        let partial = w.h.reservations.get(&w.admin, id).unwrap().reservation;
+        assert_eq!((partial.status.as_str(), partial.deposit_paid_cents), ("pending", 4_000));
+
+        w.h.reservations.record_deposit(&w.admin, id, 5_000, 2).unwrap();
+        let full = w.h.reservations.get(&w.admin, id).unwrap().reservation;
+        assert_eq!((full.status.as_str(), full.deposit_paid_cents), ("confirmed", 9_000));
+        assert!(!full.deposit_overdue);
+    }
+
+    #[test]
+    fn deposit_amounts_are_validated() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-28"); // total R$ 300,00
+
+        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 0, 1), Err(AppError::Validation(_))));
+        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, -100, 1), Err(AppError::Validation(_))));
+        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 30_001, 1), Err(AppError::Validation(_))));
+        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 1_000, 9), Err(AppError::Conflict)));
+        set_status(&w, id, "cancelled");
+        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 1_000, 1), Err(AppError::Validation(_))));
     }
 }

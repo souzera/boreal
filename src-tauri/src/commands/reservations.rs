@@ -4,7 +4,7 @@ use crate::app::App;
 use crate::error::AppError;
 use crate::models::page::Page;
 use crate::models::reservation::{
-    AvailabilityResult, CancellationOverride, CancellationPreview, CancellationResult, ChangePreview, ChangeRequest, CreatedReservation, NewReservation, Reservation, ReservationDetail,
+    AvailabilityResult, CancellationOverride, CancellationPreview, CancellationResult, ChangePreview, ChangeRequest, CreatedReservation, DiscountInput, NewReservation, Reservation, ReservationDetail,
     ReservationQuery, ReviewItem,
 };
 
@@ -103,4 +103,42 @@ pub fn mark_reservation_no_show(
 #[tauri::command]
 pub fn list_reservations_needing_review(app: State<'_, App>, token: String) -> Result<Vec<ReviewItem>, AppError> {
     app.state()?.reservations.list_needing_review(&token)
+}
+
+#[tauri::command]
+pub fn apply_reservation_discount(
+    app: State<'_, App>,
+    token: String,
+    id: i64,
+    input: DiscountInput,
+    expected_version: i64,
+) -> Result<(), AppError> {
+    app.state()?.reservations.apply_discount(&token, id, input, expected_version)
+}
+
+#[tauri::command]
+pub fn confirm_reservation(app: State<'_, App>, token: String, id: i64, expected_version: i64) -> Result<(), AppError> {
+    app.state()?.reservations.confirm(&token, id, expected_version)
+}
+
+#[tauri::command]
+pub fn record_reservation_deposit(
+    app: State<'_, App>,
+    token: String,
+    id: i64,
+    amount_cents: i64,
+    expected_version: i64,
+) -> Result<(), AppError> {
+    app.state()?.reservations.record_deposit(&token, id, amount_cents, expected_version)
+}
+
+#[tauri::command]
+pub fn set_reservation_notes(
+    app: State<'_, App>,
+    token: String,
+    id: i64,
+    notes: String,
+    expected_version: i64,
+) -> Result<(), AppError> {
+    app.state()?.reservations.set_notes(&token, id, &notes, expected_version)
 }

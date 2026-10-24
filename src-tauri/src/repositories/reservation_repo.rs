@@ -361,3 +361,53 @@ pub fn review_candidates(conn: &Connection, today: NaiveDate) -> Result<Vec<Rese
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
+
+fn expect_one(changed: usize) -> Result<(), AppError> {
+    if changed == 0 {
+        Err(AppError::Conflict)
+    } else {
+        Ok(())
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // espelha as colunas alteradas
+pub fn update_discount(
+    tx: &Transaction,
+    id: i64,
+    discount_cents: i64,
+    reason: &str,
+    applied_by: i64,
+    agreed_total_cents: i64,
+    deposit_expected_cents: i64,
+    expected_version: i64,
+    at: DateTime<Utc>,
+) -> Result<(), AppError> {
+    expect_one(tx.execute(
+        "UPDATE reservations SET discount_cents = ?1, discount_reason = ?2, discount_applied_by = ?3,
+                agreed_total_cents = ?4, deposit_expected_cents = ?5, version = version + 1, updated_at = ?6
+         WHERE id = ?7 AND version = ?8",
+        params![discount_cents, reason, applied_by, agreed_total_cents, deposit_expected_cents, stamp(at), id, expected_version],
+    )?)
+}
+
+pub fn update_payment_state(
+    tx: &Transaction,
+    id: i64,
+    deposit_paid_cents: i64,
+    status: &str,
+    expected_version: i64,
+    at: DateTime<Utc>,
+) -> Result<(), AppError> {
+    expect_one(tx.execute(
+        "UPDATE reservations SET deposit_paid_cents = ?1, status = ?2, version = version + 1, updated_at = ?3
+         WHERE id = ?4 AND version = ?5",
+        params![deposit_paid_cents, status, stamp(at), id, expected_version],
+    )?)
+}
+
+pub fn update_notes(tx: &Transaction, id: i64, notes: &str, expected_version: i64, at: DateTime<Utc>) -> Result<(), AppError> {
+    expect_one(tx.execute(
+        "UPDATE reservations SET notes = ?1, version = version + 1, updated_at = ?2 WHERE id = ?3 AND version = ?4",
+        params![notes, stamp(at), id, expected_version],
+    )?)
+}
