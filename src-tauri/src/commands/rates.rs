@@ -2,6 +2,7 @@ use tauri::State;
 
 use crate::app::App;
 use crate::error::AppError;
+use crate::domain::pricing::Quote;
 use crate::models::rate::{Holiday, NewRateRule, RateRule};
 
 #[tauri::command]
@@ -48,4 +49,15 @@ pub fn create_holiday(app: State<'_, App>, token: String, date: String, name: St
 #[tauri::command]
 pub fn delete_holiday(app: State<'_, App>, token: String, id: i64) -> Result<(), AppError> {
     app.state()?.rates.delete_holiday(&token, id)
+}
+
+#[tauri::command]
+pub fn quote_stay(
+    app: State<'_, App>,
+    token: String,
+    category_id: i64,
+    check_in: String,
+    check_out: String,
+) -> Result<Quote, AppError> {
+    app.state()?.rates.quote(&token, category_id, &check_in, &check_out)
 }

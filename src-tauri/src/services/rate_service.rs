@@ -4,10 +4,12 @@ use super::Ctx;
 use crate::audit::{self, AuditEntry};
 use crate::auth::permissions::Permission;
 use crate::auth::session::{require, SessionInfo};
+use crate::domain::pricing::{self, Quote, RuleInput, RuleKind};
 use crate::domain::dates;
 use crate::error::AppError;
 use crate::models::rate::{Holiday, NewRateRule, RateRule};
 use crate::repositories::{catalog_repo, rate_repo};
+use rusqlite::Connection;
 
 const MAX_AMOUNT_CENTS: i64 = 9_999_999; // R$ 99.999,99
 
@@ -104,6 +106,46 @@ fn conflict_message(rule_type: &str) -> &'static str {
     }
 }
 
+fn to_input(r: &RateRule) -> Option<RuleInput> {
+    let kind = match r.rule_type.as_str() {
+        "weekday" => RuleKind::Weekday,
+        "season" => RuleKind::Season,
+        "holiday" => RuleKind::Holiday,
+        "date_override" => RuleKind::DateOverride,
+        _ => return None,
+    };
+    Some(RuleInput {
+        kind,
+        weekday: r.weekday,
+        start: r.start_date.as_deref().and_then(dates::parse),
+        end: r.end_date.as_deref().and_then(dates::parse),
+        date: r.date.as_deref().and_then(dates::parse),
+        amount_cents: r.amount_cents,
+    })
+}
+
+/// Cotação da estadia pela tabela vigente da categoria. Usada pela cotação avulsa e pela
+/// criação/alteração de reservas (dentro da transação de gravação).
+pub(crate) fn quote_in(
+    conn: &Connection,
+    category_id: i64,
+    check_in: chrono::NaiveDate,
+    check_out: chrono::NaiveDate,
+) -> Result<Quote, AppError> {
+    if catalog_repo::find_category(conn, category_id)?.is_none() {
+        return Err(invalid("Escolha a categoria do quarto."));
+    }
+    let rules: Vec<RuleInput> = rate_repo::active_rules(conn, category_id)?
+        .iter()
+        .filter_map(to_input)
+        .collect();
+    let holidays: Vec<chrono::NaiveDate> = rate_repo::list_holidays(conn, None)?
+        .iter()
+        .filter_map(|h| dates::parse(&h.date))
+        .collect();
+    pricing::price_stay(&rules, &holidays, check_in, check_out)
+}
+
 #[derive(Clone)]
 pub struct RateService {
     ctx: Ctx,
@@ -149,6 +191,15 @@ impl RateService {
                 justification: None,
             },
         )
+    }
+
+    /// Simula o preço de uma estadia (qualquer usuário). Datas sem tarifa vêm em `missing_dates`.
+    pub fn quote(&self, token: &str, category_id: i64, check_in: &str, check_out: &str) -> Result<Quote, AppError> {
+        self.read(token)?;
+        let check_in = dates::parse(check_in).ok_or_else(|| invalid("Data de entrada inválida."))?;
+        let check_out = dates::parse(check_out).ok_or_else(|| invalid("Data de saída inválida."))?;
+        let conn = self.ctx.conn()?;
+        quote_in(&conn, category_id, check_in, check_out)
     }
 
     pub fn list_rules(&self, token: &str, category_id: Option<i64>) -> Result<Vec<RateRule>, AppError> {
@@ -506,5 +557,66 @@ mod tests {
         for op in ["create_rate_rule", "update_rate_rule", "set_rate_rule_active", "delete_rate_rule", "create_holiday"] {
             assert_eq!(audit_count(&h, op), 1, "{op}");
         }
+    }
+
+    fn all_weekdays(cat: i64, cents: i64) -> Vec<NewRateRule> {
+        (0..7).map(|day| weekday(cat, day, cents)).collect()
+    }
+
+    #[test]
+    fn quote_uses_only_the_rules_of_the_category() {
+        let (h, admin, cat) = setup();
+        let luxo = h
+            .catalog
+            .create_category(&admin, NewCategory { name: "Luxo".into(), description: String::new() })
+            .unwrap();
+        for r in all_weekdays(cat, 10_000).into_iter().chain(all_weekdays(luxo, 20_000)) {
+            h.rates.create_rule(&admin, r).unwrap();
+        }
+
+        let standard = h.rates.quote(&admin, cat, "2026-10-26", "2026-10-28").unwrap();
+        let deluxe = h.rates.quote(&admin, luxo, "2026-10-26", "2026-10-28").unwrap();
+
+        assert_eq!((standard.total_cents, deluxe.total_cents), (20_000, 40_000));
+    }
+
+    #[test]
+    fn quote_applies_the_holiday_calendar_and_ignores_inactive_rules() {
+        let (h, admin, cat) = setup();
+        for r in all_weekdays(cat, 10_000) {
+            h.rates.create_rule(&admin, r).unwrap();
+        }
+        h.rates.create_rule(&admin, holiday_rate(cat, 30_000)).unwrap();
+        let promo = h.rates.create_rule(&admin, override_on(cat, "2026-11-03", 50_000)).unwrap();
+        h.rates.create_holiday(&admin, "2026-11-02", "Finados").unwrap();
+        h.rates.set_rule_active(&admin, promo, false).unwrap();
+
+        let q = h.rates.quote(&admin, cat, "2026-11-01", "2026-11-04").unwrap();
+
+        let amounts: Vec<_> = q.nights.iter().map(|n| n.amount_cents).collect();
+        assert_eq!(amounts, [10_000, 30_000, 10_000]);
+    }
+
+    #[test]
+    fn quote_reports_missing_dates_and_validates_input() {
+        let (h, admin, cat) = setup();
+        h.rates.create_rule(&admin, weekday(cat, 1, 10_000)).unwrap();
+
+        let q = h.rates.quote(&admin, cat, "2026-10-26", "2026-10-28").unwrap();
+        assert_eq!(q.missing_dates, ["2026-10-27"]);
+        assert!(matches!(h.rates.quote(&admin, cat, "26/10/2026", "2026-10-28"), Err(AppError::Validation(_))));
+        assert!(matches!(h.rates.quote(&admin, cat, "2026-10-28", "2026-10-26"), Err(AppError::Validation(_))));
+        assert!(matches!(h.rates.quote(&admin, 999, "2026-10-26", "2026-10-28"), Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn quote_is_available_to_recepcao() {
+        let (h, admin, cat) = setup();
+        for r in all_weekdays(cat, 10_000) {
+            h.rates.create_rule(&admin, r).unwrap();
+        }
+        let rec = recepcao_token(&h, &admin);
+
+        assert_eq!(h.rates.quote(&rec, cat, "2026-10-26", "2026-10-27").unwrap().total_cents, 10_000);
     }
 }
