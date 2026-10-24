@@ -32,6 +32,36 @@ pub struct WalkInInput {
     pub exceed_capacity: bool,
 }
 
+/// Consumo ou despesa extra. Com `item_id`, descrição e valor vazios/zerados vêm do catálogo.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChargeInput {
+    /// `consumption` ou `extra`.
+    pub kind: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub amount_cents: i64,
+    pub item_id: Option<i64>,
+}
+
+/// Ajuste manual da conta (positivo cobra, negativo abate); exige permissão e justificativa.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdjustmentInput {
+    pub description: String,
+    pub amount_cents: i64,
+    pub justification: String,
+}
+
+/// Recebimento provisório (Marco 3): uma modalidade, sem divisão. O Marco 5 o substitui.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PaymentInput {
+    pub amount_cents: i64,
+    /// `cash`, `pix`, `debit`, `credit` ou `transfer`.
+    pub method: String,
+    #[serde(default)]
+    pub note: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Occupant {
     pub id: i64,

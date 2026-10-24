@@ -14,10 +14,12 @@ use crate::domain::stay::can_check_in;
 use crate::error::AppError;
 use crate::models::page::{clamp_paging, Page};
 use crate::models::reservation::{ConflictInfo, Reservation};
-use crate::models::stay::{CheckInInput, OccupantInput, StayDetail, StayQuery, StaySummary, WalkInInput};
+use crate::models::stay::{
+    AdjustmentInput, ChargeInput, CheckInInput, OccupantInput, PaymentInput, Stay, StayDetail, StayQuery, StaySummary, WalkInInput,
+};
 use crate::repositories::stay_repo::{self, NewCharge};
 use crate::repositories::reservation_repo::NewRow;
-use crate::repositories::{catalog_repo, guest_repo, reservation_repo, sequence_repo, settings_repo};
+use crate::repositories::{catalog_repo, guest_repo, item_repo, reservation_repo, sequence_repo, settings_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -30,6 +32,27 @@ pub(crate) struct CleanOccupant {
 }
 
 const MAX_OCCUPANTS: usize = 20;
+/// Teto de um lançamento ou recebimento (R$ 1.000.000,00): barra erros de digitação e estouros.
+const MAX_ENTRY_CENTS: i64 = 100_000_000;
+const PAYMENT_METHODS: [&str; 5] = ["cash", "pix", "debit", "credit", "transfer"];
+
+fn clean_text(value: &str, max: usize, what: &str) -> Result<String, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(invalid(format!("Informe {what}.")));
+    }
+    if value.chars().count() > max {
+        return Err(invalid(format!("{what}: no máximo {max} caracteres.")));
+    }
+    Ok(value.to_string())
+}
+
+struct ResolvedCharge {
+    kind: &'static str,
+    description: String,
+    amount_cents: i64,
+    item_id: Option<i64>,
+}
 
 pub(crate) fn clean_occupants(list: &[OccupantInput]) -> Result<Vec<CleanOccupant>, AppError> {
     if list.is_empty() {
@@ -351,6 +374,241 @@ impl StayService {
         Ok(stay_id)
     }
 
+    /// Hospedagem que ainda aceita lançamentos.
+    fn open_row(tx: &Transaction, stay_id: i64) -> Result<Stay, AppError> {
+        let stay = stay_repo::find(tx, stay_id)?.ok_or_else(|| invalid("Hospedagem não encontrada."))?;
+        if stay.status != "in_house" {
+            return Err(invalid("A hospedagem já foi encerrada. Não é possível mudar a conta."));
+        }
+        Ok(stay)
+    }
+
+    fn resolve_charge(tx: &Transaction, input: &ChargeInput) -> Result<ResolvedCharge, AppError> {
+        let kind = match input.kind.as_str() {
+            "consumption" => "consumption",
+            "extra" => "extra",
+            _ => return Err(invalid("Escolha se é consumo ou despesa extra.")),
+        };
+        let item = match input.item_id {
+            Some(id) => {
+                let item = item_repo::find(tx, id)?.ok_or_else(|| invalid("Item não encontrado."))?;
+                if !item.active {
+                    return Err(invalid("O item escolhido está desativado."));
+                }
+                Some(item)
+            }
+            None => None,
+        };
+        let description = match (&item, input.description.trim().is_empty()) {
+            (Some(item), true) => item.name.clone(),
+            _ => clean_text(&input.description, 200, "a descrição")?,
+        };
+        let amount_cents = match (&item, input.amount_cents) {
+            (Some(item), 0) => item.default_price_cents,
+            (_, cents) => cents,
+        };
+        if !(1..=MAX_ENTRY_CENTS).contains(&amount_cents) {
+            return Err(invalid("Informe um valor maior que zero e de até R$ 1.000.000,00."));
+        }
+        Ok(ResolvedCharge { kind, description, amount_cents, item_id: input.item_id })
+    }
+
+    fn insert_resolved(
+        tx: &Transaction,
+        actor: &SessionInfo,
+        stay_id: i64,
+        charge: &ResolvedCharge,
+        replaces: Option<i64>,
+        at: DateTime<Utc>,
+    ) -> Result<i64, AppError> {
+        stay_repo::insert_charge(
+            tx,
+            &NewCharge {
+                stay_id,
+                kind: charge.kind,
+                description: &charge.description,
+                amount_cents: charge.amount_cents,
+                item_id: charge.item_id,
+                night_date: None,
+                reverses_charge_id: None,
+                replaces_charge_id: replaces,
+                justification: None,
+                created_by: actor.user_id,
+            },
+            at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)] // cada chamada descreve um evento de auditoria completo
+    fn audit_ledger(
+        &self,
+        tx: &Transaction,
+        actor: &SessionInfo,
+        operation: &'static str,
+        stay_id: i64,
+        before_balance: i64,
+        detail: serde_json::Value,
+        justification: Option<String>,
+        at: DateTime<Utc>,
+    ) -> Result<(), AppError> {
+        audit::record(
+            tx,
+            &AuditEntry {
+                at,
+                user_id: Some(actor.user_id),
+                module: "stays",
+                operation,
+                entity: "stay",
+                entity_id: Some(stay_id),
+                before: Some(json!({ "balance_cents": before_balance })),
+                after: Some(json!({ "balance_cents": stay_repo::balance(tx, stay_id)?, "entry": detail })),
+                justification,
+            },
+        )
+    }
+
+    /// Lança consumo ou despesa extra, avulso ou do catálogo (spec §6.2, §10.1).
+    pub fn add_charge(&self, token: &str, stay_id: i64, input: ChargeInput) -> Result<i64, AppError> {
+        let actor = self.touch(token)?;
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        Self::open_row(&tx, stay_id)?;
+        let charge = Self::resolve_charge(&tx, &input)?;
+        let before = stay_repo::balance(&tx, stay_id)?;
+        let at = self.ctx.utc.now_utc();
+        let id = Self::insert_resolved(&tx, &actor, stay_id, &charge, None, at)?;
+        stay_repo::bump(&tx, stay_id, at)?;
+        let detail = json!({ "charge_id": id, "kind": charge.kind, "description": charge.description, "amount_cents": charge.amount_cents });
+        self.audit_ledger(&tx, &actor, "add_charge", stay_id, before, detail, None, at)?;
+        tx.commit()?;
+        Ok(id)
+    }
+
+    /// Ajuste manual da conta; exige `ApplyDiscount` e justificativa (spec §5).
+    pub fn add_adjustment(&self, token: &str, stay_id: i64, input: AdjustmentInput) -> Result<i64, AppError> {
+        let actor = self.touch(token)?;
+        require(&actor, Permission::ApplyDiscount)?;
+        let description = clean_text(&input.description, 200, "a descrição")?;
+        let justification = clean_text(&input.justification, 500, "a justificativa")?;
+        if input.amount_cents == 0 || input.amount_cents.abs() > MAX_ENTRY_CENTS {
+            return Err(invalid("Informe um valor diferente de zero e de até R$ 1.000.000,00."));
+        }
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        Self::open_row(&tx, stay_id)?;
+        let before = stay_repo::balance(&tx, stay_id)?;
+        let at = self.ctx.utc.now_utc();
+        let id = stay_repo::insert_charge(
+            &tx,
+            &NewCharge {
+                stay_id,
+                kind: "adjustment",
+                description: &description,
+                amount_cents: input.amount_cents,
+                item_id: None,
+                night_date: None,
+                reverses_charge_id: None,
+                replaces_charge_id: None,
+                justification: Some(&justification),
+                created_by: actor.user_id,
+            },
+            at,
+        )?;
+        stay_repo::bump(&tx, stay_id, at)?;
+        let detail = json!({ "charge_id": id, "description": description, "amount_cents": input.amount_cents });
+        self.audit_ledger(&tx, &actor, "add_adjustment", stay_id, before, detail, Some(justification), at)?;
+        tx.commit()?;
+        Ok(id)
+    }
+
+    /// Estorna um lançamento (o original permanece) e, se houver, grava o novo no lugar, tudo na mesma transação.
+    pub fn reverse_charge(
+        &self,
+        token: &str,
+        stay_id: i64,
+        charge_id: i64,
+        justification: String,
+        replacement: Option<ChargeInput>,
+    ) -> Result<(), AppError> {
+        let actor = self.touch(token)?;
+        require(&actor, Permission::ReverseEntry)?;
+        let justification = clean_text(&justification, 500, "a justificativa do estorno")?;
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        Self::open_row(&tx, stay_id)?;
+        let (kind, description, amount) =
+            stay_repo::find_charge(&tx, stay_id, charge_id)?.ok_or_else(|| invalid("Lançamento não encontrado nesta hospedagem."))?;
+        if kind == "reversal" {
+            return Err(invalid("Um estorno não pode ser estornado. Lance novamente o valor correto."));
+        }
+        if stay_repo::is_reversed(&tx, charge_id)? {
+            return Err(invalid("Este lançamento já foi estornado."));
+        }
+        let replacement = replacement.as_ref().map(|r| Self::resolve_charge(&tx, r)).transpose()?;
+        let before = stay_repo::balance(&tx, stay_id)?;
+        let at = self.ctx.utc.now_utc();
+        let reversal_description = format!("Estorno de: {description}");
+        let reversal_id = stay_repo::insert_charge(
+            &tx,
+            &NewCharge {
+                stay_id,
+                kind: "reversal",
+                description: &reversal_description,
+                amount_cents: -amount,
+                item_id: None,
+                night_date: None,
+                reverses_charge_id: Some(charge_id),
+                replaces_charge_id: None,
+                justification: Some(&justification),
+                created_by: actor.user_id,
+            },
+            at,
+        )
+        .map_err(|e| match e {
+            AppError::Database(msg) if msg.contains("UNIQUE") => invalid("Este lançamento já foi estornado."),
+            other => other,
+        })?;
+        let relaunched = match &replacement {
+            Some(charge) => Some(Self::insert_resolved(&tx, &actor, stay_id, charge, Some(charge_id), at)?),
+            None => None,
+        };
+        stay_repo::bump(&tx, stay_id, at)?;
+        let detail = json!({
+            "reversed_charge_id": charge_id, "reversal_id": reversal_id, "reversed_amount_cents": amount,
+            "relaunched_charge_id": relaunched, "relaunched_amount_cents": replacement.as_ref().map(|r| r.amount_cents)
+        });
+        self.audit_ledger(&tx, &actor, "reverse_charge", stay_id, before, detail, Some(justification), at)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Recebimento provisório com uma modalidade (o módulo financeiro do Marco 5 o substitui).
+    pub fn record_payment(&self, token: &str, stay_id: i64, input: PaymentInput) -> Result<i64, AppError> {
+        let actor = self.touch(token)?;
+        if !PAYMENT_METHODS.contains(&input.method.as_str()) {
+            return Err(invalid("Escolha a forma de pagamento."));
+        }
+        if !(1..=MAX_ENTRY_CENTS).contains(&input.amount_cents) {
+            return Err(invalid("Informe um valor maior que zero e de até R$ 1.000.000,00."));
+        }
+        let note = input.note.trim();
+        if note.chars().count() > 200 {
+            return Err(invalid("Observação: no máximo 200 caracteres."));
+        }
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        let stay = Self::open_row(&tx, stay_id)?;
+        let before = stay_repo::balance(&tx, stay_id)?;
+        let at = self.ctx.utc.now_utc();
+        let code = sequence_repo::format_code("PAG", sequence_repo::next(&tx, "payment")?);
+        let id = stay_repo::insert_payment(&tx, &code, stay.reservation_id, stay_id, input.amount_cents, &input.method, actor.user_id, note, at)?;
+        stay_repo::bump(&tx, stay_id, at)?;
+        let detail = json!({ "payment_id": id, "code": code, "method": input.method, "amount_cents": input.amount_cents });
+        self.audit_ledger(&tx, &actor, "record_payment", stay_id, before, detail, None, at)?;
+        tx.commit()?;
+        Ok(id)
+    }
+
     pub fn get(&self, token: &str, id: i64) -> Result<StayDetail, AppError> {
         self.touch(token)?;
         let conn = self.ctx.conn()?;
@@ -385,7 +643,7 @@ mod tests {
 
     use crate::auth::permissions::Permission;
     use crate::error::AppError;
-    use crate::models::stay::{CheckInInput, OccupantInput, StayQuery, WalkInInput};
+    use crate::models::stay::{AdjustmentInput, ChargeInput, CheckInInput, OccupantInput, PaymentInput, StayQuery, WalkInInput};
     use crate::services::test_support::{admin_token, book, harness, recepcao_token, seed, Harness, Seed};
 
     // "Hoje" nos testes é 21/10/2026, 09:00 local (12:00Z; fuso -03:00).
@@ -758,5 +1016,237 @@ mod tests {
 
         let code = w.h.reservations.get(&w.admin, reservation).unwrap().reservation.code;
         assert_eq!(code, "RES-000001");
+    }
+
+    // ---- conta da hospedagem ----
+
+    /// Reserva 21→23/10, desconto R$ 40,00, sinal R$ 120,00 e check-in às 14:00: saldo inicial R$ 240,00.
+    fn stay_with_balance(w: &World) -> (i64, i64) {
+        let reservation = book(&w.h, &w.admin, &w.seed, "2026-10-21", "2026-10-23");
+        let v = version(w, reservation);
+        w.h.reservations
+            .apply_discount(
+                &w.admin,
+                reservation,
+                crate::models::reservation::DiscountInput {
+                    kind: "amount".into(),
+                    amount_cents: Some(4_000),
+                    percent_bp: None,
+                    justification: "Cliente antigo".into(),
+                },
+                v,
+            )
+            .unwrap();
+        let v = version(w, reservation);
+        w.h.reservations.record_deposit(&w.admin, reservation, 12_000, v).unwrap();
+        set_now(w, "2026-10-21T17:00:00Z");
+        let stay = w.h.stays.check_in(&w.admin, input(w, reservation, vec![holder(w)])).unwrap();
+        (reservation, stay)
+    }
+
+    fn consumption(description: &str, cents: i64) -> ChargeInput {
+        ChargeInput { kind: "consumption".into(), description: description.into(), amount_cents: cents, item_id: None }
+    }
+
+    fn balance(w: &World, stay: i64) -> i64 {
+        w.h.stays.get(&w.admin, stay).unwrap().account.balance_cents
+    }
+
+    fn last_charge_id(w: &World) -> i64 {
+        w.h.db.lock().unwrap().query_row("SELECT max(id) FROM charges", [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn add_charge_increases_balance_and_item_fills_defaults() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        w.h.stays.add_charge(&w.admin, stay, consumption("Água", 3_500)).unwrap();
+        assert_eq!(balance(&w, stay), 27_500);
+
+        let item = w.h.items.create(&w.admin, crate::models::item::NewItem { name: "Água mineral".into(), default_price_cents: 600 }).unwrap();
+        w.h.stays
+            .add_charge(&w.admin, stay, ChargeInput { kind: "extra".into(), description: String::new(), amount_cents: 0, item_id: Some(item) })
+            .unwrap();
+
+        let account = w.h.stays.get(&w.admin, stay).unwrap().account;
+        let last = account.charges.last().unwrap();
+        assert_eq!((last.kind.as_str(), last.description.as_str(), last.amount_cents), ("extra", "Água mineral", 600));
+        assert_eq!(account.balance_cents, 28_100);
+    }
+
+    #[test]
+    fn reverse_and_relaunch_preserves_original() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        w.h.stays.add_charge(&w.admin, stay, consumption("Água", 3_500)).unwrap();
+        let original = last_charge_id(&w);
+
+        w.h.stays
+            .reverse_charge(&w.admin, stay, original, "Valor errado".into(), Some(consumption("Água", 3_000)))
+            .unwrap();
+
+        let account = w.h.stays.get(&w.admin, stay).unwrap().account;
+        let tail: Vec<_> = account.charges.iter().rev().take(3).rev().map(|c| (c.kind.as_str(), c.amount_cents, c.reversed)).collect();
+        assert_eq!(tail, [("consumption", 3_500, true), ("reversal", -3_500, false), ("consumption", 3_000, false)]);
+        assert_eq!(account.balance_cents, 27_000);
+    }
+
+    #[test]
+    fn reverse_twice_or_reverse_a_reversal_is_refused() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        w.h.stays.add_charge(&w.admin, stay, consumption("Água", 3_500)).unwrap();
+        let original = last_charge_id(&w);
+        w.h.stays.reverse_charge(&w.admin, stay, original, "Engano".into(), None).unwrap();
+        let reversal = last_charge_id(&w);
+        let (charges, balance_after) = (count(&w, "charges"), balance(&w, stay));
+
+        let again = w.h.stays.reverse_charge(&w.admin, stay, original, "Engano".into(), None);
+        let of_reversal = w.h.stays.reverse_charge(&w.admin, stay, reversal, "Engano".into(), None);
+
+        assert!(matches!(again, Err(AppError::Validation(_))), "{again:?}");
+        assert!(matches!(of_reversal, Err(AppError::Validation(_))), "{of_reversal:?}");
+        assert_eq!((count(&w, "charges"), balance(&w, stay)), (charges, balance_after));
+    }
+
+    #[test]
+    fn reverse_requires_reverse_entry_and_justification() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        w.h.stays.add_charge(&w.admin, stay, consumption("Água", 3_500)).unwrap();
+        let original = last_charge_id(&w);
+        let rec = login_with(&w, &[]);
+
+        assert!(matches!(w.h.stays.reverse_charge(&rec, stay, original, "Engano".into(), None), Err(AppError::Forbidden)));
+        assert!(matches!(w.h.stays.reverse_charge(&w.admin, stay, original, "   ".into(), None), Err(AppError::Validation(_))));
+        let rec = login_with(&w, &[Permission::ReverseEntry]);
+        assert!(w.h.stays.reverse_charge(&rec, stay, original, "Engano".into(), None).is_ok());
+    }
+
+    #[test]
+    fn adjustment_requires_apply_discount() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        let rec = login_with(&w, &[]);
+        let adjust = |cents: i64| AdjustmentInput { description: "Cortesia".into(), amount_cents: cents, justification: "Atraso no quarto".into() };
+
+        assert!(matches!(w.h.stays.add_adjustment(&rec, stay, adjust(-1_000)), Err(AppError::Forbidden)));
+        assert!(matches!(w.h.stays.add_adjustment(&w.admin, stay, adjust(0)), Err(AppError::Validation(_))));
+        w.h.stays.add_adjustment(&w.admin, stay, adjust(-1_000)).unwrap();
+
+        assert_eq!(balance(&w, stay), 23_000);
+    }
+
+    #[test]
+    fn invalid_amounts_and_descriptions_write_nothing() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        let item = w.h.items.create(&w.admin, crate::models::item::NewItem { name: "Lavanderia".into(), default_price_cents: 2_500 }).unwrap();
+        let version = w.h.items.list(&w.admin, false).unwrap()[0].version;
+        w.h.items.set_active(&w.admin, item, false, version).unwrap();
+        let (charges, audit) = (count(&w, "charges"), count(&w, "audit_log"));
+
+        let bad = [
+            consumption("Água", 0),
+            consumption("Água", -1),
+            consumption("Água", i64::MAX),
+            consumption("   ", 500),
+            ChargeInput { kind: "night".into(), description: "x".into(), amount_cents: 500, item_id: None },
+            ChargeInput { kind: "extra".into(), description: "x".into(), amount_cents: 500, item_id: Some(9_999) },
+            ChargeInput { kind: "extra".into(), description: String::new(), amount_cents: 0, item_id: Some(item) },
+        ];
+        for charge in bad {
+            let result = w.h.stays.add_charge(&w.admin, stay, charge.clone());
+            assert!(matches!(result, Err(AppError::Validation(_))), "{charge:?}: {result:?}");
+        }
+
+        assert_eq!((count(&w, "charges"), count(&w, "audit_log")), (charges, audit));
+    }
+
+    #[test]
+    fn record_payment_reduces_balance_and_validates() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        let pay = |cents: i64, method: &str| PaymentInput { amount_cents: cents, method: method.into(), note: String::new() };
+
+        w.h.stays.record_payment(&w.admin, stay, pay(10_000, "pix")).unwrap();
+
+        assert_eq!(balance(&w, stay), 14_000);
+        for bad in [pay(0, "pix"), pay(-5, "pix"), pay(100, "prior_deposit"), pay(100, "cheque"), pay(i64::MAX, "cash")] {
+            assert!(matches!(w.h.stays.record_payment(&w.admin, stay, bad), Err(AppError::Validation(_))));
+        }
+        assert_eq!(balance(&w, stay), 14_000);
+        let account = w.h.stays.get(&w.admin, stay).unwrap().account;
+        assert_eq!(account.payments.last().unwrap().code, "PAG-000002");
+    }
+
+    #[test]
+    fn closed_stay_rejects_new_entries() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        w.h.stays.add_charge(&w.admin, stay, consumption("Água", 3_500)).unwrap();
+        let original = last_charge_id(&w);
+        w.h.db.lock().unwrap().execute("UPDATE stays SET status = 'checked_out'", []).unwrap();
+
+        assert!(w.h.stays.add_charge(&w.admin, stay, consumption("Café", 500)).is_err());
+        assert!(w.h.stays.reverse_charge(&w.admin, stay, original, "Engano".into(), None).is_err());
+        assert!(w.h.stays.record_payment(&w.admin, stay, PaymentInput { amount_cents: 100, method: "cash".into(), note: String::new() }).is_err());
+        assert!(w.h.stays.get(&w.admin, stay).is_ok());
+    }
+
+    #[test]
+    fn balance_equals_sum_of_ledger_after_mixed_operations() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        w.h.stays.add_charge(&w.admin, stay, consumption("Água", 3_500)).unwrap();
+        let first = last_charge_id(&w);
+        w.h.stays.add_charge(&w.admin, stay, consumption("Jantar", 8_000)).unwrap();
+        w.h.stays.record_payment(&w.admin, stay, PaymentInput { amount_cents: 5_000, method: "cash".into(), note: String::new() }).unwrap();
+        w.h.stays.reverse_charge(&w.admin, stay, first, "Engano".into(), Some(consumption("Água", 3_000))).unwrap();
+        w.h.stays
+            .add_adjustment(&w.admin, stay, AdjustmentInput { description: "Cortesia".into(), amount_cents: -500, justification: "Cortesia da casa".into() })
+            .unwrap();
+        w.h.stays.record_payment(&w.admin, stay, PaymentInput { amount_cents: 7_000, method: "debit".into(), note: "Maquininha".into() }).unwrap();
+        w.h.stays.add_charge(&w.admin, stay, consumption("Lavanderia", 2_500)).unwrap();
+        let last = last_charge_id(&w);
+        w.h.stays.reverse_charge(&w.admin, stay, last, "Não foi feita".into(), None).unwrap();
+
+        let from_sql: i64 = w
+            .h
+            .db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT (SELECT SUM(amount_cents) FROM charges) - (SELECT SUM(amount_cents) FROM payments) + (SELECT COALESCE(SUM(amount_cents), 0) FROM refunds)",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(balance(&w, stay), from_sql);
+        assert_eq!(from_sql, 24_000 + 3_000 + 8_000 - 500 - 5_000 - 7_000);
+    }
+
+    #[test]
+    fn every_ledger_operation_is_audited() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        w.h.stays.add_charge(&w.admin, stay, consumption("Água", 3_500)).unwrap();
+        let original = last_charge_id(&w);
+        w.h.stays.record_payment(&w.admin, stay, PaymentInput { amount_cents: 1_000, method: "pix".into(), note: String::new() }).unwrap();
+        w.h.stays
+            .add_adjustment(&w.admin, stay, AdjustmentInput { description: "Cortesia".into(), amount_cents: -100, justification: "Cortesia".into() })
+            .unwrap();
+        w.h.stays.reverse_charge(&w.admin, stay, original, "Engano".into(), None).unwrap();
+
+        let operations: Vec<String> = {
+            let conn = w.h.db.lock().unwrap();
+            let mut stmt = conn
+                .prepare("SELECT operation FROM audit_log WHERE module = 'stays' AND operation <> 'check_in' ORDER BY id")
+                .unwrap();
+            stmt.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect()
+        };
+
+        assert_eq!(operations, ["add_charge", "record_payment", "add_adjustment", "reverse_charge"]);
     }
 }

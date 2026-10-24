@@ -150,18 +150,24 @@ pub fn insert_payment(
     Ok(tx.last_insert_rowid())
 }
 
-pub fn find_charge(conn: &Connection, stay_id: i64, charge_id: i64) -> Result<Option<(String, i64)>, AppError> {
+pub fn find_charge(conn: &Connection, stay_id: i64, charge_id: i64) -> Result<Option<(String, String, i64)>, AppError> {
     Ok(conn
         .query_row(
-            "SELECT kind, amount_cents FROM charges WHERE id = ?1 AND stay_id = ?2",
+            "SELECT kind, description, amount_cents FROM charges WHERE id = ?1 AND stay_id = ?2",
             params![charge_id, stay_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()?)
 }
 
 pub fn is_reversed(conn: &Connection, charge_id: i64) -> Result<bool, AppError> {
     Ok(conn.query_row("SELECT EXISTS(SELECT 1 FROM charges WHERE reverses_charge_id = ?1)", [charge_id], |r| r.get::<_, i64>(0))? == 1)
+}
+
+/// Marca que a conta mudou (quem tinha uma prévia de check-out precisa recarregar).
+pub fn bump(tx: &Transaction, stay_id: i64, at: DateTime<Utc>) -> Result<(), AppError> {
+    tx.execute("UPDATE stays SET version = version + 1, updated_at = ?1 WHERE id = ?2", params![stamp(at), stay_id])?;
+    Ok(())
 }
 
 pub fn touch(tx: &Transaction, stay_id: i64, expected_version: i64, at: DateTime<Utc>) -> Result<(), AppError> {

@@ -99,6 +99,10 @@ pub fn run() {
             commands::room_map::room_map,
             commands::stays::check_in_reservation,
             commands::stays::walk_in,
+            commands::stays::add_stay_charge,
+            commands::stays::add_stay_adjustment,
+            commands::stays::reverse_stay_charge,
+            commands::stays::record_stay_payment,
             commands::stays::get_stay,
             commands::stays::list_stays,
         ])
