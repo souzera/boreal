@@ -74,18 +74,22 @@ pub struct NewRow<'a> {
     pub deposit_due_date: &'a str,
     pub notes: &'a str,
     pub created_by: i64,
+    /// `pending` (reserva) ou `checked_in` (hospedagem sem reserva).
+    pub status: &'a str,
+    /// `booking` ou `walk_in`.
+    pub origin: &'a str,
 }
 
 pub fn insert(tx: &Transaction, r: &NewRow, at: DateTime<Utc>) -> Result<i64, AppError> {
     tx.execute(
         "INSERT INTO reservations (code, room_id, guest_id, check_in_date, check_out_date, expected_check_in_time,
             expected_check_out_time, occupants, status, list_total_cents, agreed_total_cents, deposit_expected_cents,
-            deposit_due_date, notes, created_by, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending', ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
+            deposit_due_date, notes, created_by, created_at, updated_at, origin)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?16, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15, ?17)",
         params![
             r.code, r.room_id, r.guest_id, r.check_in, r.check_out, r.in_time, r.out_time, r.occupants,
             r.list_total_cents, r.agreed_total_cents, r.deposit_expected_cents, r.deposit_due_date, r.notes,
-            r.created_by, stamp(at)
+            r.created_by, stamp(at), r.status, r.origin
         ],
     )?;
     Ok(tx.last_insert_rowid())

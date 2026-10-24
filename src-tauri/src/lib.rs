@@ -98,6 +98,7 @@ pub fn run() {
             commands::reservations::set_reservation_notes,
             commands::room_map::room_map,
             commands::stays::check_in_reservation,
+            commands::stays::walk_in,
             commands::stays::get_stay,
             commands::stays::list_stays,
         ])

@@ -1,20 +1,23 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use rusqlite::Transaction;
 use serde_json::json;
 
-use super::reservation_service::{br, conflict_message, parse_date, parse_time};
+use super::rate_service::quote_in;
+use super::reservation_service::{br, conflict_message, parse_date, parse_time, resolve_times};
 use super::Ctx;
 use crate::audit::{self, AuditEntry};
 use crate::auth::permissions::Permission;
 use crate::auth::session::{require, SessionInfo};
 use crate::domain::availability::find_conflicts;
+use crate::domain::dates;
 use crate::domain::stay::can_check_in;
 use crate::error::AppError;
 use crate::models::page::{clamp_paging, Page};
 use crate::models::reservation::{ConflictInfo, Reservation};
-use crate::models::stay::{CheckInInput, OccupantInput, StayDetail, StayQuery, StaySummary};
+use crate::models::stay::{CheckInInput, OccupantInput, StayDetail, StayQuery, StaySummary, WalkInInput};
 use crate::repositories::stay_repo::{self, NewCharge};
-use crate::repositories::{catalog_repo, reservation_repo, sequence_repo, settings_repo};
+use crate::repositories::reservation_repo::NewRow;
+use crate::repositories::{catalog_repo, guest_repo, reservation_repo, sequence_repo, settings_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -231,6 +234,123 @@ impl StayService {
         Ok(stay_id)
     }
 
+    /// Hospedagem sem reserva (spec §4.4): mesmas verificações do check-in, com preço pela tabela de tarifas.
+    /// Cria também a linha de `reservations` (origem `walk_in`), para o quarto continuar tendo uma só fonte de ocupação.
+    pub fn walk_in(&self, token: &str, input: WalkInInput) -> Result<i64, AppError> {
+        let actor = self.touch(token)?;
+        let occupants = clean_occupants(&input.occupants)?;
+        let today = self.ctx.today();
+        let check_out = parse_date(&input.check_out_date, "Data de saída")?;
+        if check_out <= today {
+            return Err(invalid("A saída deve ser depois de hoje."));
+        }
+
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        let settings = settings_repo::load(&tx)?;
+        let (_, out_time) = resolve_times(
+            None,
+            input.expected_check_out_time.as_deref(),
+            &settings.default_check_in_time,
+            &settings.default_check_out_time,
+        )?;
+        let now = self.ctx.local_now();
+        let in_time = now.time().with_second(0).and_then(|t| t.with_nanosecond(0)).unwrap_or_else(|| now.time());
+
+        let room = catalog_repo::find_room(&tx, input.room_id)?.ok_or_else(|| invalid("Quarto não encontrado."))?;
+        if !room.active {
+            return Err(invalid("O quarto está desativado e não pode receber hóspedes."));
+        }
+        let guest = guest_repo::find(&tx, input.guest_id)?.ok_or_else(|| invalid("Hóspede não encontrado."))?;
+        if !guest.active {
+            return Err(invalid("O cadastro do hóspede está desativado."));
+        }
+        if !occupants.iter().any(|o| o.guest_id == Some(guest.id)) {
+            return Err(invalid("Inclua o titular entre os ocupantes."));
+        }
+        let exceeded = occupants.len() as i64 > room.max_capacity;
+        if exceeded {
+            if !input.exceed_capacity {
+                return Err(invalid(format!(
+                    "O quarto {} comporta {} pessoa(s). Reduza os ocupantes ou peça autorização para exceder a capacidade.",
+                    room.code, room.max_capacity
+                )));
+            }
+            require(&actor, Permission::ExceedCapacity)?;
+        }
+
+        let quote = quote_in(&tx, room.category_id, today, check_out)?;
+        if !quote.missing_dates.is_empty() {
+            let missing = quote.missing_dates.iter().map(|d| br(d)).collect::<Vec<_>>().join(", ");
+            return Err(invalid(format!(
+                "Não há tarifa cadastrada para: {missing}. Cadastre as tarifas antes de hospedar nessas datas."
+            )));
+        }
+
+        let existing = reservation_repo::blocking(&tx, room.id, today, check_out)?;
+        let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
+        let clashes = find_conflicts(&bookings, today, in_time, check_out, out_time, settings.cleaning_interval_minutes, None);
+        if !clashes.is_empty() {
+            let infos: Vec<ConflictInfo> =
+                existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
+            return Err(invalid(conflict_message(&infos)));
+        }
+
+        let code = sequence_repo::format_code("HOS", sequence_repo::next(&tx, "stay")?);
+        let (today_s, out_s) = (dates::format(today), dates::format(check_out));
+        let (in_s, out_time_s) = (in_time.format("%H:%M").to_string(), out_time.format("%H:%M").to_string());
+        let at = self.ctx.utc.now_utc();
+        let reservation_id = reservation_repo::insert(
+            &tx,
+            &NewRow {
+                code: &code,
+                room_id: room.id,
+                guest_id: guest.id,
+                check_in: &today_s,
+                check_out: &out_s,
+                in_time: &in_s,
+                out_time: &out_time_s,
+                occupants: occupants.len() as u32,
+                list_total_cents: quote.total_cents,
+                agreed_total_cents: quote.total_cents,
+                deposit_expected_cents: 0,
+                deposit_due_date: &today_s,
+                notes: "",
+                created_by: actor.user_id,
+                status: "checked_in",
+                origin: "walk_in",
+            },
+            at,
+        )?;
+        for night in &quote.nights {
+            reservation_repo::insert_night(&tx, reservation_id, &night.date, night.amount_cents, night.rule.as_str())?;
+        }
+        let reservation = reservation_repo::find(&tx, reservation_id, today)?
+            .ok_or_else(|| AppError::Database("reserva recém-criada não encontrada".into()))?;
+        let stay_id = self.open_stay(&tx, &actor, &reservation, &occupants, false, exceeded, at)?;
+        let after = json!({ "status": "checked_in", "stay_id": stay_id, "origin": "walk_in" });
+        reservation_repo::insert_change(&tx, reservation_id, at, actor.user_id, "walk_in", "{}", &after.to_string(), None, None, None)?;
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at,
+                user_id: Some(actor.user_id),
+                module: "stays",
+                operation: "walk_in",
+                entity: "stay",
+                entity_id: Some(stay_id),
+                before: None,
+                after: Some(json!({
+                    "code": code, "room": room.code, "guest": guest.full_name, "check_out_date": out_s,
+                    "occupants": occupants.len(), "agreed_total_cents": quote.total_cents, "exceeded_capacity": exceeded
+                })),
+                justification: None,
+            },
+        )?;
+        tx.commit()?;
+        Ok(stay_id)
+    }
+
     pub fn get(&self, token: &str, id: i64) -> Result<StayDetail, AppError> {
         self.touch(token)?;
         let conn = self.ctx.conn()?;
@@ -265,7 +385,7 @@ mod tests {
 
     use crate::auth::permissions::Permission;
     use crate::error::AppError;
-    use crate::models::stay::{CheckInInput, OccupantInput, StayQuery};
+    use crate::models::stay::{CheckInInput, OccupantInput, StayQuery, WalkInInput};
     use crate::services::test_support::{admin_token, book, harness, recepcao_token, seed, Harness, Seed};
 
     // "Hoje" nos testes é 21/10/2026, 09:00 local (12:00Z; fuso -03:00).
@@ -544,5 +664,99 @@ mod tests {
             .list(&w.admin, StayQuery { text: None, status: Some("checked_out".into()), page: 1, page_size: 10 })
             .unwrap();
         assert_eq!(closed.total, 0);
+    }
+
+    fn walk_in_input(w: &World, check_out: &str, occupants: Vec<OccupantInput>) -> WalkInInput {
+        WalkInInput {
+            room_id: w.seed.room_id,
+            guest_id: w.seed.guest_id,
+            check_out_date: check_out.into(),
+            expected_check_out_time: None,
+            occupants,
+            exceed_capacity: false,
+        }
+    }
+
+    #[test]
+    fn walk_in_creates_reservation_and_stay_with_hos_code() {
+        let w = world();
+
+        let stay = w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-23", vec![holder(&w)])).unwrap();
+
+        let detail = w.h.stays.get(&w.admin, stay).unwrap();
+        assert_eq!(detail.stay.code, "HOS-000001");
+        assert_eq!(detail.stay.status, "in_house");
+        assert_eq!(detail.account.charges.iter().filter(|c| c.kind == "night").count(), 2);
+        assert_eq!(detail.account.balance_cents, 40_000);
+        let res = w.h.reservations.get(&w.admin, detail.stay.reservation_id).unwrap().reservation;
+        assert_eq!((res.origin.as_str(), res.status.as_str()), ("walk_in", "checked_in"));
+        assert_eq!((res.check_in_date.as_str(), res.expected_check_in_time.as_str()), ("2026-10-21", "09:00"));
+        assert_eq!(res.deposit_expected_cents, 0);
+    }
+
+    #[test]
+    fn walk_in_refuses_occupied_room() {
+        let w = world();
+        checked_in(&w);
+
+        let result = w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-24", vec![holder(&w)]));
+
+        match result {
+            Err(AppError::Validation(msg)) => assert!(msg.contains("RES-000001"), "{msg}"),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(count(&w, "stays"), 1);
+    }
+
+    #[test]
+    fn walk_in_refuses_missing_tariff_and_lists_the_dates() {
+        let w = world();
+        w.h.db.lock().unwrap().execute("DELETE FROM rate_rules", []).unwrap();
+
+        let result = w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-23", vec![holder(&w)]));
+
+        match result {
+            Err(AppError::Validation(msg)) => assert!(msg.contains("21/10/2026") && msg.contains("22/10/2026"), "{msg}"),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!((count(&w, "stays"), count(&w, "reservations")), (0, 0));
+    }
+
+    #[test]
+    fn walk_in_respects_capacity_rules() {
+        let w = world();
+        let three = vec![holder(&w), companion("Bia"), companion("Caio")];
+        assert!(matches!(
+            w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-23", three.clone())),
+            Err(AppError::Validation(_))
+        ));
+
+        let rec = login_with(&w, &[]);
+        let mut flagged = walk_in_input(&w, "2026-10-23", three);
+        flagged.exceed_capacity = true;
+        assert!(matches!(w.h.stays.walk_in(&rec, flagged.clone()), Err(AppError::Forbidden)));
+        assert!(w.h.stays.walk_in(&w.admin, flagged).is_ok());
+    }
+
+    #[test]
+    fn walk_in_with_past_or_same_day_checkout_is_refused() {
+        let w = world();
+
+        for out in ["2026-10-21", "2026-10-20"] {
+            let result = w.h.stays.walk_in(&w.admin, walk_in_input(&w, out, vec![holder(&w)]));
+            assert!(matches!(result, Err(AppError::Validation(_))), "{out}");
+        }
+        assert_eq!(count(&w, "stays"), 0);
+    }
+
+    #[test]
+    fn walk_in_sequence_does_not_consume_reservation_numbers() {
+        let w = world();
+        w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-23", vec![holder(&w)])).unwrap();
+
+        let reservation = book(&w.h, &w.admin, &w.seed, "2026-10-25", "2026-10-26");
+
+        let code = w.h.reservations.get(&w.admin, reservation).unwrap().reservation.code;
+        assert_eq!(code, "RES-000001");
     }
 }

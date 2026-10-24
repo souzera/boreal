@@ -19,6 +19,19 @@ pub struct CheckInInput {
     pub exceed_capacity: bool,
 }
 
+/// Hospedagem sem reserva prévia: entra hoje, agora.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WalkInInput {
+    pub room_id: i64,
+    pub guest_id: i64,
+    pub check_out_date: String,
+    /// `HH:MM`; se ausente, usa o horário padrão de saída das configurações.
+    pub expected_check_out_time: Option<String>,
+    pub occupants: Vec<OccupantInput>,
+    #[serde(default)]
+    pub exceed_capacity: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Occupant {
     pub id: i64,

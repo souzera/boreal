@@ -51,7 +51,7 @@ pub(crate) fn conflict_message(conflicts: &[ConflictInfo]) -> String {
 }
 
 /// Horários previstos (os informados ou os padrão das configurações).
-fn resolve_times(
+pub(crate) fn resolve_times(
     in_time: Option<&str>,
     out_time: Option<&str>,
     default_in: &str,
@@ -169,6 +169,8 @@ impl ReservationService {
                 deposit_due_date: &due_s,
                 notes: &notes,
                 created_by: actor.user_id,
+                status: "pending",
+                origin: "booking",
             },
             self.ctx.utc.now_utc(),
         )?;
