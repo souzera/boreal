@@ -1,8 +1,11 @@
+pub mod account;
 pub mod availability;
 pub mod cancellation;
 pub mod cpf;
 pub mod dates;
+pub mod late_checkout;
 pub mod money;
 pub mod phone;
 pub mod pricing;
+pub mod stay;
 pub mod text;
