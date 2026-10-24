@@ -347,6 +347,15 @@ docs/usuario/{tarifas,reservas,mapa-de-quartos}.md   docs/desenvolvimento/{tarif
 
 ---
 
+## Status
+
+**Implementado** na branch `marco-2-reservas` (T1 a T15). Migrações `0006` (tarifas), `0007` (política) e `0008` (reservas) — renumeradas em relação ao rascunho (`0006`/`0007`) porque a política ganhou migração própria.
+
+- **Testes ao fechar:** `cargo test` 220 unitários + 4 de integração; `npm test` 195; `cargo clippy -D warnings` e `npm run build` limpos.
+- **Desvios (rulings):** `record_deposit` interino e `my_permissions` antecipados para destravar o cálculo do cancelamento e as dicas de permissão na tela; `AppError::StalePreview` para prévia desatualizada; `testTimeout` de 20 s no Vitest (suíte lenta sob carga); roteador de dados (`createHashRouter`) por causa do `useBlocker`.
+- **Pendências para outros marcos:** recebimentos e devoluções reais (5); hospedagem e `checked_in`/`completed` (3); bloqueios e manutenção na disponibilidade (4); alertas persistentes e relatórios (6). Valores comerciais continuam **provisórios** até a aprovação de `local/revisao-decisoes-marco-2.md`.
+- **Verificação manual:** `npm run tauri dev` ainda não foi exercitado pela interface real; fica para o responsável.
+
 ## Self-Review
 
 - **Cobertura da spec (Marco 2):** §4.1 criação (T8, T12), §4.2 alteração com prévia (T9, T13), §4.3 cancelamento/no-show/sinal vencido (T10, T13), §5 tarifas e preço (T3, T4, T5), desconto (T11), §19.2 dinheiro (T2). Anexo A D-02 a D-14 → T7 (configurações), T4/T6 (D-10, D-14), T8 (D-03, D-09, D-06), T9 (D-13), T10 (D-05, D-07, D-08), T11 (D-11), T2 (D-12). Ficam para outros marcos: walk-in e hospedagem (3), bloqueios/manutenção na disponibilidade (4), recebimento/devolução reais (5), relatórios e alertas persistentes (6).

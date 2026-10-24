@@ -17,6 +17,15 @@ Controle de acesso é aplicado **no backend**; esconder botões na interface é 
 2. Todo serviço chama `require(&info, Permission::X)`: passa se o perfil tem a permissão **ou** se ela está no conjunto extra.
 3. `UserService::set_extra_permissions` (exige `ManageUsers`) recusa permissões fora de `grantable()` e usuários administradores, audita antes/depois e **encerra as sessões do usuário**, para a mudança valer na hora do próximo login.
 
+## Onde cada permissão é exigida (Marco 2)
+
+- `ChangeReservation`: `apply_change` (alterar datas ou quarto).
+- `ApplyDiscount`: `apply_discount`.
+- `CancellationException`: `cancel` com exceção à política.
+- `ExceedCapacity`: criar reserva acima da capacidade do quarto.
+- `ManageCatalog`: tarifas, feriados e política de cancelamento.
+- A interface consulta `my_permissions` só para decidir quais botões oferecer; o backend é quem autoriza.
+
 ## Regras de proteção
 
 - Sempre existe pelo menos um administrador ativo (`set_role` e `set_active` recusam o contrário).

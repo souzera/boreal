@@ -8,5 +8,8 @@ Guias passo a passo para a equipe da pousada. Cada guia explica o objetivo, quan
 - [Configurações](configuracoes.md) — dados da pousada, horários, tolerâncias e segurança da sessão.
 - [Quartos e categorias](quartos.md) — cadastro dos quartos da pousada.
 - [Hóspedes](hospedes.md) — cadastro, busca e conferência de duplicidades.
+- [Tarifas](tarifas.md) — preços por dia da semana, temporada, feriado e exceção de data.
+- [Reservas](reservas.md) — criar, alterar, dar desconto, registrar sinal e cancelar.
+- [Mapa de quartos](mapa-de-quartos.md) — grade de ocupação por dia.
 
-_Os demais guias serão adicionados à medida que os módulos forem entregues (reservas, hospedagem, financeiro…)._
+_Os demais guias serão adicionados à medida que os módulos forem entregues (hospedagem, financeiro…)._

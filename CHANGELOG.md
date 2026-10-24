@@ -17,6 +17,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Busca geral no topo da tela.
 - Aviso ao sair de uma tela com alterações não salvas (Salvar, Descartar ou Continuar editando).
 
+- **Tarifas** por categoria (dia da semana, temporada, feriado e exceção de data), calendário de feriados e simulador de preço. A data de saída não gera diária e noite sem tarifa impede a reserva.
+- **Reservas**: lista com filtros, nova reserva com disponibilidade e preço de cada noite ao vivo, e tela da reserva com histórico. O quarto fica bloqueado desde a reserva pendente e o preço combinado de cada noite não muda quando a tabela muda.
+- **Alterar datas ou quarto** com prévia (preço anterior, novo e diferença) e justificativa; nada é gravado antes da confirmação, e uma prévia desatualizada é recusada.
+- **Cancelamento** com devolução e retenção calculadas pela política (provisória e configurável), exceção com permissão e justificativa, **no-show manual** e aviso de **sinal vencido** (nada é cancelado automaticamente).
+- **Desconto** com permissão e justificativa, e registro manual do **sinal recebido** (provisório até o módulo financeiro).
+- **Mapa de quartos**: grade quarto × dia, com chegada, saída e situação em texto.
+- Configurações do sinal e da política de cancelamento, com os valores marcados como provisórios.
+
 ### Changed
 - A senha mínima passou a ter 6 caracteres.
 - Mensagens de erro do banco de dados agora aparecem em linguagem simples, sem texto técnico.
