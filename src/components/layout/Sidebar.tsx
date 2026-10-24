@@ -31,6 +31,9 @@ export default function Sidebar() {
       <NavLink to="/quartos" className={linkClass}>
         Quartos
       </NavLink>
+      <NavLink to="/tarifas" className={linkClass}>
+        Tarifas
+      </NavLink>
       {upcoming.map((item) => (
         <span
           key={item}

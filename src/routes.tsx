@@ -9,6 +9,7 @@ import Dashboard from "@/pages/Dashboard";
 import GuestFormPage from "@/pages/guests/GuestFormPage";
 import GuestsPage from "@/pages/guests/GuestsPage";
 import Login from "@/pages/Login";
+import RatesPage from "@/pages/rates/RatesPage";
 import Search from "@/pages/Search";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import UsersPage from "@/pages/users/UsersPage";
@@ -51,6 +52,7 @@ export const appRoutes: RouteObject[] = [
           { path: "/busca", element: <Search /> },
           { path: "/hospedes", element: <GuestsPage /> },
           { path: "/hospedes/:id", element: <GuestFormPage /> },
+          { path: "/tarifas", element: <RatesPage /> },
           { path: "/quartos", element: <RoomsPage /> },
           { path: "/quartos/categorias", element: <CategoriesPage /> },
         ],

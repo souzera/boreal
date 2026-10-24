@@ -276,3 +276,69 @@ export const updateGuest = (token: string, id: number, input: GuestInput, expect
   call<null>("update_guest", { token, id, input, expectedVersion });
 export const setGuestActive = (token: string, id: number, active: boolean) =>
   call<null>("set_guest_active", { token, id, active });
+
+// ---- Tarifas ----
+
+export type RateRuleType = "weekday" | "season" | "holiday" | "date_override";
+
+export interface RateRule {
+  id: number;
+  category_id: number;
+  rule_type: RateRuleType;
+  weekday: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  date: string | null;
+  amount_cents: number;
+  label: string;
+  active: boolean;
+  version: number;
+}
+
+export interface RateRuleInput {
+  category_id: number;
+  rule_type: RateRuleType;
+  weekday: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  date: string | null;
+  amount_cents: number;
+  label: string;
+}
+
+export interface Holiday {
+  id: number;
+  date: string;
+  name: string;
+}
+
+export type AppliedRule = "date_override" | "holiday" | "season" | "weekday";
+
+export interface NightPrice {
+  date: string;
+  amount_cents: number;
+  rule: AppliedRule;
+}
+
+export interface Quote {
+  nights: NightPrice[];
+  total_cents: number;
+  missing_dates: string[];
+}
+
+export const listRateRules = (token: string, categoryId?: number) =>
+  call<RateRule[]>("list_rate_rules", { token, categoryId: categoryId ?? null });
+export const createRateRule = (token: string, input: RateRuleInput) =>
+  call<number>("create_rate_rule", { token, input });
+export const updateRateRule = (token: string, id: number, input: RateRuleInput, expectedVersion: number) =>
+  call<null>("update_rate_rule", { token, id, input, expectedVersion });
+export const setRateRuleActive = (token: string, id: number, active: boolean) =>
+  call<null>("set_rate_rule_active", { token, id, active });
+export const deleteRateRule = (token: string, id: number) => call<null>("delete_rate_rule", { token, id });
+export const listHolidays = (token: string, year?: number) =>
+  call<Holiday[]>("list_holidays", { token, year: year ?? null });
+export const createHoliday = (token: string, date: string, name: string) =>
+  call<number>("create_holiday", { token, date, name });
+export const deleteHoliday = (token: string, id: number) => call<null>("delete_holiday", { token, id });
+export const quoteStay = (token: string, categoryId: number, checkIn: string, checkOut: string) =>
+  call<Quote>("quote_stay", { token, categoryId, checkIn, checkOut });
