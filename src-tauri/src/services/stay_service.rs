@@ -45,7 +45,7 @@ fn money_br(cents: i64) -> String {
     let reais = (abs / 100).to_string();
     let mut grouped = String::new();
     for (i, ch) in reais.chars().enumerate() {
-        if i > 0 && (reais.len() - i) % 3 == 0 {
+        if i > 0 && (reais.len() - i).is_multiple_of(3) {
             grouped.push('.');
         }
         grouped.push(ch);
@@ -661,15 +661,15 @@ impl StayService {
                 .filter(|(start, _)| *start >= expected_out)
                 .min_by_key(|(start, _)| *start);
             if let Some((next_start, info)) = next {
-                if let Some(r) = late_checkout::departure_risk(expected_out, now, settings.cleaning_interval_minutes, next_start) {
-                    risk = Some(DepartureRiskView {
+                risk = late_checkout::departure_risk(expected_out, now, settings.cleaning_interval_minutes, next_start).map(|r| {
+                    DepartureRiskView {
                         next_reservation_id: info.reservation_id,
                         next_code: info.code,
                         next_start: next_start.format("%Y-%m-%dT%H:%M").to_string(),
                         ready_at: r.ready_at.format("%Y-%m-%dT%H:%M").to_string(),
                         overrun_minutes: r.overrun_minutes,
-                    });
-                }
+                    }
+                });
             }
         }
         Ok((late, risk))
