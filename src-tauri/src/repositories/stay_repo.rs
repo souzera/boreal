@@ -170,6 +170,61 @@ pub fn bump(tx: &Transaction, stay_id: i64, at: DateTime<Utc>) -> Result<(), App
     Ok(())
 }
 
+/// Valor da última diária que não foi estornada (base da cobrança de saída tardia).
+pub fn last_night_cents(conn: &Connection, stay_id: i64) -> Result<i64, AppError> {
+    Ok(conn
+        .query_row(
+            "SELECT amount_cents FROM charges c
+             WHERE c.stay_id = ?1 AND c.kind = 'night' AND NOT EXISTS (SELECT 1 FROM charges x WHERE x.reverses_charge_id = c.id)
+             ORDER BY c.night_date DESC LIMIT 1",
+            [stay_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .unwrap_or(0))
+}
+
+pub fn set_tolerance(
+    tx: &Transaction,
+    stay_id: i64,
+    minutes: Option<i64>,
+    expected_version: i64,
+    at: DateTime<Utc>,
+) -> Result<(), AppError> {
+    expect_one(tx.execute(
+        "UPDATE stays SET late_tolerance_minutes = ?1, version = version + 1, updated_at = ?2 WHERE id = ?3 AND version = ?4",
+        params![minutes, stamp(at), stay_id, expected_version],
+    )?)
+}
+
+pub struct Checkout<'a> {
+    pub by: i64,
+    pub late_minutes: i64,
+    pub late_fee_calculated_cents: i64,
+    /// `charged`, `waived` ou `not_applicable`.
+    pub late_fee_decision: &'a str,
+    pub waive_justification: Option<&'a str>,
+    pub waived_by: Option<i64>,
+    pub balance_cents: Option<i64>,
+    pub balance_justification: Option<&'a str>,
+    pub balance_authorized_by: Option<i64>,
+}
+
+/// Encerra a hospedagem se a versão ainda for a consultada.
+pub fn finish(tx: &Transaction, stay_id: i64, c: &Checkout, expected_version: i64, at: DateTime<Utc>) -> Result<(), AppError> {
+    expect_one(tx.execute(
+        "UPDATE stays SET status = 'checked_out', checked_out_at = ?1, checked_out_by = ?2, late_minutes = ?3,
+                late_fee_calculated_cents = ?4, late_fee_decision = ?5, late_fee_waive_justification = ?6,
+                late_fee_waived_by = ?7, balance_at_checkout_cents = ?8, balance_justification = ?9,
+                balance_authorized_by = ?10, version = version + 1, updated_at = ?1
+         WHERE id = ?11 AND version = ?12",
+        params![
+            stamp(at), c.by, c.late_minutes, c.late_fee_calculated_cents, c.late_fee_decision, c.waive_justification,
+            c.waived_by, c.balance_cents, c.balance_justification, c.balance_authorized_by, stay_id, expected_version
+        ],
+    )?)
+}
+
 pub fn touch(tx: &Transaction, stay_id: i64, expected_version: i64, at: DateTime<Utc>) -> Result<(), AppError> {
     expect_one(tx.execute(
         "UPDATE stays SET version = version + 1, updated_at = ?1 WHERE id = ?2 AND version = ?3",

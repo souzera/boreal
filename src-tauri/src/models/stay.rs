@@ -62,6 +62,53 @@ pub struct PaymentInput {
     pub note: String,
 }
 
+/// Atraso da saída em relação ao horário previsto.
+#[derive(Debug, Clone, Serialize)]
+pub struct LateInfo {
+    pub minutes_late: i64,
+    /// Tolerância em vigor (a da hospedagem ou a global).
+    pub tolerance_minutes: u32,
+    /// Passou da tolerância e há cobrança configurada.
+    pub applies: bool,
+    /// Cobrança prevista; nunca uma diária.
+    pub fee_cents: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CheckoutPreview {
+    pub stay: Stay,
+    pub account: StayAccount,
+    pub late: LateInfo,
+    /// Saldo atual da conta (sem a cobrança de saída tardia).
+    pub balance_cents: i64,
+    /// Saldo se a cobrança de saída tardia for lançada.
+    pub balance_with_late_fee_cents: i64,
+    pub risk: Option<DepartureRiskView>,
+}
+
+/// Decisão da recepção sobre a cobrança de saída tardia.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LateFeeChoice {
+    /// Não há cobrança a decidir (saída dentro da tolerância).
+    NotApplicable,
+    Charge,
+    Waive { justification: String },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BalanceException {
+    pub justification: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CheckoutInput {
+    pub stay_id: i64,
+    pub expected_version: i64,
+    pub late_fee: LateFeeChoice,
+    pub balance_exception: Option<BalanceException>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Occupant {
     pub id: i64,

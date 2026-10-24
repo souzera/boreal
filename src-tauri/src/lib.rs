@@ -103,6 +103,9 @@ pub fn run() {
             commands::stays::add_stay_adjustment,
             commands::stays::reverse_stay_charge,
             commands::stays::record_stay_payment,
+            commands::stays::preview_stay_checkout,
+            commands::stays::checkout_stay,
+            commands::stays::set_stay_late_tolerance,
             commands::stays::get_stay,
             commands::stays::list_stays,
         ])

@@ -1,5 +1,5 @@
-use chrono::{DateTime, Timelike, Utc};
-use rusqlite::Transaction;
+use chrono::{DateTime, Duration, NaiveDateTime, Timelike, Utc};
+use rusqlite::{Connection, Transaction};
 use serde_json::json;
 
 use super::rate_service::quote_in;
@@ -9,13 +9,16 @@ use crate::audit::{self, AuditEntry};
 use crate::auth::permissions::Permission;
 use crate::auth::session::{require, SessionInfo};
 use crate::domain::availability::find_conflicts;
-use crate::domain::dates;
+use crate::domain::stay::{transition, StayStatus};
+use crate::domain::{dates, late_checkout, money};
 use crate::domain::stay::can_check_in;
 use crate::error::AppError;
 use crate::models::page::{clamp_paging, Page};
 use crate::models::reservation::{ConflictInfo, Reservation};
+use crate::models::settings::AppSettings;
 use crate::models::stay::{
-    AdjustmentInput, ChargeInput, CheckInInput, OccupantInput, PaymentInput, Stay, StayDetail, StayQuery, StaySummary, WalkInInput,
+    AdjustmentInput, ChargeInput, CheckInInput, CheckoutInput, CheckoutPreview, DepartureRiskView, LateFeeChoice, LateInfo,
+    OccupantInput, PaymentInput, Stay, StayDetail, StayQuery, StaySummary, WalkInInput,
 };
 use crate::repositories::stay_repo::{self, NewCharge};
 use crate::repositories::reservation_repo::NewRow;
@@ -35,6 +38,20 @@ const MAX_OCCUPANTS: usize = 20;
 /// Teto de um lançamento ou recebimento (R$ 1.000.000,00): barra erros de digitação e estouros.
 const MAX_ENTRY_CENTS: i64 = 100_000_000;
 const PAYMENT_METHODS: [&str; 5] = ["cash", "pix", "debit", "credit", "transfer"];
+
+/// `R$ 1.234,56`, para mensagens.
+fn money_br(cents: i64) -> String {
+    let abs = cents.unsigned_abs();
+    let reais = (abs / 100).to_string();
+    let mut grouped = String::new();
+    for (i, ch) in reais.chars().enumerate() {
+        if i > 0 && (reais.len() - i) % 3 == 0 {
+            grouped.push('.');
+        }
+        grouped.push(ch);
+    }
+    format!("{}R$ {grouped},{:02}", if cents < 0 { "-" } else { "" }, abs % 100)
+}
 
 fn clean_text(value: &str, max: usize, what: &str) -> Result<String, AppError> {
     let value = value.trim();
@@ -609,6 +626,216 @@ impl StayService {
         Ok(id)
     }
 
+    /// Atraso da saída (com a tolerância em vigor) e risco para a próxima reserva do mesmo quarto.
+    fn assess_departure(
+        conn: &Connection,
+        stay: &Stay,
+        settings: &AppSettings,
+        now: NaiveDateTime,
+    ) -> Result<(LateInfo, Option<DepartureRiskView>), AppError> {
+        let out_date = parse_date(&stay.check_out_date, "Data de saída")?;
+        let out_time = parse_time(&stay.expected_check_out_time).ok_or_else(|| invalid("Horário de saída inválido."))?;
+        let expected_out = out_date.and_time(out_time);
+        let tolerance = stay.late_tolerance_minutes.and_then(|m| u32::try_from(m).ok()).unwrap_or(settings.late_checkout_tolerance_minutes);
+        let assessment = late_checkout::assess(
+            expected_out,
+            now,
+            tolerance,
+            stay_repo::last_night_cents(conn, stay.id)?,
+            settings.late_checkout_fee_bp,
+        )?;
+        let late = LateInfo {
+            minutes_late: assessment.minutes_late,
+            tolerance_minutes: tolerance,
+            applies: assessment.applies,
+            fee_cents: assessment.fee_cents,
+        };
+
+        let mut risk = None;
+        if assessment.minutes_late > 0 {
+            let nearby = reservation_repo::blocking(conn, stay.room_id, expected_out.date(), expected_out.date() + Duration::days(60))?;
+            let next = nearby
+                .into_iter()
+                .filter(|(b, _)| b.id != stay.reservation_id)
+                .map(|(b, info)| (b.check_in.and_time(b.expected_in), info))
+                .filter(|(start, _)| *start >= expected_out)
+                .min_by_key(|(start, _)| *start);
+            if let Some((next_start, info)) = next {
+                if let Some(r) = late_checkout::departure_risk(expected_out, now, settings.cleaning_interval_minutes, next_start) {
+                    risk = Some(DepartureRiskView {
+                        next_reservation_id: info.reservation_id,
+                        next_code: info.code,
+                        next_start: next_start.format("%Y-%m-%dT%H:%M").to_string(),
+                        ready_at: r.ready_at.format("%Y-%m-%dT%H:%M").to_string(),
+                        overrun_minutes: r.overrun_minutes,
+                    });
+                }
+            }
+        }
+        Ok((late, risk))
+    }
+
+    /// Demonstrativo do check-out: tudo o que será gravado, sem gravar nada.
+    pub fn preview_checkout(&self, token: &str, stay_id: i64) -> Result<CheckoutPreview, AppError> {
+        self.touch(token)?;
+        let conn = self.ctx.conn()?;
+        let stay = stay_repo::find(&conn, stay_id)?.ok_or_else(|| invalid("Hospedagem não encontrada."))?;
+        if stay.status != "in_house" {
+            return Err(invalid("A hospedagem já foi encerrada."));
+        }
+        let settings = settings_repo::load(&conn)?;
+        let (late, risk) = Self::assess_departure(&conn, &stay, &settings, self.ctx.local_now())?;
+        let account = stay_repo::account(&conn, stay_id)?;
+        let balance_with_late_fee_cents = if late.applies { money::add(account.balance_cents, late.fee_cents)? } else { account.balance_cents };
+        Ok(CheckoutPreview { balance_cents: account.balance_cents, balance_with_late_fee_cents, stay, account, late, risk })
+    }
+
+    /// Conclui o check-out (spec §6.3, §6.4). Nada é liquidado nem apagado: saldo em aberto fica registrado.
+    pub fn checkout(&self, token: &str, input: CheckoutInput) -> Result<(), AppError> {
+        let actor = self.touch(token)?;
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        let stay = stay_repo::find(&tx, input.stay_id)?.ok_or_else(|| invalid("Hospedagem não encontrada."))?;
+        if stay.version != input.expected_version {
+            return Err(AppError::Conflict);
+        }
+        let from = StayStatus::parse(&stay.status).ok_or_else(|| AppError::Database("situação de hospedagem desconhecida".into()))?;
+        transition(from, StayStatus::CheckedOut)?;
+
+        let settings = settings_repo::load(&tx)?;
+        let at = self.ctx.utc.now_utc();
+        let (late, _) = Self::assess_departure(&tx, &stay, &settings, self.ctx.local_now())?;
+        let before_balance = stay_repo::balance(&tx, stay.id)?;
+
+        let (decision, waive_justification) = match (&input.late_fee, late.applies) {
+            (LateFeeChoice::NotApplicable, false) => ("not_applicable", None),
+            (LateFeeChoice::NotApplicable, true) => {
+                return Err(invalid(format!(
+                    "A saída passou da tolerância ({} min). Escolha cobrar a saída tardia ({}) ou dispensar a cobrança.",
+                    late.minutes_late,
+                    money_br(late.fee_cents)
+                )));
+            }
+            (_, false) => return Err(invalid("Não há cobrança de saída tardia a decidir.")),
+            (LateFeeChoice::Charge, true) => {
+                let description = format!("Saída tardia ({} min após o horário previsto)", late.minutes_late);
+                stay_repo::insert_charge(
+                    &tx,
+                    &NewCharge {
+                        stay_id: stay.id,
+                        kind: "late_fee",
+                        description: &description,
+                        amount_cents: late.fee_cents,
+                        item_id: None,
+                        night_date: None,
+                        reverses_charge_id: None,
+                        replaces_charge_id: None,
+                        justification: None,
+                        created_by: actor.user_id,
+                    },
+                    at,
+                )?;
+                ("charged", None)
+            }
+            (LateFeeChoice::Waive { justification }, true) => {
+                require(&actor, Permission::WaiveLateFee)?;
+                ("waived", Some(clean_text(justification, 500, "a justificativa para dispensar a cobrança")?))
+            }
+        };
+
+        let balance = stay_repo::balance(&tx, stay.id)?;
+        let mut balance_exception = None;
+        if balance != 0 {
+            let Some(exception) = &input.balance_exception else {
+                return Err(invalid(if balance > 0 {
+                    format!("A conta tem saldo em aberto de {}. Registre o pagamento ou conclua com saldo pendente (exige autorização).", money_br(balance))
+                } else {
+                    format!("O hóspede tem {} a devolver. Conclua com saldo pendente (exige autorização) ou acerte o valor antes.", money_br(-balance))
+                }));
+            };
+            require(&actor, Permission::CheckoutWithBalance)?;
+            balance_exception = Some(clean_text(&exception.justification, 500, "a justificativa do saldo em aberto")?);
+        }
+
+        let reservation = reservation_repo::find(&tx, stay.reservation_id, self.ctx.today())?
+            .ok_or_else(|| invalid("Reserva da hospedagem não encontrada."))?;
+        stay_repo::finish(
+            &tx,
+            stay.id,
+            &stay_repo::Checkout {
+                by: actor.user_id,
+                late_minutes: late.minutes_late,
+                late_fee_calculated_cents: late.fee_cents,
+                late_fee_decision: decision,
+                waive_justification: waive_justification.as_deref(),
+                waived_by: waive_justification.as_ref().map(|_| actor.user_id),
+                balance_cents: balance_exception.as_ref().map(|_| balance),
+                balance_justification: balance_exception.as_deref(),
+                balance_authorized_by: balance_exception.as_ref().map(|_| actor.user_id),
+            },
+            input.expected_version,
+            at,
+        )?;
+        reservation_repo::set_status(&tx, reservation.id, "completed", reservation.version, at)?;
+
+        let before = json!({ "status": "in_house", "balance_cents": before_balance });
+        let after = json!({
+            "status": "checked_out", "balance_cents": balance, "late_minutes": late.minutes_late,
+            "late_fee_calculated_cents": late.fee_cents, "late_fee_decision": decision,
+            "balance_exception": balance_exception.is_some()
+        });
+        reservation_repo::insert_change(&tx, reservation.id, at, actor.user_id, "check_out", &before.to_string(), &after.to_string(), None, None, None)?;
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at,
+                user_id: Some(actor.user_id),
+                module: "stays",
+                operation: "check_out",
+                entity: "stay",
+                entity_id: Some(stay.id),
+                before: Some(before),
+                after: Some(after),
+                justification: balance_exception.or(waive_justification),
+            },
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Tolerância de saída tardia só desta hospedagem (`None` volta ao padrão das configurações).
+    pub fn set_late_tolerance(&self, token: &str, stay_id: i64, minutes: Option<u32>, expected_version: i64) -> Result<(), AppError> {
+        let actor = self.touch(token)?;
+        require(&actor, Permission::ChangeReservation)?;
+        if minutes.is_some_and(|m| m > 600) {
+            return Err(invalid("Tolerância de saída tardia: informe de 0 a 600 minutos."));
+        }
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        let stay = Self::open_row(&tx, stay_id)?;
+        if stay.version != expected_version {
+            return Err(AppError::Conflict);
+        }
+        let at = self.ctx.utc.now_utc();
+        stay_repo::set_tolerance(&tx, stay_id, minutes.map(i64::from), expected_version, at)?;
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at,
+                user_id: Some(actor.user_id),
+                module: "stays",
+                operation: "set_late_tolerance",
+                entity: "stay",
+                entity_id: Some(stay_id),
+                before: Some(json!({ "late_tolerance_minutes": stay.late_tolerance_minutes })),
+                after: Some(json!({ "late_tolerance_minutes": minutes })),
+                justification: None,
+            },
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn get(&self, token: &str, id: i64) -> Result<StayDetail, AppError> {
         self.touch(token)?;
         let conn = self.ctx.conn()?;
@@ -626,11 +853,17 @@ impl StayService {
         let (page, page_size, offset) = clamp_paging(query.page, query.page_size);
         let conn = self.ctx.conn()?;
         let (stays, total) = stay_repo::list(&conn, query.text.as_deref(), status, i64::from(page_size), offset)?;
+        let settings = settings_repo::load(&conn)?;
+        let now = self.ctx.local_now();
         let items = stays
             .into_iter()
             .map(|stay| {
                 let balance_cents = stay_repo::balance(&conn, stay.id)?;
-                Ok(StaySummary { stay, balance_cents, minutes_late: 0, risk: None })
+                if stay.status != "in_house" {
+                    return Ok(StaySummary { stay, balance_cents, minutes_late: 0, risk: None });
+                }
+                let (late, risk) = Self::assess_departure(&conn, &stay, &settings, now)?;
+                Ok(StaySummary { stay, balance_cents, minutes_late: late.minutes_late, risk })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
         Ok(Page { items, total, page, page_size })
@@ -643,7 +876,10 @@ mod tests {
 
     use crate::auth::permissions::Permission;
     use crate::error::AppError;
-    use crate::models::stay::{AdjustmentInput, ChargeInput, CheckInInput, OccupantInput, PaymentInput, StayQuery, WalkInInput};
+    use crate::models::stay::{
+        AdjustmentInput, BalanceException, ChargeInput, CheckInInput, CheckoutInput, LateFeeChoice, OccupantInput, PaymentInput,
+        StayQuery, WalkInInput,
+    };
     use crate::services::test_support::{admin_token, book, harness, recepcao_token, seed, Harness, Seed};
 
     // "Hoje" nos testes é 21/10/2026, 09:00 local (12:00Z; fuso -03:00).
@@ -1248,5 +1484,295 @@ mod tests {
         };
 
         assert_eq!(operations, ["add_charge", "record_payment", "add_adjustment", "reverse_charge"]);
+    }
+
+    // ---- check-out, saída tardia e risco ----
+    // Saída prevista: 23/10 12:00 locais (15:00Z), tolerância 30 min, taxa 50% da última diária (R$ 200,00).
+
+    const OUT: &str = "2026-10-23T15:00:00Z";
+    const OUT_PLUS_30: &str = "2026-10-23T15:30:00Z";
+    const OUT_PLUS_45: &str = "2026-10-23T15:45:00Z";
+
+    fn pay(w: &World, stay: i64, cents: i64) {
+        w.h.stays
+            .record_payment(&w.admin, stay, PaymentInput { amount_cents: cents, method: "cash".into(), note: String::new() })
+            .unwrap();
+    }
+
+    fn stay_version(w: &World, stay: i64) -> i64 {
+        w.h.stays.get(&w.admin, stay).unwrap().stay.version
+    }
+
+    fn checkout_input(w: &World, stay: i64, late_fee: LateFeeChoice, exception: Option<&str>) -> CheckoutInput {
+        CheckoutInput {
+            stay_id: stay,
+            expected_version: stay_version(w, stay),
+            late_fee,
+            balance_exception: exception.map(|j| BalanceException { justification: j.into() }),
+        }
+    }
+
+    fn stay_column(w: &World, stay: i64, column: &str) -> Option<String> {
+        w.h.db
+            .lock()
+            .unwrap()
+            .query_row(&format!("SELECT CAST({column} AS TEXT) FROM stays WHERE id = ?1"), [stay], |r| r.get(0))
+            .unwrap()
+    }
+
+    fn count_kind(w: &World, kind: &str) -> i64 {
+        w.h.db.lock().unwrap().query_row("SELECT count(*) FROM charges WHERE kind = ?1", [kind], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn checkout_with_zero_balance_completes_stay_and_reservation() {
+        let w = world();
+        let (reservation, stay) = stay_with_balance(&w);
+        pay(&w, stay, 24_000);
+        set_now(&w, OUT);
+
+        w.h.stays.checkout(&w.admin, checkout_input(&w, stay, LateFeeChoice::NotApplicable, None)).unwrap();
+
+        let detail = w.h.stays.get(&w.admin, stay).unwrap();
+        assert_eq!(detail.stay.status, "checked_out");
+        assert!(detail.stay.checked_out_at.is_some());
+        assert_eq!(w.h.reservations.get(&w.admin, reservation).unwrap().reservation.status, "completed");
+        assert_eq!(detail.account.balance_cents, 0);
+    }
+
+    #[test]
+    fn checkout_with_balance_needs_permission_justification_and_keeps_the_balance() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        set_now(&w, OUT);
+
+        let none = w.h.stays.checkout(&w.admin, checkout_input(&w, stay, LateFeeChoice::NotApplicable, None));
+        match none {
+            Err(AppError::Validation(msg)) => assert!(msg.contains("R$ 240,00"), "{msg}"),
+            other => panic!("{other:?}"),
+        }
+        let rec = login_with(&w, &[]);
+        let forbidden = w.h.stays.checkout(&rec, checkout_input(&w, stay, LateFeeChoice::NotApplicable, Some("Paga depois")));
+        assert!(matches!(forbidden, Err(AppError::Forbidden)));
+        let blank = w.h.stays.checkout(&w.admin, checkout_input(&w, stay, LateFeeChoice::NotApplicable, Some("  ")));
+        assert!(matches!(blank, Err(AppError::Validation(_))));
+        let (charges, payments) = (count(&w, "charges"), count(&w, "payments"));
+
+        let rec = login_with(&w, &[Permission::CheckoutWithBalance]);
+        w.h.stays.checkout(&rec, checkout_input(&w, stay, LateFeeChoice::NotApplicable, Some("Paga depois, pelo Pix"))).unwrap();
+
+        assert_eq!(stay_column(&w, stay, "balance_at_checkout_cents").as_deref(), Some("24000"));
+        assert_eq!(stay_column(&w, stay, "balance_justification").as_deref(), Some("Paga depois, pelo Pix"));
+        assert!(stay_column(&w, stay, "balance_authorized_by").is_some());
+        assert_eq!((count(&w, "charges"), count(&w, "payments")), (charges, payments), "nada é liquidado nem apagado");
+        assert_eq!(w.h.stays.get(&w.admin, stay).unwrap().account.balance_cents, 24_000);
+    }
+
+    #[test]
+    fn checkout_with_credit_requires_exception_and_says_so() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        pay(&w, stay, 30_000);
+        set_now(&w, OUT);
+
+        let result = w.h.stays.checkout(&w.admin, checkout_input(&w, stay, LateFeeChoice::NotApplicable, None));
+
+        match result {
+            Err(AppError::Validation(msg)) => assert!(msg.contains("devolver") && msg.contains("R$ 60,00"), "{msg}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn late_checkout_within_tolerance_has_no_fee_and_after_it_requires_a_decision() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        pay(&w, stay, 24_000);
+        set_now(&w, OUT_PLUS_30);
+        let preview = w.h.stays.preview_checkout(&w.admin, stay).unwrap();
+        assert_eq!((preview.late.minutes_late, preview.late.applies, preview.late.fee_cents), (30, false, 0));
+
+        set_now(&w, OUT_PLUS_45);
+        let preview = w.h.stays.preview_checkout(&w.admin, stay).unwrap();
+        assert_eq!((preview.late.minutes_late, preview.late.applies, preview.late.fee_cents), (45, true, 10_000));
+        assert_eq!((preview.balance_cents, preview.balance_with_late_fee_cents), (0, 10_000));
+        let undecided = w.h.stays.checkout(&w.admin, checkout_input(&w, stay, LateFeeChoice::NotApplicable, None));
+        assert!(matches!(undecided, Err(AppError::Validation(_))), "{undecided:?}");
+        assert_eq!(count_kind(&w, "late_fee"), 0);
+    }
+
+    #[test]
+    fn charging_the_late_fee_records_it_and_never_creates_a_night() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        pay(&w, stay, 34_000);
+        set_now(&w, OUT_PLUS_45);
+        let nights_before = count_kind(&w, "night");
+
+        w.h.stays.checkout(&w.admin, checkout_input(&w, stay, LateFeeChoice::Charge, None)).unwrap();
+
+        assert_eq!(count_kind(&w, "late_fee"), 1);
+        assert_eq!(count_kind(&w, "night"), nights_before);
+        assert_eq!(stay_column(&w, stay, "late_fee_decision").as_deref(), Some("charged"));
+        assert_eq!(stay_column(&w, stay, "late_minutes").as_deref(), Some("45"));
+        let account = w.h.stays.get(&w.admin, stay).unwrap().account;
+        assert_eq!(account.charges.iter().find(|c| c.kind == "late_fee").unwrap().amount_cents, 10_000);
+    }
+
+    #[test]
+    fn waiving_the_late_fee_needs_permission_and_keeps_the_history() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        pay(&w, stay, 24_000);
+        set_now(&w, OUT_PLUS_45);
+        let waive = |j: &str| LateFeeChoice::Waive { justification: j.into() };
+
+        let rec = login_with(&w, &[]);
+        assert!(matches!(w.h.stays.checkout(&rec, checkout_input(&w, stay, waive("Cortesia"), None)), Err(AppError::Forbidden)));
+        assert!(matches!(w.h.stays.checkout(&w.admin, checkout_input(&w, stay, waive("  "), None)), Err(AppError::Validation(_))));
+        w.h.stays.checkout(&w.admin, checkout_input(&w, stay, waive("Problema no chuveiro"), None)).unwrap();
+
+        assert_eq!(count_kind(&w, "late_fee"), 0);
+        assert_eq!(stay_column(&w, stay, "late_minutes").as_deref(), Some("45"));
+        assert_eq!(stay_column(&w, stay, "late_fee_calculated_cents").as_deref(), Some("10000"));
+        assert_eq!(stay_column(&w, stay, "late_fee_decision").as_deref(), Some("waived"));
+        assert_eq!(stay_column(&w, stay, "late_fee_waive_justification").as_deref(), Some("Problema no chuveiro"));
+    }
+
+    #[test]
+    fn choosing_a_late_fee_when_none_applies_is_refused() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        pay(&w, stay, 24_000);
+        set_now(&w, OUT);
+
+        let result = w.h.stays.checkout(&w.admin, checkout_input(&w, stay, LateFeeChoice::Charge, None));
+
+        assert!(matches!(result, Err(AppError::Validation(_))), "{result:?}");
+        assert_eq!(w.h.stays.get(&w.admin, stay).unwrap().stay.status, "in_house");
+    }
+
+    #[test]
+    fn per_stay_tolerance_overrides_global() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        set_now(&w, OUT_PLUS_45);
+        let rec = login_with(&w, &[]);
+        let v = stay_version(&w, stay);
+        assert!(matches!(w.h.stays.set_late_tolerance(&rec, stay, Some(120), v), Err(AppError::Forbidden)));
+        assert!(matches!(w.h.stays.set_late_tolerance(&w.admin, stay, Some(601), v), Err(AppError::Validation(_))));
+
+        w.h.stays.set_late_tolerance(&w.admin, stay, Some(120), v).unwrap();
+
+        let preview = w.h.stays.preview_checkout(&w.admin, stay).unwrap();
+        assert_eq!((preview.late.tolerance_minutes, preview.late.applies), (120, false));
+        let v = stay_version(&w, stay);
+        w.h.stays.set_late_tolerance(&w.admin, stay, None, v).unwrap();
+        assert_eq!(w.h.stays.preview_checkout(&w.admin, stay).unwrap().late.tolerance_minutes, 30);
+    }
+
+    #[test]
+    fn very_late_checkout_charges_once() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        pay(&w, stay, 34_000);
+        set_now(&w, "2026-10-25T12:00:00Z");
+
+        let preview = w.h.stays.preview_checkout(&w.admin, stay).unwrap();
+        assert_eq!((preview.late.minutes_late, preview.late.fee_cents), (2_700, 10_000));
+        w.h.stays.checkout(&w.admin, checkout_input(&w, stay, LateFeeChoice::Charge, None)).unwrap();
+
+        assert_eq!(count_kind(&w, "late_fee"), 1);
+        assert_eq!(count_kind(&w, "night"), 2);
+    }
+
+    #[test]
+    fn double_checkout_is_conflict() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        pay(&w, stay, 24_000);
+        set_now(&w, OUT);
+        let request = checkout_input(&w, stay, LateFeeChoice::NotApplicable, None);
+
+        w.h.stays.checkout(&w.admin, request.clone()).unwrap();
+        let second = w.h.stays.checkout(&w.admin, request);
+
+        assert!(matches!(second, Err(AppError::Conflict)), "{second:?}");
+    }
+
+    #[test]
+    fn a_stale_version_after_a_new_charge_is_conflict() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        pay(&w, stay, 24_000);
+        set_now(&w, OUT);
+        let request = checkout_input(&w, stay, LateFeeChoice::NotApplicable, None);
+        w.h.stays.add_charge(&w.admin, stay, consumption("Água", 500)).unwrap();
+
+        let result = w.h.stays.checkout(&w.admin, request);
+
+        assert!(matches!(result, Err(AppError::Conflict)), "{result:?}");
+        assert_eq!(w.h.stays.get(&w.admin, stay).unwrap().stay.status, "in_house");
+    }
+
+    #[test]
+    fn checkout_failure_rolls_back_everything() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        set_now(&w, OUT_PLUS_45);
+        let rec = login_with(&w, &[]);
+
+        let result = w.h.stays.checkout(&rec, checkout_input(&w, stay, LateFeeChoice::Charge, Some("Paga depois")));
+
+        assert!(matches!(result, Err(AppError::Forbidden)), "{result:?}");
+        assert_eq!(count_kind(&w, "late_fee"), 0);
+        assert_eq!(w.h.stays.get(&w.admin, stay).unwrap().stay.status, "in_house");
+    }
+
+    #[test]
+    fn late_departure_flags_risk_without_touching_the_next_reservation() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        let next = book(&w.h, &w.admin, &w.seed, "2026-10-23", "2026-10-24");
+        set_now(&w, "2026-10-23T16:30:00Z");
+
+        let preview = w.h.stays.preview_checkout(&w.admin, stay).unwrap();
+
+        let risk = preview.risk.expect("risco esperado");
+        assert_eq!((risk.next_reservation_id, risk.overrun_minutes), (next, 30));
+        assert_eq!(w.h.reservations.get(&w.admin, next).unwrap().reservation.status, "pending");
+        let listed = w.h.stays.list(&w.admin, StayQuery { text: None, status: None, page: 1, page_size: 10 }).unwrap();
+        assert_eq!(listed.items[0].minutes_late, 90);
+        assert!(listed.items[0].risk.is_some());
+    }
+
+    #[test]
+    fn no_risk_without_a_next_reservation_or_before_the_departure_time() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        set_now(&w, "2026-10-23T16:30:00Z");
+        assert!(w.h.stays.preview_checkout(&w.admin, stay).unwrap().risk.is_none());
+
+        let next = book(&w.h, &w.admin, &w.seed, "2026-10-23", "2026-10-24");
+        let _ = next;
+        set_now(&w, "2026-10-23T14:00:00Z");
+        assert!(w.h.stays.preview_checkout(&w.admin, stay).unwrap().risk.is_none());
+    }
+
+    #[test]
+    fn preview_does_not_write_and_matches_what_checkout_records() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        pay(&w, stay, 34_000);
+        set_now(&w, OUT_PLUS_45);
+        let (charges, version, audit) = (count(&w, "charges"), stay_version(&w, stay), count(&w, "audit_log"));
+
+        let preview = w.h.stays.preview_checkout(&w.admin, stay).unwrap();
+
+        assert_eq!((count(&w, "charges"), stay_version(&w, stay), count(&w, "audit_log")), (charges, version, audit));
+        w.h.stays.checkout(&w.admin, checkout_input(&w, stay, LateFeeChoice::Charge, None)).unwrap();
+        let account = w.h.stays.get(&w.admin, stay).unwrap().account;
+        assert_eq!(account.balance_cents, preview.balance_with_late_fee_cents);
+        assert_eq!(account.charges.iter().find(|c| c.kind == "late_fee").unwrap().amount_cents, preview.late.fee_cents);
     }
 }
