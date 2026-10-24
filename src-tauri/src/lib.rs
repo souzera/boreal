@@ -66,6 +66,14 @@ pub fn run() {
             commands::guests::create_guest,
             commands::guests::update_guest,
             commands::guests::set_guest_active,
+            commands::rates::list_rate_rules,
+            commands::rates::create_rate_rule,
+            commands::rates::update_rate_rule,
+            commands::rates::set_rate_rule_active,
+            commands::rates::delete_rate_rule,
+            commands::rates::list_holidays,
+            commands::rates::create_holiday,
+            commands::rates::delete_holiday,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

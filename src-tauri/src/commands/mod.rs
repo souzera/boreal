@@ -3,5 +3,6 @@ pub mod auth;
 pub mod catalog;
 pub mod guests;
 pub mod pousada;
+pub mod rates;
 pub mod settings;
 pub mod users;

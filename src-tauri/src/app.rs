@@ -8,6 +8,7 @@ use crate::services::auth_service::AuthService;
 use crate::services::catalog_service::CatalogService;
 use crate::services::guest_service::GuestService;
 use crate::services::pousada_service::PousadaService;
+use crate::services::rate_service::RateService;
 use crate::services::settings_service::SettingsService;
 use crate::services::user_service::UserService;
 use crate::services::Ctx;
@@ -27,6 +28,7 @@ pub struct AppState {
     pub pousada: PousadaService,
     pub catalog: CatalogService,
     pub guests: GuestService,
+    pub rates: RateService,
     ctx: Ctx,
 }
 
@@ -59,6 +61,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         pousada: PousadaService::new(ctx.clone()),
         catalog: CatalogService::new(ctx.clone()),
         guests: GuestService::new(ctx.clone()),
+        rates: RateService::new(ctx.clone()),
         ctx,
     })
 }

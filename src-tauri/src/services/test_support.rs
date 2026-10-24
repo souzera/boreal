@@ -7,6 +7,7 @@ use rusqlite::Connection;
 use super::auth_service::AuthService;
 use super::catalog_service::CatalogService;
 use super::guest_service::GuestService;
+use super::rate_service::RateService;
 use super::pousada_service::PousadaService;
 use super::settings_service::SettingsService;
 use super::user_service::UserService;
@@ -52,6 +53,7 @@ pub struct Harness {
     pub pousada: PousadaService,
     pub catalog: CatalogService,
     pub guests: GuestService,
+    pub rates: RateService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -81,7 +83,8 @@ pub fn harness() -> Harness {
         settings: SettingsService::new(ctx.clone()),
         pousada: PousadaService::new(ctx.clone()),
         catalog: CatalogService::new(ctx.clone()),
-        guests: GuestService::new(ctx),
+        guests: GuestService::new(ctx.clone()),
+        rates: RateService::new(ctx),
         utc,
         clock,
         db,
