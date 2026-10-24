@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
@@ -10,6 +10,9 @@ import { getStay } from "@/lib/api";
 import { formatDate, formatInstant, formatMoney } from "@/lib/format";
 import { balanceLabel, chargeKindLabel, paymentMethodLabel, stayStatusIcon, stayStatusLabel } from "@/lib/stay";
 import { useSessionStore } from "@/stores/session";
+import ChargeDialog from "./ChargeDialog";
+import PaymentDialog from "./PaymentDialog";
+import ReverseDialog from "./ReverseDialog";
 
 export type StayDialog = "charge" | "payment" | "checkout" | { reverse: number } | null;
 
@@ -28,8 +31,9 @@ export default function StayPage() {
   const token = useSessionStore((s) => s.token) ?? "";
   const { can } = usePermissions();
   const location = useLocation();
-  const notice = (location.state as { notice?: string } | null)?.notice ?? null;
-  const [, setDialog] = useState<StayDialog>(null);
+  const queryClient = useQueryClient();
+  const [notice, setNotice] = useState<string | null>((location.state as { notice?: string } | null)?.notice ?? null);
+  const [dialog, setDialog] = useState<StayDialog>(null);
   const { data, isError } = useQuery({ queryKey: ["stay", stayId], queryFn: () => getStay(token, stayId) });
 
   if (isError) {
@@ -46,6 +50,13 @@ export default function StayPage() {
 
   const { stay, occupants, account } = data;
   const inHouse = stay.status === "in_house";
+  const reversing = typeof dialog === "object" && dialog !== null ? (account.charges.find((c) => c.id === dialog.reverse) ?? null) : null;
+  const done = (message: string) => {
+    setDialog(null);
+    setNotice(message);
+    void queryClient.invalidateQueries({ queryKey: ["stay", stayId] });
+    void queryClient.invalidateQueries({ queryKey: ["stays"] });
+  };
 
   return (
     <section className="grid gap-6">
@@ -172,6 +183,10 @@ export default function StayPage() {
           </ul>
         )}
       </section>
+
+      <ChargeDialog open={dialog === "charge"} stayId={stay.id} onClose={() => setDialog(null)} onDone={done} />
+      <PaymentDialog open={dialog === "payment"} stayId={stay.id} balanceCents={account.balance_cents} onClose={() => setDialog(null)} onDone={done} />
+      <ReverseDialog open={reversing !== null} stayId={stay.id} charge={reversing} onClose={() => setDialog(null)} onDone={done} />
     </section>
   );
 }

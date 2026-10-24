@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import * as api from "@/lib/api";
@@ -102,5 +103,13 @@ describe("StayPage", () => {
     open();
 
     expect(await screen.findByText("Crédito do hóspede R$ 60,00")).toBeInTheDocument();
+  });
+
+  it("abre os diálogos de lançar, receber e estornar", async () => {
+    open();
+    await screen.findByText("Hospedagem RES-000003");
+
+    await userEvent.click(screen.getByRole("button", { name: "Lançar consumo" }));
+    expect(within(await screen.findByRole("dialog")).getByText("Lançar consumo", { selector: "[data-slot='dialog-title'], h2" })).toBeInTheDocument();
   });
 });
