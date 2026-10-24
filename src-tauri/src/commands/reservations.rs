@@ -4,7 +4,8 @@ use crate::app::App;
 use crate::error::AppError;
 use crate::models::page::Page;
 use crate::models::reservation::{
-    AvailabilityResult, CreatedReservation, NewReservation, Reservation, ReservationDetail, ReservationQuery,
+    AvailabilityResult, ChangePreview, ChangeRequest, CreatedReservation, NewReservation, Reservation, ReservationDetail,
+    ReservationQuery,
 };
 
 #[tauri::command]
@@ -42,4 +43,29 @@ pub fn check_room_availability(
     app.state()?
         .reservations
         .check_availability(&token, room_id, &check_in, &check_out, ignore_reservation_id)
+}
+
+#[tauri::command]
+pub fn preview_reservation_change(
+    app: State<'_, App>,
+    token: String,
+    id: i64,
+    request: ChangeRequest,
+) -> Result<ChangePreview, AppError> {
+    app.state()?.reservations.preview_change(&token, id, request)
+}
+
+#[tauri::command]
+pub fn apply_reservation_change(
+    app: State<'_, App>,
+    token: String,
+    id: i64,
+    request: ChangeRequest,
+    expected_version: i64,
+    justification: String,
+    fingerprint: String,
+) -> Result<(), AppError> {
+    app.state()?
+        .reservations
+        .apply_change(&token, id, request, expected_version, justification, &fingerprint)
 }

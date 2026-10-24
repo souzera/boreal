@@ -116,3 +116,35 @@ pub struct AvailabilityResult {
     pub available: bool,
     pub conflicts: Vec<ConflictInfo>,
 }
+
+/// O que o usuário quer mudar; campos ausentes ficam como estão.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChangeRequest {
+    pub room_id: Option<i64>,
+    pub check_in_date: Option<String>,
+    pub check_out_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NightChange {
+    pub date: String,
+    pub amount_cents: i64,
+    /// `true` quando a noite continua e mantém o preço combinado.
+    pub kept: bool,
+    pub rule: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChangePreview {
+    pub feasible: bool,
+    /// Identifica o que foi mostrado; a confirmação só vale se nada mudou desde então.
+    pub fingerprint: String,
+    pub price_before_cents: i64,
+    pub price_after_cents: i64,
+    pub difference_cents: i64,
+    pub new_deposit_expected_cents: i64,
+    pub nights: Vec<NightChange>,
+    pub missing_dates: Vec<String>,
+    pub conflicts: Vec<ConflictInfo>,
+    pub problems: Vec<String>,
+}

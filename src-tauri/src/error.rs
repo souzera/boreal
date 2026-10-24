@@ -12,6 +12,8 @@ pub enum AppError {
     SchemaTooNew,
     #[error("É preciso trocar a senha temporária antes de continuar.")]
     PasswordChangeRequired,
+    #[error("Os preços ou a disponibilidade mudaram desde a prévia. Revise a nova prévia antes de confirmar.")]
+    StalePreview,
     #[error("Não foi possível concluir a operação. Tente novamente.")]
     Database(String),
     #[error("{0}")]
@@ -37,6 +39,7 @@ impl AppError {
             AppError::KeyInvalid => "key_invalid",
             AppError::SchemaTooNew => "schema_too_new",
             AppError::PasswordChangeRequired => "password_change_required",
+            AppError::StalePreview => "stale_preview",
             AppError::Database(_) => "database",
             AppError::Validation(_) => "validation",
             AppError::Unauthorized => "unauthorized",

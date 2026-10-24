@@ -81,6 +81,8 @@ pub fn run() {
             commands::reservations::get_reservation,
             commands::reservations::list_reservations,
             commands::reservations::check_room_availability,
+            commands::reservations::preview_reservation_change,
+            commands::reservations::apply_reservation_change,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -267,3 +267,62 @@ pub fn blocking(
     }
     Ok(out)
 }
+
+pub struct ChangedFields<'a> {
+    pub room_id: i64,
+    pub check_in: &'a str,
+    pub check_out: &'a str,
+    pub list_total_cents: i64,
+    pub agreed_total_cents: i64,
+    pub deposit_expected_cents: i64,
+}
+
+/// Aplica a alteração se a versão ainda for a consultada; senão, `Conflict`.
+pub fn apply_change(
+    tx: &Transaction,
+    id: i64,
+    f: &ChangedFields,
+    expected_version: i64,
+    at: DateTime<Utc>,
+) -> Result<(), AppError> {
+    let changed = tx.execute(
+        "UPDATE reservations SET room_id = ?1, check_in_date = ?2, check_out_date = ?3, list_total_cents = ?4,
+                agreed_total_cents = ?5, deposit_expected_cents = ?6, version = version + 1, updated_at = ?7
+         WHERE id = ?8 AND version = ?9",
+        params![f.room_id, f.check_in, f.check_out, f.list_total_cents, f.agreed_total_cents, f.deposit_expected_cents, stamp(at), id, expected_version],
+    )?;
+    if changed == 0 {
+        return Err(AppError::Conflict);
+    }
+    Ok(())
+}
+
+pub fn replace_nights(tx: &Transaction, reservation_id: i64, nights: &[(String, i64, String)]) -> Result<(), AppError> {
+    tx.execute("DELETE FROM reservation_nights WHERE reservation_id = ?1", [reservation_id])?;
+    for (date, cents, rule) in nights {
+        insert_night(tx, reservation_id, date, *cents, rule)?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)] // espelha as colunas do histórico
+pub fn insert_change(
+    tx: &Transaction,
+    reservation_id: i64,
+    at: DateTime<Utc>,
+    changed_by: i64,
+    kind: &str,
+    before_json: &str,
+    after_json: &str,
+    price_before: Option<i64>,
+    price_after: Option<i64>,
+    justification: Option<&str>,
+) -> Result<(), AppError> {
+    tx.execute(
+        "INSERT INTO reservation_changes (reservation_id, changed_at, changed_by, kind, before_json, after_json,
+            price_before_cents, price_after_cents, justification)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![reservation_id, stamp(at), changed_by, kind, before_json, after_json, price_before, price_after, justification],
+    )?;
+    Ok(())
+}
