@@ -41,6 +41,16 @@ pub struct SessionManager {
 }
 
 impl SessionManager {
+    // O estado das sessões é simples e se mantém consistente mesmo se uma thread falhar
+    // segurando o trava; por isso um mutex envenenado é recuperado em vez de derrubar o app.
+    fn sessions(&self) -> std::sync::MutexGuard<'_, HashMap<String, Session>> {
+        self.sessions.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn idle_lock(&self) -> std::sync::MutexGuard<'_, Duration> {
+        self.idle_lock.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     pub fn new(idle_lock: Duration) -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
@@ -49,7 +59,7 @@ impl SessionManager {
     }
 
     pub fn set_idle_lock(&self, idle_lock: Duration) {
-        *self.idle_lock.lock().unwrap() = idle_lock;
+        *self.idle_lock() = idle_lock;
     }
 
     pub fn create(&self, user_id: i64, role: Role, now: Instant) -> String {
@@ -60,7 +70,7 @@ impl SessionManager {
         let mut bytes = [0u8; 32];
         rand::fill(&mut bytes[..]);
         let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-        self.sessions.lock().unwrap().insert(
+        self.sessions().insert(
             token.clone(),
             Session {
                 info: SessionInfo { user_id, role, extra },
@@ -85,8 +95,8 @@ impl SessionManager {
     }
 
     fn touch_inner(&self, token: &str, now: Instant, allow_pending: bool) -> Result<SessionInfo, AppError> {
-        let idle_lock = *self.idle_lock.lock().unwrap();
-        let mut sessions = self.sessions.lock().unwrap();
+        let idle_lock = *self.idle_lock();
+        let mut sessions = self.sessions();
         let session = sessions.get_mut(token).ok_or(AppError::Unauthorized)?;
         if session.locked || now.saturating_duration_since(session.last_activity) > idle_lock {
             session.locked = true;
@@ -100,7 +110,7 @@ impl SessionManager {
     }
 
     pub fn set_must_change(&self, token: &str, value: bool) {
-        if let Some(session) = self.sessions.lock().unwrap().get_mut(token) {
+        if let Some(session) = self.sessions().get_mut(token) {
             session.must_change_password = value;
         }
     }
@@ -123,7 +133,7 @@ impl SessionManager {
 
     /// Consulta a sessão sem exigir que esteja desbloqueada (usado para reautenticar).
     pub fn peek(&self, token: &str) -> Result<SessionInfo, AppError> {
-        let sessions = self.sessions.lock().unwrap();
+        let sessions = self.sessions();
         sessions
             .get(token)
             .map(|s| s.info)
@@ -132,7 +142,7 @@ impl SessionManager {
 
     /// Só deve ser chamado depois de o serviço reautenticar o usuário.
     pub fn unlock(&self, token: &str, now: Instant) -> Result<SessionInfo, AppError> {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.sessions();
         let session = sessions.get_mut(token).ok_or(AppError::Unauthorized)?;
         session.locked = false;
         session.last_activity = now;
@@ -140,7 +150,7 @@ impl SessionManager {
     }
 
     pub fn destroy(&self, token: &str) {
-        self.sessions.lock().unwrap().remove(token);
+        self.sessions().remove(token);
     }
 }
 
@@ -177,6 +187,22 @@ mod tests {
 
         m.unlock(&token, later).unwrap();
         assert_eq!(m.touch(&token, later).unwrap().user_id, 1);
+    }
+
+    #[test]
+    fn poisoned_session_manager_still_answers() {
+        let m = std::sync::Arc::new(manager());
+        let now = Instant::now();
+        let token = m.create(1, Role::Admin, now);
+        let clone = m.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = clone.sessions.lock().unwrap();
+            panic!("pânico proposital para envenenar o mutex");
+        })
+        .join();
+
+        assert!(m.touch(&token, now).is_ok());
+        assert!(m.create(2, Role::Recepcao, now).len() == 64);
     }
 
     #[test]

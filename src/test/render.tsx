@@ -34,8 +34,8 @@ export function signIn(user: User = adminUser, token = "t") {
 interface PageOptions {
   /** Padrão da rota da página (pode ter parâmetros, como `/hospedes/:id`). */
   path?: string;
-  /** Endereço inicial; por padrão, o próprio `path`. */
-  entry?: string;
+  /** Endereço inicial (ou endereço + estado de navegação); por padrão, o próprio `path`. */
+  entry?: string | { pathname: string; state?: unknown };
   /** Rotas de destino de navegações, com conteúdo simples para o teste enxergar. */
   extraRoutes?: RouteObject[];
 }

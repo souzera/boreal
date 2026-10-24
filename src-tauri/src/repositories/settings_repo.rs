@@ -38,6 +38,9 @@ pub fn load(conn: &Connection) -> Result<AppSettings, AppError> {
         late_checkout_tolerance_minutes: get_u32(conn, "late_checkout_tolerance_minutes")?,
         no_show_tolerance_minutes: get_u32(conn, "no_show_tolerance_minutes")?,
         cleaning_interval_minutes: get_u32(conn, "cleaning_interval_minutes")?,
+        deposit_percent_bp: get_u32(conn, "deposit_percent_bp")?,
+        deposit_due_days_after_booking: get_u32(conn, "deposit_due_days_after_booking")?,
+        deposit_due_days_before_arrival: get_u32(conn, "deposit_due_days_before_arrival")?,
     })
 }
 
@@ -54,6 +57,9 @@ pub fn save(tx: &Transaction, s: &AppSettings) -> Result<(), AppError> {
     set(tx, "late_checkout_tolerance_minutes", &s.late_checkout_tolerance_minutes.to_string())?;
     set(tx, "no_show_tolerance_minutes", &s.no_show_tolerance_minutes.to_string())?;
     set(tx, "cleaning_interval_minutes", &s.cleaning_interval_minutes.to_string())?;
+    set(tx, "deposit_percent_bp", &s.deposit_percent_bp.to_string())?;
+    set(tx, "deposit_due_days_after_booking", &s.deposit_due_days_after_booking.to_string())?;
+    set(tx, "deposit_due_days_before_arrival", &s.deposit_due_days_before_arrival.to_string())?;
     Ok(())
 }
 

@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/stores/session";
 
-const upcoming = ["Reservas", "Financeiro", "Relatórios"];
+const upcoming = ["Financeiro", "Relatórios"];
 
 function linkClass({ isActive }: { isActive: boolean }) {
   return cn(
@@ -25,11 +25,20 @@ export default function Sidebar() {
       <NavLink to="/" end className={linkClass}>
         Dashboard
       </NavLink>
+      <NavLink to="/mapa" className={linkClass}>
+        Mapa de quartos
+      </NavLink>
+      <NavLink to="/reservas" className={linkClass}>
+        Reservas
+      </NavLink>
       <NavLink to="/hospedes" className={linkClass}>
         Hóspedes
       </NavLink>
       <NavLink to="/quartos" className={linkClass}>
         Quartos
+      </NavLink>
+      <NavLink to="/tarifas" className={linkClass}>
+        Tarifas
       </NavLink>
       {upcoming.map((item) => (
         <span

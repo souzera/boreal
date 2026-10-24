@@ -55,7 +55,7 @@ impl AuthService {
     }
 
     pub fn needs_bootstrap(&self) -> Result<bool, AppError> {
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         Ok(user_repo::count(&conn)? == 0)
     }
 
@@ -76,7 +76,7 @@ impl AuthService {
         validate_password_policy(password)?;
         let hash = hash_password(password)?;
 
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
         if user_repo::count(&tx)? > 0 {
             return Err(AppError::Validation("O sistema já foi configurado.".into()));
@@ -111,7 +111,7 @@ impl AuthService {
     }
 
     pub fn login(&self, username: &str, password: &str) -> Result<LoginResult, AppError> {
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let Some((user, hash)) = user_repo::find_by_username(&conn, username.trim())? else {
             // Usuário inexistente: mesmo custo de verificação, nenhum estado gravado.
             verify_password(password, &DUMMY_HASH);
@@ -188,6 +188,17 @@ impl AuthService {
             .touch_allow_pending(token, self.ctx.clock.now())
     }
 
+    /// Permissões sensíveis da sessão (do perfil e as extras), para a interface decidir o que oferecer.
+    /// A verificação de verdade continua sendo feita no backend a cada operação.
+    pub fn my_permissions(&self, token: &str) -> Result<Vec<String>, AppError> {
+        let info = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        Ok(crate::auth::permissions::Permission::ALL
+            .iter()
+            .filter(|p| crate::auth::permissions::role_has(info.role, **p) || info.extra.contains(**p))
+            .map(|p| p.as_str().to_string())
+            .collect())
+    }
+
     /// Estado da sessão para a interface: ativa ou bloqueada por inatividade.
     pub fn session_state(&self, token: &str) -> Result<SessionStatus, AppError> {
         let (state, info) = match self.session_status(token) {
@@ -195,7 +206,7 @@ impl AuthService {
             Err(AppError::Locked) => ("locked", self.ctx.sessions.peek(token)?),
             Err(other) => return Err(other),
         };
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         let user = user_repo::find(&conn, info.user_id)?;
         Ok(SessionStatus { state, user })
     }
@@ -211,7 +222,7 @@ impl AuthService {
         let new_hash = hash_password(new)?;
 
         let now = self.ctx.utc.now_utc();
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let (user, hash) =
             user_repo::find_with_hash(&conn, info.user_id)?.ok_or(AppError::Unauthorized)?;
         let tx = conn.transaction()?;
@@ -251,7 +262,7 @@ impl AuthService {
     pub fn unlock_session(&self, token: &str, password: &str) -> Result<(), AppError> {
         let info = self.ctx.sessions.peek(token)?;
         let now = self.ctx.utc.now_utc();
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let (user, hash) =
             user_repo::find_with_hash(&conn, info.user_id)?.ok_or(AppError::Unauthorized)?;
         if !user.active {
@@ -577,6 +588,27 @@ mod tests {
 
         assert!(h.auth.session_status(&current).is_ok());
         assert!(matches!(h.auth.session_status(&other), Err(AppError::Unauthorized)));
+    }
+
+    #[test]
+    fn my_permissions_lists_what_the_session_can_do() {
+        use crate::auth::permissions::Permission;
+        use crate::services::test_support::recepcao_token;
+        let h = harness();
+        let admin = admin_token(&h);
+        let rec = recepcao_token(&h, &admin);
+
+        let all = h.auth.my_permissions(&admin).unwrap();
+        assert_eq!(all.len(), Permission::ALL.len());
+        assert!(all.contains(&"manage_users".to_string()));
+        assert!(h.auth.my_permissions(&rec).unwrap().is_empty());
+
+        let rec_id = h.auth.login("rec", "Definitiva-456").unwrap().user.id;
+        h.users.set_extra_permissions(&admin, rec_id, &[Permission::ApplyDiscount, Permission::ExceedCapacity]).unwrap();
+        let rec = h.auth.login("rec", "Definitiva-456").unwrap().token;
+        let mut mine = h.auth.my_permissions(&rec).unwrap();
+        mine.sort();
+        assert_eq!(mine, ["apply_discount", "exceed_capacity"]);
     }
 
     #[test]

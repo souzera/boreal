@@ -2,7 +2,7 @@
 
 Sistema desktop de gestão para uma única pousada (reservas, hospedagens, limpeza, financeiro e relatórios). Funciona offline, em um computador na recepção, com os dados guardados localmente em um banco SQLite criptografado.
 
-Estado atual: **Marco 0 (fundação)** — banco criptografado, migrações, auditoria, autenticação com permissões e a estrutura da interface. Os módulos de negócio vêm nos próximos marcos.
+Estado atual: **Marco 2 (tarifas e reservas)** — além da fundação (banco criptografado, auditoria, autenticação com permissões) e dos cadastros, o sistema calcula preços por tarifa, cria, altera e cancela reservas com disponibilidade validada e mostra o mapa de quartos. Hospedagem, financeiro e relatórios vêm nos próximos marcos.
 
 ## Tecnologias
 

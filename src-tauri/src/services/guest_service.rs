@@ -134,7 +134,7 @@ impl GuestService {
     pub fn find_possible_duplicates(&self, token: &str, input: &GuestInput) -> Result<Vec<DuplicateMatch>, AppError> {
         self.session(token)?;
         let c = clean(input)?;
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         guest_repo::find_possible_duplicates(&conn, &fold(&c.full_name), Some(&c.phone), c.cpf.as_deref())
     }
 
@@ -143,7 +143,7 @@ impl GuestService {
     pub fn create(&self, token: &str, input: GuestInput, confirm_duplicates: bool) -> Result<CreateGuestOutcome, AppError> {
         let actor = self.session(token)?;
         let c = clean(&input)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
         if !confirm_duplicates {
             let matches = guest_repo::find_possible_duplicates(&tx, &fold(&c.full_name), Some(&c.phone), c.cpf.as_deref())?;
@@ -161,14 +161,14 @@ impl GuestService {
 
     pub fn get(&self, token: &str, id: i64) -> Result<Guest, AppError> {
         self.session(token)?;
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         guest_repo::find(&conn, id)?.ok_or_else(|| invalid("Hóspede não encontrado."))
     }
 
     pub fn update(&self, token: &str, id: i64, input: GuestInput, expected_version: i64) -> Result<(), AppError> {
         let actor = self.session(token)?;
         let c = clean(&input)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let before = guest_repo::find(&conn, id)?.ok_or_else(|| invalid("Hóspede não encontrado."))?;
         let tx = conn.transaction()?;
         guest_repo::update(&tx, id, &c.as_repo(), expected_version, self.ctx.utc.now_utc())?;
@@ -181,7 +181,7 @@ impl GuestService {
     pub fn set_active(&self, token: &str, id: i64, active: bool) -> Result<(), AppError> {
         let actor = self.session(token)?;
         require(&actor, Permission::ManageCatalog)?;
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let before = guest_repo::find(&conn, id)?.ok_or_else(|| invalid("Hóspede não encontrado."))?;
         let tx = conn.transaction()?;
         guest_repo::set_active(&tx, id, active, self.ctx.utc.now_utc())?;
@@ -193,7 +193,7 @@ impl GuestService {
     pub fn list(&self, token: &str, query: GuestQuery) -> Result<Page<Guest>, AppError> {
         self.session(token)?;
         let (page, page_size, offset) = clamp_paging(query.page, query.page_size);
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         let (items, total) = guest_repo::list(&conn, &query, i64::from(page_size), offset)?;
         Ok(Page { items, total, page, page_size })
     }

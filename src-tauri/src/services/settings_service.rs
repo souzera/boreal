@@ -28,7 +28,7 @@ impl SettingsService {
     /// Qualquer usuário autenticado pode consultar as configurações.
     pub fn get(&self, token: &str) -> Result<SettingsView, AppError> {
         self.ctx.sessions.touch(token, self.ctx.clock.now())?;
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         Ok(SettingsView {
             settings: settings_repo::load(&conn)?,
             version: settings_repo::version(&conn)?,
@@ -38,7 +38,7 @@ impl SettingsService {
     /// Política de sessão para a interface (tempo de inatividade).
     pub fn session_policy(&self, token: &str) -> Result<SessionPolicy, AppError> {
         self.ctx.sessions.touch(token, self.ctx.clock.now())?;
-        let conn = self.ctx.db.lock().unwrap();
+        let conn = self.ctx.conn()?;
         Ok(SessionPolicy {
             idle_lock_minutes: settings_repo::get_u32(&conn, "idle_lock_minutes")?,
         })
@@ -50,7 +50,7 @@ impl SettingsService {
         require(&actor, Permission::ManageSettings)?;
         input.settings.validate()?;
 
-        let mut conn = self.ctx.db.lock().unwrap();
+        let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
         if settings_repo::version(&tx)? != input.expected_version {
             return Err(AppError::Conflict);
@@ -120,6 +120,9 @@ mod tests {
         assert_eq!(s.late_checkout_tolerance_minutes, 30);
         assert_eq!(s.no_show_tolerance_minutes, 60);
         assert_eq!(s.cleaning_interval_minutes, 60);
+        assert_eq!(s.deposit_percent_bp, 3000);
+        assert_eq!(s.deposit_due_days_after_booking, 3);
+        assert_eq!(s.deposit_due_days_before_arrival, 1);
         assert_eq!(version, 1);
     }
 
@@ -150,6 +153,9 @@ mod tests {
             Box::new(|s| s.default_check_out_time = "9:7".into()),
             Box::new(|s| s.late_checkout_tolerance_minutes = 601),
             Box::new(|s| s.cleaning_interval_minutes = 601),
+            Box::new(|s| s.deposit_percent_bp = 10_001),
+            Box::new(|s| s.deposit_due_days_after_booking = 61),
+            Box::new(|s| s.deposit_due_days_before_arrival = 61),
         ];
         for mutate in cases {
             let mut s = base.clone();
