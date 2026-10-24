@@ -4,8 +4,8 @@ use crate::app::App;
 use crate::error::AppError;
 use crate::models::page::Page;
 use crate::models::reservation::{
-    AvailabilityResult, ChangePreview, ChangeRequest, CreatedReservation, NewReservation, Reservation, ReservationDetail,
-    ReservationQuery,
+    AvailabilityResult, CancellationOverride, CancellationPreview, CancellationResult, ChangePreview, ChangeRequest, CreatedReservation, NewReservation, Reservation, ReservationDetail,
+    ReservationQuery, ReviewItem,
 };
 
 #[tauri::command]
@@ -68,4 +68,39 @@ pub fn apply_reservation_change(
     app.state()?
         .reservations
         .apply_change(&token, id, request, expected_version, justification, &fingerprint)
+}
+
+#[tauri::command]
+pub fn preview_reservation_cancellation(
+    app: State<'_, App>,
+    token: String,
+    id: i64,
+) -> Result<CancellationPreview, AppError> {
+    app.state()?.reservations.preview_cancellation(&token, id)
+}
+
+#[tauri::command]
+pub fn cancel_reservation(
+    app: State<'_, App>,
+    token: String,
+    id: i64,
+    expected_version: i64,
+    exception: Option<CancellationOverride>,
+) -> Result<CancellationResult, AppError> {
+    app.state()?.reservations.cancel(&token, id, expected_version, exception)
+}
+
+#[tauri::command]
+pub fn mark_reservation_no_show(
+    app: State<'_, App>,
+    token: String,
+    id: i64,
+    expected_version: i64,
+) -> Result<(), AppError> {
+    app.state()?.reservations.mark_no_show(&token, id, expected_version)
+}
+
+#[tauri::command]
+pub fn list_reservations_needing_review(app: State<'_, App>, token: String) -> Result<Vec<ReviewItem>, AppError> {
+    app.state()?.reservations.list_needing_review(&token)
 }

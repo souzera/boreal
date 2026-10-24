@@ -148,3 +148,34 @@ pub struct ChangePreview {
     pub conflicts: Vec<ConflictInfo>,
     pub problems: Vec<String>,
 }
+
+#[derive(Debug, Serialize)]
+pub struct CancellationPreview {
+    /// Dias entre hoje e a chegada (negativo se a chegada já passou).
+    pub days_before: i64,
+    pub deposit_paid_cents: i64,
+    pub refund_cents: i64,
+    pub retained_cents: i64,
+    pub tier_min_days: Option<u32>,
+    pub can_cancel: bool,
+}
+
+/// Exceção à política: quanto do sinal fica retido, com justificativa.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CancellationOverride {
+    pub retained_cents: i64,
+    pub justification: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CancellationResult {
+    pub refund_cents: i64,
+    pub retained_cents: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReviewItem {
+    pub reservation: Reservation,
+    /// `no_show_candidate` e/ou `deposit_overdue`.
+    pub reasons: Vec<String>,
+}

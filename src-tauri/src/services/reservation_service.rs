@@ -11,11 +11,12 @@ use crate::domain::{cancellation, dates, money};
 use crate::error::AppError;
 use crate::models::page::{clamp_paging, Page};
 use crate::models::reservation::{
-    AvailabilityResult, ChangePreview, ChangeRequest, ConflictInfo, CreatedReservation, NewReservation, NightChange,
-    Reservation, ReservationDetail, ReservationQuery,
+    AvailabilityResult, CancellationOverride, CancellationPreview, CancellationResult, ChangePreview, ChangeRequest,
+    ConflictInfo, CreatedReservation, NewReservation, NightChange, Reservation, ReservationDetail, ReservationQuery,
+    ReviewItem,
 };
 use crate::repositories::reservation_repo::{self, ChangedFields, NewRow};
-use crate::repositories::{catalog_repo, guest_repo, sequence_repo, settings_repo};
+use crate::repositories::{catalog_repo, guest_repo, policy_repo, sequence_repo, settings_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -535,6 +536,177 @@ impl ReservationService {
     }
 }
 
+// ---- cancelamento, no-show e revisão ----
+
+impl ReservationService {
+    /// Mostra quanto do sinal seria devolvido e retido, **sem gravar nada**.
+    pub fn preview_cancellation(&self, token: &str, id: i64) -> Result<CancellationPreview, AppError> {
+        self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        let conn = self.ctx.conn()?;
+        let today = self.ctx.today();
+        let reservation = reservation_repo::find(&conn, id, today)?.ok_or_else(|| invalid("Reserva não encontrada."))?;
+        let check_in = parse_date(&reservation.check_in_date, "Data de entrada")?;
+        let days_before = (check_in - today).num_days();
+        let can_cancel = matches!(reservation.status.as_str(), "pending" | "confirmed");
+        let tiers = policy_repo::list_tiers(&conn)?;
+        let outcome = cancellation::compute(&tiers, days_before, reservation.deposit_paid_cents, false)?;
+        Ok(CancellationPreview {
+            days_before,
+            deposit_paid_cents: reservation.deposit_paid_cents,
+            refund_cents: outcome.refund_cents,
+            retained_cents: outcome.retained_cents,
+            tier_min_days: outcome.tier_min_days,
+            can_cancel,
+        })
+    }
+
+    /// Cancela a reserva preservando o registro. O valor padrão vem da política; uma exceção exige
+    /// `CancellationException` e justificativa, e a auditoria guarda também o valor calculado.
+    pub fn cancel(
+        &self,
+        token: &str,
+        id: i64,
+        expected_version: i64,
+        exception: Option<CancellationOverride>,
+    ) -> Result<CancellationResult, AppError> {
+        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        let today = self.ctx.today();
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        let reservation = reservation_repo::find(&tx, id, today)?.ok_or_else(|| invalid("Reserva não encontrada."))?;
+        if !matches!(reservation.status.as_str(), "pending" | "confirmed") {
+            return Err(invalid("Só reservas pendentes ou confirmadas podem ser canceladas."));
+        }
+        if reservation.version != expected_version {
+            return Err(AppError::Conflict);
+        }
+        let check_in = parse_date(&reservation.check_in_date, "Data de entrada")?;
+        let tiers = policy_repo::list_tiers(&tx)?;
+        let calculated =
+            cancellation::compute(&tiers, (check_in - today).num_days(), reservation.deposit_paid_cents, false)?;
+
+        let (retained, justification) = match &exception {
+            None => (calculated.retained_cents, None),
+            Some(exception) => {
+                require(&actor, Permission::CancellationException)?;
+                let why = exception.justification.trim();
+                if why.is_empty() {
+                    return Err(invalid("Informe a justificativa da exceção."));
+                }
+                if exception.retained_cents < 0 || exception.retained_cents > reservation.deposit_paid_cents {
+                    return Err(invalid("O valor retido deve estar entre zero e o sinal já pago."));
+                }
+                (exception.retained_cents, Some(why.to_string()))
+            }
+        };
+        let refund = money::sub(reservation.deposit_paid_cents, retained)?;
+
+        let at = self.ctx.utc.now_utc();
+        reservation_repo::set_closed(&tx, id, "cancelled", retained, expected_version, at)?;
+        let before = json!({ "status": reservation.status, "deposit_paid_cents": reservation.deposit_paid_cents });
+        let after = json!({
+            "status": "cancelled", "refund_cents": refund, "retained_cents": retained,
+            "calculated_refund_cents": calculated.refund_cents, "calculated_retained_cents": calculated.retained_cents,
+            "tier_min_days": calculated.tier_min_days, "overridden": exception.is_some()
+        });
+        reservation_repo::insert_change(
+            &tx, id, at, actor.user_id, "cancellation", &before.to_string(), &after.to_string(), None, None, justification.as_deref(),
+        )?;
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at,
+                user_id: Some(actor.user_id),
+                module: "reservations",
+                operation: "cancel_reservation",
+                entity: "reservation",
+                entity_id: Some(id),
+                before: Some(before),
+                after: Some(after),
+                justification,
+            },
+        )?;
+        tx.commit()?;
+        Ok(CancellationResult { refund_cents: refund, retained_cents: retained })
+    }
+
+    /// Marca no-show (decisão manual da recepção) depois do horário previsto de chegada mais a tolerância.
+    /// O sinal fica retido e o quarto é liberado.
+    pub fn mark_no_show(&self, token: &str, id: i64, expected_version: i64) -> Result<(), AppError> {
+        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        let today = self.ctx.today();
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        let reservation = reservation_repo::find(&tx, id, today)?.ok_or_else(|| invalid("Reserva não encontrada."))?;
+        if !matches!(reservation.status.as_str(), "pending" | "confirmed") {
+            return Err(invalid("Só reservas pendentes ou confirmadas podem ser marcadas como no-show."));
+        }
+        if reservation.version != expected_version {
+            return Err(AppError::Conflict);
+        }
+        let settings = settings_repo::load(&tx)?;
+        if !self.arrival_overdue(&reservation, settings.no_show_tolerance_minutes)? {
+            return Err(invalid(format!(
+                "O no-show só pode ser marcado depois de {} minuto(s) do horário previsto de chegada.",
+                settings.no_show_tolerance_minutes
+            )));
+        }
+
+        let at = self.ctx.utc.now_utc();
+        reservation_repo::set_closed(&tx, id, "no_show", reservation.deposit_paid_cents, expected_version, at)?;
+        let before = json!({ "status": reservation.status });
+        let after = json!({ "status": "no_show", "retained_cents": reservation.deposit_paid_cents });
+        reservation_repo::insert_change(&tx, id, at, actor.user_id, "no_show", &before.to_string(), &after.to_string(), None, None, None)?;
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at,
+                user_id: Some(actor.user_id),
+                module: "reservations",
+                operation: "mark_no_show",
+                entity: "reservation",
+                entity_id: Some(id),
+                before: Some(before),
+                after: Some(after),
+                justification: None,
+            },
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// A chegada prevista (data + horário) mais a tolerância já passou?
+    fn arrival_overdue(&self, reservation: &Reservation, tolerance_minutes: u32) -> Result<bool, AppError> {
+        let date = parse_date(&reservation.check_in_date, "Data de entrada")?;
+        let time = parse_time(&reservation.expected_check_in_time)
+            .ok_or_else(|| AppError::Database("horário previsto inválido na reserva".into()))?;
+        let deadline = date.and_time(time) + chrono::Duration::minutes(i64::from(tolerance_minutes));
+        Ok(self.ctx.local_now() >= deadline)
+    }
+
+    /// Reservas que pedem uma decisão da recepção (nunca altera nada): chegada vencida (candidata a
+    /// no-show) e sinal vencido.
+    pub fn list_needing_review(&self, token: &str) -> Result<Vec<ReviewItem>, AppError> {
+        self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        let conn = self.ctx.conn()?;
+        let settings = settings_repo::load(&conn)?;
+        let mut items = Vec::new();
+        for reservation in reservation_repo::review_candidates(&conn, self.ctx.today())? {
+            let mut reasons = Vec::new();
+            if self.arrival_overdue(&reservation, settings.no_show_tolerance_minutes)? {
+                reasons.push("no_show_candidate".to_string());
+            }
+            if reservation.deposit_overdue {
+                reasons.push("deposit_overdue".to_string());
+            }
+            if !reasons.is_empty() {
+                items.push(ReviewItem { reservation, reasons });
+            }
+        }
+        Ok(items)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::auth::permissions::Permission;
@@ -542,7 +714,7 @@ mod tests {
     use crate::models::catalog::{NewCategory, NewRoom};
     use crate::models::guest::GuestInput;
     use crate::models::rate::NewRateRule;
-    use crate::models::reservation::{ChangeRequest, NewReservation, ReservationQuery};
+    use crate::models::reservation::{CancellationOverride, ChangeRequest, NewReservation, ReservationQuery};
     use crate::services::guest_service::CreateGuestOutcome;
     use crate::services::test_support::{admin_token, harness, recepcao_token, Harness};
     use std::time::Duration;
@@ -1171,5 +1343,153 @@ mod tests {
             .query_row("SELECT justification FROM audit_log WHERE operation = 'change_reservation'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(audited, "Hóspede pediu mais uma noite");
+    }
+
+    // ---- cancelamento, no-show e revisão ----
+
+    fn pay_deposit(w: &World, id: i64, cents: i64) {
+        w.h.db
+            .lock()
+            .unwrap()
+            .execute("UPDATE reservations SET deposit_paid_cents = ?1 WHERE id = ?2", rusqlite::params![cents, id])
+            .unwrap();
+    }
+
+    fn version(w: &World, id: i64) -> i64 {
+        w.h.reservations.get(&w.admin, id).unwrap().reservation.version
+    }
+
+    #[test]
+    fn cancellation_preview_uses_the_policy_tiers_and_never_writes() {
+        let w = world();
+        let far = reservation(&w, "2026-11-10", "2026-11-12"); // 20 dias
+        let mid = reservation(&w, "2026-10-25", "2026-10-27"); // 4 dias
+        let near = reservation(&w, "2026-10-22", "2026-10-24"); // 1 dia
+        for id in [far, mid, near] {
+            pay_deposit(&w, id, 9_000);
+        }
+        let before = counts(&w);
+
+        let p_far = w.h.reservations.preview_cancellation(&w.admin, far).unwrap();
+        let p_mid = w.h.reservations.preview_cancellation(&w.admin, mid).unwrap();
+        let p_near = w.h.reservations.preview_cancellation(&w.admin, near).unwrap();
+
+        assert_eq!((p_far.days_before, p_far.refund_cents, p_far.retained_cents, p_far.tier_min_days), (20, 9_000, 0, Some(7)));
+        assert_eq!((p_mid.days_before, p_mid.refund_cents, p_mid.retained_cents, p_mid.tier_min_days), (4, 4_500, 4_500, Some(3)));
+        assert_eq!((p_near.days_before, p_near.refund_cents, p_near.retained_cents, p_near.tier_min_days), (1, 0, 9_000, Some(0)));
+        assert!(p_far.can_cancel);
+        assert_eq!(counts(&w), before);
+    }
+
+    #[test]
+    fn cancel_defaults_to_the_calculated_values_and_keeps_the_record() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-27");
+        pay_deposit(&w, id, 9_000);
+
+        let result = w.h.reservations.cancel(&w.admin, id, 1, None).unwrap();
+
+        assert_eq!((result.refund_cents, result.retained_cents), (4_500, 4_500));
+        let detail = w.h.reservations.get(&w.admin, id).unwrap();
+        assert_eq!(detail.reservation.status, "cancelled");
+        assert_eq!(detail.reservation.cancellation_fee_cents, Some(4_500));
+        assert_eq!(detail.reservation.cancelled_at.as_deref(), Some("2026-10-21T12:00:00Z"));
+        assert_eq!(detail.nights.len(), 2);
+        assert_eq!(detail.history.last().unwrap().kind, "cancellation");
+        // o quarto fica livre depois de gravado
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-25", "2026-10-27")).is_ok());
+    }
+
+    #[test]
+    fn an_exception_needs_the_permission_a_justification_and_valid_bounds() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-27");
+        pay_deposit(&w, id, 9_000);
+        let rec = recepcao_token(&w.h, &w.admin);
+        let exception = |retained: i64, why: &str| Some(CancellationOverride { retained_cents: retained, justification: why.into() });
+
+        assert!(matches!(w.h.reservations.cancel(&rec, id, 1, exception(0, "Motivo de saúde")), Err(AppError::Forbidden)));
+        assert!(matches!(w.h.reservations.cancel(&w.admin, id, 1, exception(0, "  ")), Err(AppError::Validation(_))));
+        assert!(matches!(w.h.reservations.cancel(&w.admin, id, 1, exception(9_001, "x")), Err(AppError::Validation(_))));
+        assert!(matches!(w.h.reservations.cancel(&w.admin, id, 1, exception(-1, "x")), Err(AppError::Validation(_))));
+        assert_eq!(version(&w, id), 1);
+
+        let result = w.h.reservations.cancel(&w.admin, id, 1, exception(0, "Motivo de saúde")).unwrap();
+
+        assert_eq!((result.refund_cents, result.retained_cents), (9_000, 0));
+        let (after, why): (String, String) = w
+            .h
+            .db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT after_json, justification FROM audit_log WHERE operation = 'cancel_reservation'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!(after.contains("\"calculated_retained_cents\":4500") && after.contains("\"overridden\":true"));
+        assert_eq!(why, "Motivo de saúde");
+    }
+
+    #[test]
+    fn only_pending_or_confirmed_reservations_can_be_cancelled() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-27");
+        for status in ["checked_in", "completed", "cancelled", "no_show"] {
+            set_status(&w, id, status);
+            assert!(!w.h.reservations.preview_cancellation(&w.admin, id).unwrap().can_cancel, "{status}");
+            assert!(matches!(w.h.reservations.cancel(&w.admin, id, 1, None), Err(AppError::Validation(_))), "{status}");
+        }
+    }
+
+    #[test]
+    fn cancel_with_a_stale_version_conflicts() {
+        let w = world();
+        let id = reservation(&w, "2026-10-25", "2026-10-27");
+
+        assert!(matches!(w.h.reservations.cancel(&w.admin, id, 9, None), Err(AppError::Conflict)));
+        assert_eq!(w.h.reservations.get(&w.admin, id).unwrap().reservation.status, "pending");
+    }
+
+    #[test]
+    fn no_show_is_refused_before_the_tolerance_and_allowed_after() {
+        let w = world();
+        let today = reservation(&w, "2026-10-21", "2026-10-22"); // chegada hoje, 14:00 + 60 min
+        let future = reservation(&w, "2026-10-30", "2026-10-31");
+        pay_deposit(&w, today, 9_000);
+
+        assert!(matches!(w.h.reservations.mark_no_show(&w.admin, today, 1), Err(AppError::Validation(_)))); // 09:00 local
+        w.h.utc.advance(chrono::Duration::hours(5)); // 14:00Z = 11:00 local ... ainda cedo
+        assert!(matches!(w.h.reservations.mark_no_show(&w.admin, today, 1), Err(AppError::Validation(_))));
+        w.h.utc.advance(chrono::Duration::hours(5)); // 19:00Z = 16:00 local
+        assert!(matches!(w.h.reservations.mark_no_show(&w.admin, future, 1), Err(AppError::Validation(_))));
+
+        w.h.reservations.mark_no_show(&w.admin, today, 1).unwrap();
+
+        let detail = w.h.reservations.get(&w.admin, today).unwrap();
+        assert_eq!(detail.reservation.status, "no_show");
+        assert_eq!(detail.reservation.cancellation_fee_cents, Some(9_000));
+        assert_eq!(detail.history.last().unwrap().kind, "no_show");
+        // o no-show libera o quarto
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-21", "2026-10-22")).is_ok());
+    }
+
+    #[test]
+    fn the_review_list_flags_candidates_and_overdue_deposits_without_changing_anything() {
+        let w = world();
+        let arriving = reservation(&w, "2026-10-22", "2026-10-24"); // vence o sinal em 22/10
+        let calm = reservation(&w, "2026-11-20", "2026-11-22");
+        pay_deposit(&w, calm, 100_000);
+        w.h.utc.advance(chrono::Duration::days(1) + chrono::Duration::hours(10)); // 22/10, 16:00 local
+        let before = counts(&w);
+
+        let items = w.h.reservations.list_needing_review(&w.admin).unwrap();
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].reservation.id, arriving);
+        assert_eq!(items[0].reasons, ["no_show_candidate", "deposit_overdue"]);
+        assert_eq!(w.h.reservations.get(&w.admin, arriving).unwrap().reservation.status, "pending");
+        assert_eq!(counts(&w), before);
     }
 }

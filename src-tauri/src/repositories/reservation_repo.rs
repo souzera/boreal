@@ -326,3 +326,38 @@ pub fn insert_change(
     )?;
     Ok(())
 }
+
+/// Encerra a reserva (`cancelled` ou `no_show`) registrando o valor retido.
+pub fn set_closed(
+    tx: &Transaction,
+    id: i64,
+    status: &str,
+    retained_cents: i64,
+    expected_version: i64,
+    at: DateTime<Utc>,
+) -> Result<(), AppError> {
+    let changed = tx.execute(
+        "UPDATE reservations SET status = ?1, cancelled_at = ?2, cancellation_fee_cents = ?3,
+                version = version + 1, updated_at = ?2
+         WHERE id = ?4 AND version = ?5",
+        params![status, stamp(at), retained_cents, id, expected_version],
+    )?;
+    if changed == 0 {
+        return Err(AppError::Conflict);
+    }
+    Ok(())
+}
+
+/// Reservas pendentes/confirmadas cuja chegada é hoje ou já passou, ou cujo sinal está vencido.
+pub fn review_candidates(conn: &Connection, today: NaiveDate) -> Result<Vec<Reservation>, AppError> {
+    let mut stmt = conn.prepare(&format!(
+        "{SELECT} WHERE r.status IN ('pending', 'confirmed')
+           AND (r.check_in_date <= :today
+                OR (r.deposit_paid_cents < r.deposit_expected_cents AND r.deposit_due_date < :today))
+         ORDER BY r.check_in_date, r.id"
+    ))?;
+    let rows = stmt
+        .query_map(named_params! { ":today": dates::format(today) }, map_reservation)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}

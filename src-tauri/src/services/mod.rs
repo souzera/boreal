@@ -57,6 +57,12 @@ impl Ctx {
         })
     }
 
+    /// Data e hora atuais no fuso local.
+    pub fn local_now(&self) -> chrono::NaiveDateTime {
+        let offset = i64::from(self.utc.local_offset().local_minus_utc());
+        (self.utc.now_utc() + chrono::Duration::seconds(offset)).naive_utc()
+    }
+
     /// Data de hoje no fuso local.
     pub fn today(&self) -> chrono::NaiveDate {
         let offset = i64::from(self.utc.local_offset().local_minus_utc());
