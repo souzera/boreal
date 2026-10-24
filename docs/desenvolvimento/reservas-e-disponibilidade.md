@@ -6,7 +6,7 @@
 
 ## Estados e transições
 
-`pending → confirmed` (sinal atingiu o esperado, via `record_deposit`, ou confirmação manual) · `pending|confirmed → cancelled` · `pending|confirmed → no_show` (manual, só depois da chegada). `checked_in` e `completed` vêm no Marco 3. Pendente, confirmada e hospedada **bloqueiam** o quarto; o mapa também mostra as concluídas.
+`pending → confirmed` (sinal atingiu o esperado, via `record_deposit`, ou confirmação manual) · `pending|confirmed → cancelled` · `pending|confirmed → no_show` (manual, só depois da chegada). `pending|confirmed → checked_in` (check-in) e `checked_in → completed` (check-out) acontecem no Marco 3 — veja [Hospedagem e conta](hospedagem-e-conta.md). Hospedagens sem reserva nascem `checked_in` (`origin = walk_in`). Pendente, confirmada e hospedada **bloqueiam** o quarto; o mapa também mostra as concluídas.
 
 Sinal vencido **não muda o estado**: é só um indicador calculado (`deposit_overdue`) e entra na lista "para revisar" (`list_needing_review`).
 

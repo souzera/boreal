@@ -7,6 +7,8 @@ Regras de negócio, decisões técnicas, permissões, auditoria e efeitos no ban
 - [Cadastros (Marco 1)](cadastros.md) — entidades, migrações, regras de edição, duplicidade de hóspedes, configurações.
 - [Tarifas e preço (Marco 2)](tarifas-e-preco.md) — prioridade das regras, arredondamento, preço congelado.
 - [Reservas e disponibilidade (Marco 2)](reservas-e-disponibilidade.md) — estados, conflitos, prévia com impressão digital, cancelamento, mapa.
+- [Hospedagem e conta do hóspede (Marco 3)](hospedagem-e-conta.md) — livro de lançamentos, check-in, walk-in, estorno, check-out e decisões M3-1 a M3-10.
+- [Saída tardia e check-out (Marco 3)](saida-tardia.md) — regra provisória D-15, decisão da recepção e risco para a próxima reserva.
 - [Permissões](permissoes.md) — perfis, permissões extras por usuário e como acrescentar uma nova.
 - [Sequências](sequencias.md) — códigos visíveis sem reuso.
 - [Segurança de sessões e autenticação](seguranca-sessoes.md) — bloqueios, sessões, auditoria e erros.

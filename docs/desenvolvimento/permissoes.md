@@ -9,7 +9,7 @@ Controle de acesso é aplicado **no backend**; esconder botões na interface é 
 
 ## Permissões (`auth::permissions::Permission`)
 
-`ManageUsers`, `ManageSettings`, `ManageCatalog`, `ViewFinancialReports`, `RestoreBackup` (somente administrador) e as **concedíveis** a usuários da recepção, uma a uma: `ApplyDiscount`, `ExceedCapacity`, `ReverseEntry`, `CancellationException`, `ChangeReservation`, `ReleaseRoom` (`Permission::grantable()`).
+`ManageUsers`, `ManageSettings`, `ManageCatalog`, `ViewFinancialReports`, `RestoreBackup` (somente administrador) e as **concedíveis** a usuários da recepção, uma a uma: `ApplyDiscount`, `ExceedCapacity`, `ReverseEntry`, `CancellationException`, `ChangeReservation`, `ReleaseRoom`, `EarlyCheckIn`, `CheckoutWithBalance`, `WaiveLateFee` (`Permission::grantable()`).
 
 ## Como funciona
 
@@ -23,7 +23,17 @@ Controle de acesso é aplicado **no backend**; esconder botões na interface é 
 - `ApplyDiscount`: `apply_discount`.
 - `CancellationException`: `cancel` com exceção à política.
 - `ExceedCapacity`: criar reserva acima da capacidade do quarto.
-- `ManageCatalog`: tarifas, feriados e política de cancelamento.
+- `ManageCatalog`: tarifas, feriados, política de cancelamento e catálogo de itens e serviços.
+
+## Onde cada permissão é exigida (Marco 3)
+
+- `EarlyCheckIn`: `check_in` antes de data + horário previsto de entrada.
+- `ExceedCapacity`: `check_in` e `walk_in` com mais ocupantes que a capacidade.
+- `ApplyDiscount`: `add_adjustment` (ajuste da conta).
+- `ReverseEntry`: `reverse_charge` (estorno de lançamento).
+- `WaiveLateFee`: `checkout` dispensando a cobrança de saída tardia.
+- `CheckoutWithBalance`: `checkout` com saldo diferente de zero (devedor ou crédito).
+- `ChangeReservation`: `set_late_tolerance` (tolerância de saída desta hospedagem).
 - A interface consulta `my_permissions` só para decidir quais botões oferecer; o backend é quem autoriza.
 
 ## Regras de proteção

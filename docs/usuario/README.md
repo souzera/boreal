@@ -11,5 +11,7 @@ Guias passo a passo para a equipe da pousada. Cada guia explica o objetivo, quan
 - [Tarifas](tarifas.md) — preços por dia da semana, temporada, feriado e exceção de data.
 - [Reservas](reservas.md) — criar, alterar, dar desconto, registrar sinal e cancelar.
 - [Mapa de quartos](mapa-de-quartos.md) — grade de ocupação por dia.
+- [Hospedagem](hospedagem.md) — check-in, hospedagem sem reserva, check-out e saída tardia.
+- [Conta do hóspede](conta-do-hospede.md) — consumos, ajustes, estornos e pagamentos.
 
-_Os demais guias serão adicionados à medida que os módulos forem entregues (hospedagem, financeiro…)._
+_Os demais guias serão adicionados à medida que os módulos forem entregues (limpeza, financeiro…)._

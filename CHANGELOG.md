@@ -24,8 +24,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - **Desconto** com permissão e justificativa, e registro manual do **sinal recebido** (provisório até o módulo financeiro).
 - **Mapa de quartos**: grade quarto × dia, com chegada, saída e situação em texto.
 - Configurações do sinal e da política de cancelamento, com os valores marcados como provisórios.
+- **Hospedagem**: **check-in** da reserva com ocupantes, saldo inicial e avisos de check-in antecipado e de excesso de capacidade (cada um com sua permissão); **hospedagem sem reserva** com disponibilidade e preço conferidos antes de iniciar; lista de **Hospedagens** com saldo e avisos.
+- **Conta do hóspede** em livro de lançamentos que nunca se edita: diárias, desconto e sinal vindos da reserva, **consumos e despesas extras** (avulsos ou do catálogo de **Itens e serviços**), **ajustes** com justificativa e **estorno com relançamento** que preserva o lançamento original e impede cobrança duplicada.
+- **Registro de pagamento provisório** na conta (uma forma de pagamento por vez), até o módulo financeiro.
+- **Check-out** com demonstrativo (diárias, consumos, descontos, recebimentos, devoluções e saldo); com saldo em aberto ou crédito do hóspede só com permissão, justificativa e autorizador registrados — nada é liquidado nem apagado sozinho.
+- **Saída tardia**: tolerância por hospedagem, cobrança prevista provisória (50% da última diária, configurável) que a recepção cobra ou dispensa (com permissão e justificativa), sem criar diária; aviso de **risco para a próxima reserva** quando o atraso encosta na limpeza.
+- Novas permissões concedíveis à recepção: **Fazer check-in antecipado**, **Concluir check-out com saldo pendente** e **Dispensar cobrança de saída tardia**.
 
 ### Changed
+- Reservas passam a ter as situações **Hospedado** e **Concluída**; a lista de reservas identifica hospedagens **sem reserva**.
+- A tela de **Configurações** ganhou a cobrança de saída tardia (valor provisório).
 - A senha mínima passou a ter 6 caracteres.
 - Mensagens de erro do banco de dados agora aparecem em linguagem simples, sem texto técnico.
 - Ao bloquear a sessão por inatividade, a tela aberta é preservada e volta como estava após desbloquear.

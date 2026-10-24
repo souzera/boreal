@@ -8,7 +8,7 @@
 |---|---|
 | **Pendente** | Criada, esperando o sinal. **Já bloqueia o quarto.** |
 | **Confirmada** | Sinal recebido (ou confirmada manualmente). |
-| **Hospedado** / **Concluída** | Estadia em andamento / encerrada (próximos marcos). |
+| **Hospedado** / **Concluída** | Estadia em andamento / encerrada (veja [Hospedagem](hospedagem.md)). |
 | **Cancelada** | Cancelada; o registro continua guardado e o quarto fica livre. |
 | **No-show** | O hóspede não chegou; marcado por uma pessoa. |
 

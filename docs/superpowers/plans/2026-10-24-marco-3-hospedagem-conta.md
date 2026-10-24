@@ -87,11 +87,11 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 **Interfaces:**
 - Produces: `Permission::{EarlyCheckIn, CheckoutWithBalance, WaiveLateFee}` com `as_str()` = `"early_check_in"`, `"checkout_with_balance"`, `"waive_late_fee"`; as três entram em `ALL` (no fim, preservando os bits atuais) e em `grantable()`.
 
-- [ ] **Step 1: Write the failing test** em `permissions.rs`: `grantable_includes_stay_permissions` (as três estão em `grantable()`), e o `permission_set_roundtrip` existente passa a cobrir `ALL`. Rótulos: o teste da tela de permissões lista "Fazer check-in antecipado", "Concluir check-out com saldo pendente" e "Dispensar cobrança de saída tardia".
-- [ ] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml permissions` — Expected: FAIL (variantes inexistentes).
-- [ ] **Step 3: Implement** as variantes no fim do enum, em `ALL` e `grantable()`; adicionar os três textos em `permissionLabel`.
-- [ ] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml permissions` e `npm test -- users` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: add stay permissions`
+- [x] **Step 1: Write the failing test** em `permissions.rs`: `grantable_includes_stay_permissions` (as três estão em `grantable()`), e o `permission_set_roundtrip` existente passa a cobrir `ALL`. Rótulos: o teste da tela de permissões lista "Fazer check-in antecipado", "Concluir check-out com saldo pendente" e "Dispensar cobrança de saída tardia".
+- [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml permissions` — Expected: FAIL (variantes inexistentes).
+- [x] **Step 3: Implement** as variantes no fim do enum, em `ALL` e `grantable()`; adicionar os três textos em `permissionLabel`.
+- [x] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml permissions` e `npm test -- users` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: add stay permissions`
 
 ---
 
@@ -114,11 +114,11 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
   - `settings`: `late_checkout_fee_bp = '5000'` (provisório).
 - `Reservation.origin` vem de `r.origin` no `SELECT` (acrescentar no fim da lista e do `map_reservation`).
 
-- [ ] **Step 1: Write the failing test** `migration_0009_creates_stay_schema` (todas as tabelas existem; `schema_migrations` chega a 9; `INSERT` em `charges` com `amount_cents = 0` falha; duas diárias da mesma noite na mesma hospedagem falham; dois estornos do mesmo lançamento falham) e `reservation_has_origin_booking_by_default` (reserva criada pelo serviço volta `origin == "booking"`).
-- [ ] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml migrations reservation` — Expected: FAIL.
-- [ ] **Step 3: Implement** o SQL acima, registrar `Migration { version: 9, … }`, estender `SELECT`/`map_reservation`/`Reservation`; `get` preenche `stay_id` com `SELECT id FROM stays WHERE reservation_id = ?`. Atualizar `ReservationNight`-consumers que constroem `Reservation` à mão (compilador aponta).
-- [ ] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml` — Expected: PASS (suíte inteira).
-- [ ] **Step 5: Commit** `feat: stay schema (migration 0009)`
+- [x] **Step 1: Write the failing test** `migration_0009_creates_stay_schema` (todas as tabelas existem; `schema_migrations` chega a 9; `INSERT` em `charges` com `amount_cents = 0` falha; duas diárias da mesma noite na mesma hospedagem falham; dois estornos do mesmo lançamento falham) e `reservation_has_origin_booking_by_default` (reserva criada pelo serviço volta `origin == "booking"`).
+- [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml migrations reservation` — Expected: FAIL.
+- [x] **Step 3: Implement** o SQL acima, registrar `Migration { version: 9, … }`, estender `SELECT`/`map_reservation`/`Reservation`; `get` preenche `stay_id` com `SELECT id FROM stays WHERE reservation_id = ?`. Atualizar `ReservationNight`-consumers que constroem `Reservation` à mão (compilador aponta).
+- [x] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml` — Expected: PASS (suíte inteira).
+- [x] **Step 5: Commit** `feat: stay schema (migration 0009)`
 
 ---
 
@@ -137,14 +137,14 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
   - `domain::late_checkout::LateAssessment { minutes_late: i64, applies: bool, fee_cents: i64 }` e `assess(expected_out: NaiveDateTime, now: NaiveDateTime, tolerance_minutes: u32, last_night_cents: i64, fee_bp: u32) -> Result<LateAssessment, AppError>`: `minutes_late = max(0, now − expected_out)`; `applies = minutes_late > tolerance`; `fee_cents = percent_of(last_night_cents, fee_bp)` só quando `applies`, senão 0; `fee_bp = 0` ⇒ `applies = false`.
   - `domain::late_checkout::DepartureRisk { minutes_late: i64, ready_at: NaiveDateTime, overrun_minutes: i64 }` e `departure_risk(expected_out: NaiveDateTime, now: NaiveDateTime, cleaning_minutes: u32, next_start: NaiveDateTime) -> Option<DepartureRisk>`: só existe se `now > expected_out`; `ready_at = now + cleaning`; risco quando `ready_at > next_start`; `overrun_minutes = ready_at − next_start`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - `stay`: `in_house_to_checked_out_is_valid`, `checked_out_cannot_go_back`, `same_state_transition_is_refused`, `only_pending_and_confirmed_can_check_in` (recusa `checked_in`, `completed`, `cancelled`, `no_show`).
   - `account`: `balance_is_charges_minus_received_plus_refunded` (40000, 12000, 0 ⇒ 28000; 40000, 52000, 2000 ⇒ −10000), `balance_overflow_is_refused` (`i64::MAX`, `-1`), `random_sequence_matches_sum` (200 operações pseudoaleatórias determinísticas — semente fixa com LCG — mantêm `balance == soma incremental`).
   - `late_checkout`: com saída prevista 23/10 12:00, tolerância 30, última diária 20000, `fee_bp` 5000: 12:30 ⇒ `applies=false, fee=0, minutes_late=30`; 12:31 ⇒ `applies=true, fee=10000`; 11:00 ⇒ `minutes_late=0`; 25/10 09:00 (45 h) ⇒ `minutes_late=2700`, `fee=10000` (uma só cobrança); `fee_bp=0` ⇒ `applies=false`; virada de ano (31/12 12:00 → 01/01 13:00) correta. `departure_risk`: saída 12:00, agora 13:30, limpeza 60, próxima entrada 14:00 ⇒ `ready_at 14:30`, `overrun 30`; agora 12:10, próxima 14:00 ⇒ `None`; agora antes da saída ⇒ `None`.
-- [ ] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml domain::` — Expected: FAIL.
-- [ ] **Step 3: Implement** as funções acima em `domain/` usando `domain::money::{percent_of, add, sub}`.
-- [ ] **Step 4: Run** o mesmo comando — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: stay state, balance and late checkout rules`
+- [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml domain::` — Expected: FAIL.
+- [x] **Step 3: Implement** as funções acima em `domain/` usando `domain::money::{percent_of, add, sub}`.
+- [x] **Step 4: Run** o mesmo comando — Expected: PASS.
+- [x] **Step 5: Commit** `feat: stay state, balance and late checkout rules`
 
 ---
 
@@ -158,11 +158,11 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 - Produces: `AppSettings.late_checkout_fee_bp: u32` (validação 0–10000, mensagem "Cobrança de saída tardia: informe de 0% a 100%."); na tela, campo percentual "Cobrança de saída tardia (% da última diária) — provisório".
 - Consumes: `settings_repo::get_u32` para `"late_checkout_fee_bp"`.
 
-- [ ] **Step 1: Write the failing test** `settings_defaults_include_late_fee_5000` (valor inicial 5000), `late_fee_above_100_percent_is_refused` (10001), e no teste da tela: salvar "30" (%) grava `3000`.
-- [ ] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml settings` e `npm test -- SettingsPage` — Expected: FAIL.
-- [ ] **Step 3: Implement** campo no modelo, `load`/`save` do repo, validação, campo percentual no `SystemForm` (conversão % ↔ pontos-base como a sinal já faz); atualizar fixtures.
-- [ ] **Step 4: Run** os mesmos comandos — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: configurable late checkout fee`
+- [x] **Step 1: Write the failing test** `settings_defaults_include_late_fee_5000` (valor inicial 5000), `late_fee_above_100_percent_is_refused` (10001), e no teste da tela: salvar "30" (%) grava `3000`.
+- [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml settings` e `npm test -- SettingsPage` — Expected: FAIL.
+- [x] **Step 3: Implement** campo no modelo, `load`/`save` do repo, validação, campo percentual no `SystemForm` (conversão % ↔ pontos-base como a sinal já faz); atualizar fixtures.
+- [x] **Step 4: Run** os mesmos comandos — Expected: PASS.
+- [x] **Step 5: Commit** `feat: configurable late checkout fee`
 
 ---
 
@@ -179,11 +179,11 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
   - `ItemService::{list(token, only_active: bool) -> Vec<Item>, create(token, NewItem) -> i64, update(token, id, ItemUpdate, expected_version) -> (), set_active(token, id, active, expected_version) -> ()}`. Criar/alterar/desativar exige `ManageCatalog`; listar, qualquer sessão. Itens nunca são apagados (histórico), só desativados.
   - Comandos `list_items`, `create_item`, `update_item`, `set_item_active`; funções `listItems`, `createItem`, `updateItem`, `setItemActive` em `api.ts`; rota `/itens`, link "Itens e serviços" no menu.
 
-- [ ] **Step 1: Write the failing tests** `create_item_requires_manage_catalog` (recepção ⇒ `Forbidden`), `item_name_is_unique_ignoring_case_and_accents_trimmed` (nome "Água mineral" e "  água MINERAL " ⇒ erro de validação), `price_must_be_positive` (0 e −1 recusados), `inactive_item_is_hidden_from_active_list_but_kept` , `stale_version_is_conflict`; tela: lista, cria "Água mineral — R$ 6,00", desativa.
-- [ ] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml item_service` e `npm test -- ItemsPage` — Expected: FAIL.
-- [ ] **Step 3: Implement** seguindo `catalog_service`/`catalog_repo` (auditoria `module: "items"`, `Conflict` por `version`); página em tabela com diálogo de formulário como `RoomsPage`.
-- [ ] **Step 4: Run** os mesmos comandos — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: item and service catalog`
+- [x] **Step 1: Write the failing tests** `create_item_requires_manage_catalog` (recepção ⇒ `Forbidden`), `item_name_is_unique_ignoring_case_and_accents_trimmed` (nome "Água mineral" e "  água MINERAL " ⇒ erro de validação), `price_must_be_positive` (0 e −1 recusados), `inactive_item_is_hidden_from_active_list_but_kept` , `stale_version_is_conflict`; tela: lista, cria "Água mineral — R$ 6,00", desativa.
+- [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml item_service` e `npm test -- ItemsPage` — Expected: FAIL.
+- [x] **Step 3: Implement** seguindo `catalog_service`/`catalog_repo` (auditoria `module: "items"`, `Conflict` por `version`); página em tabela com diálogo de formulário como `RoomsPage`.
+- [x] **Step 4: Run** os mesmos comandos — Expected: PASS.
+- [x] **Step 5: Commit** `feat: item and service catalog`
 
 ---
 
@@ -203,7 +203,7 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
   - `test_support`: `Harness.stays: StayService`; `pub struct Seed { pub category_id: i64, pub room_id: i64, pub guest_id: i64 }` e `pub fn seed(h: &Harness, admin: &str, nightly_cents: i64, capacity: i64) -> Seed` (categoria, quarto "101", hóspede e tarifa de todos os dias da semana — modele em `reservation_service::tests::{world,new_room,new_guest,weekday_rule}`, sem refatorar esses testes); `pub fn book(h, admin, seed, from, to) -> i64` (cria a reserva e devolve o id).
 - Regras de `check_in` (tudo numa transação): reserva `pending|confirmed` e `version` igual; quarto ativo; ao menos 1 ocupante, nomes não vazios; `occupants.len() > max_capacity` ⇒ erro de validação, ou `Forbidden` sem `ExceedCapacity` quando `exceed_capacity = true`; `agora_local < data + horário previsto de entrada` ⇒ exige `EarlyCheckIn` e `early_check_in = 1`; revalida conflitos com `find_conflicts` usando início = `min(início previsto, agora)` e ignorando a própria reserva; cria `stays` (`code` = código da reserva), o titular (`is_holder`) mais os demais ocupantes, uma diária `night` por noite congelada em `reservation_nights`, um `discount` negativo se `discount_cents > 0` (justificativa = `discount_reason`), um `payments` `prior_deposit` com `deposit_paid_cents` se > 0 (código `PAG-`), muda a reserva para `checked_in`, grava `reservation_changes` (`kind = "check_in"`) e auditoria (`operation: "check_in"`).
 
-- [ ] **Step 1: Write the failing tests** (relógio de teste: "hoje" 21/10/2026, 09:00 local = 12:00Z; reserva 21→23/10, diária R$ 200,00, capacidade 2)
+- [x] **Step 1: Write the failing tests** (relógio de teste: "hoje" 21/10/2026, 09:00 local = 12:00Z; reserva 21→23/10, diária R$ 200,00, capacidade 2)
   - `check_in_creates_stay_nights_and_marks_reservation`: às 14:00 local (`h.utc.set(17:00Z)`), 1 ocupante ⇒ reserva `checked_in`; 2 diárias de 20000; `StayDetail.account.charges_total_cents == 40000`; código da hospedagem = código da reserva; titular `is_holder`.
   - `check_in_converts_discount_and_deposit`: desconto R$ 40,00 + sinal R$ 120,00 pago ⇒ cobranças `night`×2 e `discount −4000`; pagamento `prior_deposit 12000`; `balance_cents == 24000`.
   - `early_check_in_requires_permission`: às 09:00 local, recepção sem permissão ⇒ `Forbidden` e nada gravado; com `EarlyCheckIn` concedida ⇒ ok, `early_check_in == true`; administrador ok.
@@ -215,10 +215,10 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
   - `check_in_is_audited_in_same_transaction`: 1 linha em `audit_log` (`module = "stays"`, `operation = "check_in"`).
   - `late_arrival_day_after_is_allowed`: reserva de 21→23/10 com check-in em 22/10 14:00 ⇒ ok.
   - `list_in_house_returns_only_open_stays_with_balance`.
-- [ ] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml stay_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** modelos, `stay_repo` (inserts, `find`, listagem com paginação e ordenação em lista fixa, `account(conn, stay_id)`), `StayService::{check_in, get, list}`, comandos e registro em `lib.rs`/`app.rs`/`Harness`. `StaySummary.minutes_late` e `risk` ficam zerados/`None` até a Task 9.
-- [ ] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: check-in with occupants and opening account`
+- [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml stay_service` — Expected: FAIL.
+- [x] **Step 3: Implement** modelos, `stay_repo` (inserts, `find`, listagem com paginação e ordenação em lista fixa, `account(conn, stay_id)`), `StayService::{check_in, get, list}`, comandos e registro em `lib.rs`/`app.rs`/`Harness`. `StaySummary.minutes_late` e `risk` ficam zerados/`None` até a Task 9.
+- [x] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: check-in with occupants and opening account`
 
 ---
 
@@ -233,17 +233,17 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 - Produces: `WalkInInput { room_id: i64, guest_id: i64, check_out_date: String, expected_check_out_time: Option<String>, occupants: Vec<OccupantInput>, exceed_capacity: bool }`; `StayService::walk_in(token, WalkInInput) -> i64 /* stay_id */`; comando `walk_in`.
 - Regras: entrada = hoje, horário previsto de entrada = hora local atual `HH:MM`; saída > hoje; sem tarifa em alguma noite ⇒ erro listando as datas (nunca tarifa zero); conflito considera início = agora; reserva criada com `status = 'checked_in'`, `origin = 'walk_in'`, código `HOS-` da sequência `stay`, `deposit_expected_cents = 0`, `deposit_due_date` = hoje; `EarlyCheckIn` não se aplica; capacidade como no check-in; auditoria `operation: "walk_in"`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - `walk_in_creates_reservation_and_stay_with_hos_code`: hoje 09:00, 21→23/10 ⇒ código `HOS-000001`, reserva `origin == "walk_in"` e `checked_in`, 2 diárias, `balance_cents == 40000`.
   - `walk_in_refuses_occupied_room` (hospedagem em andamento) e `walk_in_refuses_missing_tariff` (mensagem contém as datas em `DD/MM/AAAA`).
   - `walk_in_respects_capacity_rules` (igual à Task 6).
   - `walk_in_with_past_or_same_day_checkout_is_refused`.
   - `walk_in_sequence_does_not_consume_reservation_numbers`: depois de um walk-in, a próxima reserva é `RES-000001`.
   - Regressão: `reservation_service::create` continua gravando `pending`/`booking`.
-- [ ] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml stay_service reservation_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** a extração de `open_stay`, `walk_in`, comando e registro.
-- [ ] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: walk-in stay`
+- [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml stay_service reservation_service` — Expected: FAIL.
+- [x] **Step 3: Implement** a extração de `open_stay`, `walk_in`, comando e registro.
+- [x] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: walk-in stay`
 
 ---
 
@@ -262,7 +262,7 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
   - `add_adjustment` exige `ApplyDiscount` e justificativa; `reverse_charge` exige `ReverseEntry` e justificativa; `record_payment` é **provisório** (Marco 5) e grava `PAG-` da sequência `payment`.
 - Regras: hospedagem precisa estar `in_house`; descrição `trim()` não vazia (≤ 200); valores via `domain::money` (sem estouro); `reverse_charge` grava uma linha `reversal` de valor `−original` com `reverses_charge_id`, nunca altera a original, recusa estornar `reversal` ou lançamento já estornado, e, com `replacement`, grava o novo lançamento com `replaces_charge_id` — **tudo na mesma transação**; incrementa `stays.version`; auditoria por operação (`add_charge`, `add_adjustment`, `reverse_charge`, `record_payment`) com valores antes/depois do saldo.
 
-- [ ] **Step 1: Write the failing tests** (hospedagem: reserva 21→23/10 R$ 200,00/noite, desconto R$ 40,00, sinal R$ 120,00 ⇒ saldo inicial 24000)
+- [x] **Step 1: Write the failing tests** (hospedagem: reserva 21→23/10 R$ 200,00/noite, desconto R$ 40,00, sinal R$ 120,00 ⇒ saldo inicial 24000)
   - `add_charge_increases_balance`: consumo "Água" 3500 ⇒ saldo 27500; item do catálogo (R$ 6,00) sem valor informado ⇒ 600.
   - `reverse_and_relaunch_preserves_original`: estorna o consumo 3500 e relança 3000 ⇒ 3 linhas novas na ordem (original, `reversal −3500`, novo 3000); original inalterado e `reversed == true`; saldo 27000.
   - `reverse_twice_or_reverse_a_reversal_is_refused`: saldo e contagem de `charges` inalterados.
@@ -274,10 +274,10 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
   - `double_reverse_in_sequence_does_not_duplicate`: segunda chamada idêntica ⇒ erro e uma só linha `reversal`.
   - `balance_equals_sum_of_ledger_after_mixed_operations`: sequência fixa de 8 operações; `account.balance_cents == charges − received + refunded` recalculado por SQL.
   - `every_operation_is_audited`.
-- [ ] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml stay_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** os serviços, repos e comandos; usar a restrição `UNIQUE (reverses_charge_id)` como segunda barreira contra estorno duplicado (traduzir a violação em erro de validação em linguagem simples).
-- [ ] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: stay account ledger with reversal and provisional payments`
+- [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml stay_service` — Expected: FAIL.
+- [x] **Step 3: Implement** os serviços, repos e comandos; usar a restrição `UNIQUE (reverses_charge_id)` como segunda barreira contra estorno duplicado (traduzir a violação em erro de validação em linguagem simples).
+- [x] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: stay account ledger with reversal and provisional payments`
 
 ---
 
@@ -299,7 +299,7 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 - Regras de `checkout` (uma transação): hospedagem `in_house` e `version` igual; agora local → `assess` com a tolerância da hospedagem (ou a global) e a última diária **não estornada**; se `applies`: `late_fee` deve ser `Charge` (grava `late_fee` com o valor calculado) ou `Waive` (exige `WaiveLateFee` + justificativa; **não** grava lançamento; preserva `late_minutes`, `late_fee_calculated_cents`, `late_fee_decision = 'waived'`, justificativa e autor) — `NotApplicable` quando `applies` ⇒ validação; quando não `applies`, `late_fee` deve ser `NotApplicable`; **nenhuma diária é criada**; saldo recalculado depois da cobrança; saldo ≠ 0 sem exceção ⇒ validação (mensagem distinta para saldo devedor e para crédito do hóspede), com exceção exige `CheckoutWithBalance` + justificativa e grava `balance_at_checkout_cents`, justificativa, autorizador; depois `stays` → `checked_out` (`transition`), reserva → `completed` (`set_status`), `reservation_changes` (`kind = "check_out"`), auditoria (`operation: "check_out"`).
 - Tolerância: `set_late_tolerance` exige `ChangeReservation`, valor 0–600 ou `None` (volta ao padrão), só em hospedagem aberta.
 
-- [ ] **Step 1: Write the failing tests** (reserva 21→23/10, R$ 200,00/noite; saída prevista 23/10 12:00; tolerância 30; taxa 5000; check-in feito às 14:00 do dia 21; sinal R$ 120,00 e desconto R$ 40,00 ⇒ saldo 24000)
+- [x] **Step 1: Write the failing tests** (reserva 21→23/10, R$ 200,00/noite; saída prevista 23/10 12:00; tolerância 30; taxa 5000; check-in feito às 14:00 do dia 21; sinal R$ 120,00 e desconto R$ 40,00 ⇒ saldo 24000)
   - `checkout_with_zero_balance_completes_stay_and_reservation`: pagamento de 24000 em `cash`, check-out às 12:00 de 23/10 ⇒ hospedagem `checked_out`, reserva `completed`, `checked_out_at` preenchido.
   - `checkout_with_balance_without_exception_is_refused`; `…with_exception_without_permission_is_forbidden` (recepção); `…with_permission_stores_balance_justification_and_authorizer` (`balance_at_checkout_cents = 24000`, nada liquidado, `charges` e `payments` inalterados).
   - `checkout_with_credit_requires_exception_and_says_so`: recebido 30000 além do devido ⇒ mensagem menciona valor a devolver.
@@ -312,10 +312,10 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
   - `checkout_failure_rolls_back_everything`: permissão negada depois do cálculo não deixa `late_fee` gravado.
   - `late_departure_flags_risk_without_touching_next_reservation`: próxima reserva no mesmo quarto 23/10 14:00, agora 13:30 ⇒ `risk.overrun_minutes = 30`; status da próxima reserva inalterado; sem próxima reserva ⇒ `risk = None`.
   - `preview_checkout_matches_checkout_values` (a prévia mostra os mesmos números que o check-out grava) e `preview_does_not_write`.
-- [ ] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml stay_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** `preview_checkout`, `checkout`, `set_late_tolerance`, o preenchimento de `risk`/`minutes_late` na listagem e os comandos. Compartilhar o cálculo entre prévia e gravação numa função privada (`plan_checkout`) para que não divirjam.
-- [ ] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml` e `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` — Expected: PASS, sem avisos.
-- [ ] **Step 5: Commit** `feat: checkout with balance, late fee and departure risk`
+- [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml stay_service` — Expected: FAIL.
+- [x] **Step 3: Implement** `preview_checkout`, `checkout`, `set_late_tolerance`, o preenchimento de `risk`/`minutes_late` na listagem e os comandos. Compartilhar o cálculo entre prévia e gravação numa função privada (`plan_checkout`) para que não divirjam.
+- [x] **Step 4: Run** `cargo test --manifest-path src-tauri/Cargo.toml` e `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` — Expected: PASS, sem avisos.
+- [x] **Step 5: Commit** `feat: checkout with balance, late fee and departure risk`
 
 ---
 
@@ -330,11 +330,11 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 - Produces: tipos `Stay`, `StayDetail`, `StayAccount`, `ChargeLine`, `PaymentLine`, `StaySummary`, `CheckoutPreview` espelhando o Rust; funções `checkInReservation(token, input)`, `walkIn(token, input)`, `getStay(token, id)`, `listStays(token, query)`, `addStayCharge`, `addStayAdjustment`, `reverseStayCharge`, `recordStayPayment`, `previewStayCheckout`, `checkoutStay`, `setStayLateTolerance`; `lib/stay.ts`: `stayStatusLabel(status)` ("Hospedado" / "Encerrada"), `chargeKindLabel(kind)` ("Diária", "Consumo", "Despesa extra", "Desconto", "Ajuste", "Saída tardia", "Estorno"), `paymentMethodLabel(method)`.
 - `StaysPage`: tabela das hospedagens em andamento (código, quarto, hóspede, saída prevista, saldo, aviso "Saída atrasada há 45 min" e "Risco para a próxima reserva" em **texto + ícone**), filtro Em andamento/Encerradas, botão "Hospedagem sem reserva". `StayPage`: dados e horários, ocupantes, conta em ordem de lançamento (estornados riscados **com o rótulo "Estornado"**), recebimentos, saldo em destaque ("Saldo a receber" / "Quitado" / "Crédito do hóspede"), ações com rótulos específicos (as ações abrem os diálogos das Tasks 11 e 12; aqui apenas os botões, habilitados por `can(...)` só para decidir o que mostrar).
 
-- [ ] **Step 1: Write the failing tests** `StaysPage`: lista com saldo formatado `R$ 240,00`, mostra "Saída atrasada há 45 min" e "Risco para a próxima reserva" em texto, vazio ⇒ "Nenhuma hospedagem em andamento"; `StayPage`: linha estornada exibe "Estornado", saldo "Saldo a receber R$ 240,00", hospedagem encerrada não mostra botões de lançar/receber/concluir.
-- [ ] **Step 2: Run** `npm test -- Stay` — Expected: FAIL.
-- [ ] **Step 3: Implement** tipos, funções, rotas, menu e as duas páginas (padrão de `ReservationsPage`/`ReservationPage` com TanStack Query).
-- [ ] **Step 4: Run** `npm test` e `npm run build` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: stays list and stay page`
+- [x] **Step 1: Write the failing tests** `StaysPage`: lista com saldo formatado `R$ 240,00`, mostra "Saída atrasada há 45 min" e "Risco para a próxima reserva" em texto, vazio ⇒ "Nenhuma hospedagem em andamento"; `StayPage`: linha estornada exibe "Estornado", saldo "Saldo a receber R$ 240,00", hospedagem encerrada não mostra botões de lançar/receber/concluir.
+- [x] **Step 2: Run** `npm test -- Stay` — Expected: FAIL.
+- [x] **Step 3: Implement** tipos, funções, rotas, menu e as duas páginas (padrão de `ReservationsPage`/`ReservationPage` com TanStack Query).
+- [x] **Step 4: Run** `npm test` e `npm run build` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: stays list and stay page`
 
 ---
 
@@ -350,11 +350,11 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 - Produces: `CheckInDialog({ reservation, open, onClose })` com lista de ocupantes (titular já preenchido, adicionar/remover), aviso destacado "Check-in antes do horário previsto — exige autorização" quando a hora local < previsto (e botão desabilitado com a dica da permissão se `!can("early_check_in")`), aviso de capacidade com opção "Exceder a capacidade" (visível só com `can("exceed_capacity")`), resumo "Saldo inicial: R$ …", botão **Confirmar check-in**; após salvar navega para `/hospedagens/:id` com aviso "Check-in confirmado e salvo neste computador." `WalkInPage`: quarto, hóspede (busca), saída, ocupantes, preço das noites ao vivo (reuso de `quoteStay`), botão **Confirmar check-in**.
 - Erros do backend (conflito, tarifa faltando, capacidade) aparecem em texto simples **sem limpar o que foi preenchido**.
 
-- [ ] **Step 1: Write the failing tests** `CheckInDialog`: titular pré-preenchido; remover todos os ocupantes mostra "Informe ao menos um ocupante" e não chama a API; check-in antecipado mostra o aviso e, sem a permissão, desabilita o botão com a explicação; erro `validation` do backend mantém os campos; sucesso navega e mostra o aviso. `WalkInPage`: preço total ao vivo `R$ 400,00` para 2 noites; sem tarifa mostra as datas; envia `walk_in` com os ocupantes.
-- [ ] **Step 2: Run** `npm test -- CheckIn WalkIn` — Expected: FAIL.
-- [ ] **Step 3: Implement** os componentes seguindo `ReservationFormPage` (React Hook Form + Zod).
-- [ ] **Step 4: Run** `npm test` e `npm run build` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: check-in dialog and walk-in page`
+- [x] **Step 1: Write the failing tests** `CheckInDialog`: titular pré-preenchido; remover todos os ocupantes mostra "Informe ao menos um ocupante" e não chama a API; check-in antecipado mostra o aviso e, sem a permissão, desabilita o botão com a explicação; erro `validation` do backend mantém os campos; sucesso navega e mostra o aviso. `WalkInPage`: preço total ao vivo `R$ 400,00` para 2 noites; sem tarifa mostra as datas; envia `walk_in` com os ocupantes.
+- [x] **Step 2: Run** `npm test -- CheckIn WalkIn` — Expected: FAIL.
+- [x] **Step 3: Implement** os componentes seguindo `ReservationFormPage` (React Hook Form + Zod).
+- [x] **Step 4: Run** `npm test` e `npm run build` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: check-in dialog and walk-in page`
 
 ---
 
@@ -370,11 +370,11 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 - Produces: `ChargeDialog` (item do catálogo **ou** descrição + valor; aba "Ajuste" só com `can("apply_discount")`; botão **Lançar consumo**); `ReverseDialog` (mostra o lançamento, exige justificativa, opção "Relançar com novo valor/descrição", confirma por ser financeiro; botão **Estornar lançamento**; só com `can("reverse_entry")`); `PaymentDialog` (valor, modalidade, observação; selo **"provisório"**; confirmação com o valor, como o `DepositDialog`; botão **Registrar pagamento**).
 - Valores digitados como `R$ 35,00` viram centavos; valor inválido ou zero mostra erro e preserva o formulário; após salvar, a conta recarrega e o saldo novo é mostrado.
 
-- [ ] **Step 1: Write the failing tests** `ChargeDialog`: escolher item preenche descrição/valor; "0" ⇒ "Informe um valor maior que zero" sem chamar a API; envia centavos (`3500`); `ReverseDialog`: sem justificativa não envia; com "relançar" envia `replacement`; `PaymentDialog`: pede confirmação com `R$ 100,00` antes de enviar; modalidade obrigatória; erro mantém os campos.
-- [ ] **Step 2: Run** `npm test -- ChargeDialog ReverseDialog PaymentDialog` — Expected: FAIL.
-- [ ] **Step 3: Implement** os três diálogos reutilizando `ConfirmDialog`/`FormField`.
-- [ ] **Step 4: Run** `npm test` e `npm run build` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: charge, reversal and payment dialogs`
+- [x] **Step 1: Write the failing tests** `ChargeDialog`: escolher item preenche descrição/valor; "0" ⇒ "Informe um valor maior que zero" sem chamar a API; envia centavos (`3500`); `ReverseDialog`: sem justificativa não envia; com "relançar" envia `replacement`; `PaymentDialog`: pede confirmação com `R$ 100,00` antes de enviar; modalidade obrigatória; erro mantém os campos.
+- [x] **Step 2: Run** `npm test -- ChargeDialog ReverseDialog PaymentDialog` — Expected: FAIL.
+- [x] **Step 3: Implement** os três diálogos reutilizando `ConfirmDialog`/`FormField`.
+- [x] **Step 4: Run** `npm test` e `npm run build` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: charge, reversal and payment dialogs`
 
 ---
 
@@ -389,11 +389,11 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 - Consumes: `previewStayCheckout`, `checkoutStay`, `setStayLateTolerance`, `can(...)`.
 - Produces: `CheckoutDialog` com o demonstrativo (diárias, consumos e despesas, descontos e ajustes, recebimentos, devoluções, saldo final); bloco de saída tardia ("Saída 45 min depois do previsto; cobrança prevista R$ 100,00") com a escolha **Cobrar saída tardia** / **Dispensar cobrança** (justificativa; só com `can("waive_late_fee")`) e a nota "Nenhuma diária é criada automaticamente"; bloco de saldo: quitado ⇒ botão **Concluir check-out**; com saldo ⇒ texto "Saldo em aberto: R$ 240,00" e a opção "Concluir com saldo em aberto" (justificativa; só com `can("checkout_with_balance")`, senão explica quem pode autorizar); aviso do risco "Esta saída pode atrasar a chegada da reserva RES-… (≈ 30 min)". Depois de salvar: "Check-out concluído e salvo neste computador."
 
-- [ ] **Step 1: Write the failing tests** quitado ⇒ confirma e chama `checkoutStay` com `late_fee: "not_applicable"`; saída tardia ⇒ botão desabilitado até escolher cobrar ou dispensar; dispensar sem justificativa ⇒ erro; sem `waive_late_fee` não mostra "Dispensar"; saldo com permissão ⇒ envia `balance_exception`; saldo sem permissão ⇒ botão desabilitado com explicação; crédito do hóspede mostra "Valor a devolver ao hóspede R$ …"; erro do backend mantém o diálogo aberto com a mensagem.
-- [ ] **Step 2: Run** `npm test -- CheckoutDialog` — Expected: FAIL.
-- [ ] **Step 3: Implement** o diálogo e a edição de tolerância (visível com `can("change_reservation")`).
-- [ ] **Step 4: Run** `npm test` e `npm run build` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: checkout dialog`
+- [x] **Step 1: Write the failing tests** quitado ⇒ confirma e chama `checkoutStay` com `late_fee: "not_applicable"`; saída tardia ⇒ botão desabilitado até escolher cobrar ou dispensar; dispensar sem justificativa ⇒ erro; sem `waive_late_fee` não mostra "Dispensar"; saldo com permissão ⇒ envia `balance_exception`; saldo sem permissão ⇒ botão desabilitado com explicação; crédito do hóspede mostra "Valor a devolver ao hóspede R$ …"; erro do backend mantém o diálogo aberto com a mensagem.
+- [x] **Step 2: Run** `npm test -- CheckoutDialog` — Expected: FAIL.
+- [x] **Step 3: Implement** o diálogo e a edição de tolerância (visível com `can("change_reservation")`).
+- [x] **Step 4: Run** `npm test` e `npm run build` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: checkout dialog`
 
 ---
 
@@ -406,9 +406,9 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 **Interfaces:**
 - Produces: documentação em linguagem simples (como fazer check-in, hospedagem sem reserva, lançar consumo, corrigir um lançamento por estorno, registrar pagamento provisório, concluir check-out, o que é saída tardia e quando a cobrança aparece, o que fazer com saldo em aberto) e documentação técnica (modelo `stays`/`charges`/`payments`, livro de lançamentos e fórmula do saldo, decisões M3-1 a M3-10, permissões, auditoria, erros, limitações e testes).
 
-- [ ] **Step 1:** Escrever a documentação e o `CHANGELOG.md` (`Added`: hospedagem, walk-in, conta, estorno, recebimento provisório, check-out com saldo e saída tardia, catálogo de itens, novas permissões; `Changed`: reservas passam a `checked_in`/`completed`, configuração de saída tardia).
-- [ ] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml`, `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`, `npm test`, `npm run build`; depois `graphify update .`.
-- [ ] **Step 3:** Atualizar a seção Status deste plano (testes, desvios, pendências) e marcar o Marco 3 em `local/plano-completo.md`; listar o Marco 4 em "Marcos seguintes".
+- [x] **Step 1:** Escrever a documentação e o `CHANGELOG.md` (`Added`: hospedagem, walk-in, conta, estorno, recebimento provisório, check-out com saldo e saída tardia, catálogo de itens, novas permissões; `Changed`: reservas passam a `checked_in`/`completed`, configuração de saída tardia).
+- [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml`, `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`, `npm test`, `npm run build`; depois `graphify update .`.
+- [x] **Step 3:** Atualizar a seção Status deste plano (testes, desvios, pendências) e marcar o Marco 3 em `local/plano-completo.md`; listar o Marco 4 em "Marcos seguintes".
 - [ ] **Step 4:** Revisão final da branch por revisor independente; corrigir Críticos/Importantes (TDD); registrar menores.
 - [ ] **Step 5: Commit** `docs: close marco 3`
 
@@ -416,7 +416,13 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 
 ## Status
 
-**Planejado.** Nenhum passo executado. Pendente: aprovação das decisões M3-1 a M3-10 e do valor provisório D-15.
+**Implementado** na branch `marco-3-hospedagem` (T1 a T14, exceto a revisão final e o commit de fechamento, ainda pendentes). Migração `0009`.
+
+- **Testes ao fechar a implementação:** `cargo test` 290 unitários + 4 de integração; `cargo clippy --all-targets -- -D warnings` limpo; `npm test` 261 (36 arquivos); `npm run build` ok (`tsc` + `vite build`); `graphify update .` executado.
+- **Desvios (rulings):** `catalog_items` usa `name_key UNIQUE` (unicidade sem acento/caixa) em vez de `COLLATE NOCASE`; a lista de ocupantes do check-in/walk-in **deve incluir o titular** (guest_id da reserva) e o titular é fixo na tela, então o aviso "Informe ao menos um ocupante" virou "Informe o nome de todos os ocupantes"; `CheckoutPreview` traz `balance_cents` e `balance_with_late_fee_cents` em vez de `can_checkout_without_exception`; `lançar/estornar/receber` incrementam `stays.version` (prévia de check-out antiga é recusada com `Conflict`); teto de R$ 1.000.000,00 por lançamento/recebimento e R$ 100.000,00 por item.
+- **Nota de processo:** nas Tasks 11 e 12 a falha RED foi observada por módulo inexistente (import), e na Task 11 a execução RED isolada não foi rodada antes da implementação; os testes cobrem comportamento e passaram depois.
+- **Pendências para outros marcos:** estado "quarto limpo" no check-in e tarefa de limpeza ao encerrar (Marco 4, M3-10); recebimentos divididos, devoluções, duplicidade e fechamento de caixa (Marco 5; `record_payment` é provisório e `refunds` só entra no saldo); alertas persistentes de saída atrasada/risco, relatórios e documentos (Marco 6); aprovação dos valores provisórios D-15 a D-19 (`local/spec.md`, Anexo A.3).
+- **Verificação manual:** `npm run tauri dev` com a interface real ainda não foi exercitado (fica para o responsável).
 
 ## Marcos seguintes
 
@@ -424,6 +430,7 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 - **Marco 5 — Financeiro:** substitui o recebimento provisório por recebimentos divididos, devoluções, duplicidade e fechamento de caixa (`payment_components`).
 
 ## Self-Review
+
 
 - **Cobertura do roteiro §7:** 3.1 → T2/T3/T6; 3.2 → T6; 3.3 → T7; 3.4 → T8; 3.5 → T5; 3.6 → T9; 3.7 → T3/T4/T9; 3.8 → T3/T9; 3.9 → T10–T13. Spec §6.1–6.4 e §10.1 cobertos; §9 apenas no esquema e no recebimento provisório.
 - **Consistência de tipos:** `OccupantInput` (T6) usado por T7; `StayAccount`/`ChargeLine` (T6) por T8–T10 e T13; `LateInfo`/`CheckoutPreview` (T9) por T13; `Permission::*` (T1) por T6, T8, T9; `late_checkout_fee_bp` (T2 seed, T4) por T9.

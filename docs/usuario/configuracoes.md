@@ -19,6 +19,7 @@ Em **Configurações do sistema** ajuste:
 | Minutos de inatividade até bloquear a sessão | Depois desse tempo sem uso, a tela pede a senha de novo. Vale na hora, sem reiniciar. |
 | Horário padrão de check-in e de check-out | Sugestão de horários para as reservas (formato `14:00`). |
 | Tolerância de saída tardia / de no-show | Minutos de tolerância antes de cobrar atraso ou considerar que o hóspede não veio. |
+| Cobrança de saída tardia (% da última diária) | Valor **provisório** cobrado, uma vez, quando a saída passa da tolerância. Zero desliga a cobrança. A recepção sempre decide cobrar ou dispensar no check-out. |
 | Intervalo de limpeza entre hospedagens | Tempo mínimo entre a saída de um hóspede e a próxima chegada no mesmo quarto. |
 
 **Atenção:** os valores iniciais são **provisórios**. Ajuste-os à rotina da pousada antes de começar a usar.
