@@ -41,6 +41,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 8,
         sql: include_str!("sql/0008_reservations.sql"),
     },
+    Migration {
+        version: 9,
+        sql: include_str!("sql/0009_stays.sql"),
+    },
 ];
 
 /// Versão atual do esquema (0 se nenhuma migração foi aplicada).
@@ -196,5 +200,74 @@ mod tests {
         insert("Ana").unwrap();
 
         assert!(insert("ana").is_err());
+    }
+
+    fn migrated() -> Connection {
+        let mut conn = memory();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        conn
+    }
+
+    /// Usuário, hóspede, categoria, quarto, reserva e hospedagem mínimos para exercitar as restrições.
+    fn seed_stay(conn: &Connection) {
+        conn.execute_batch(
+            "INSERT INTO users (id, username, display_name, password_hash, role, active, must_change_password, created_at, updated_at)
+               VALUES (1, 'u', 'U', 'x', 'admin', 1, 0, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z');
+             INSERT INTO room_categories (id, name, description, active, version, created_at, updated_at)
+               VALUES (1, 'Standard', '', 1, 1, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z');
+             INSERT INTO rooms (id, code, category_id, max_capacity, description, notes, active, version, created_at, updated_at)
+               VALUES (1, '101', 1, 2, '', '', 1, 1, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z');
+             INSERT INTO guests (id, code, full_name, name_key, phone, email, address, active, version, created_at, updated_at)
+               VALUES (1, 'HOS-1', 'Ana', 'ana', '11999990000', '', '', 1, 1, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z');
+             INSERT INTO reservations (id, code, room_id, guest_id, check_in_date, check_out_date, expected_check_in_time,
+                 expected_check_out_time, occupants, status, list_total_cents, agreed_total_cents, deposit_expected_cents,
+                 deposit_due_date, created_by, created_at, updated_at)
+               VALUES (1, 'RES-000001', 1, 1, '2026-10-21', '2026-10-23', '14:00', '12:00', 1, 'checked_in', 40000, 40000, 12000,
+                 '2026-10-20', 1, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z');
+             INSERT INTO stays (id, reservation_id, code, status, checked_in_at, checked_in_by, early_check_in, exceeded_capacity,
+                 created_at, updated_at)
+               VALUES (1, 1, 'RES-000001', 'in_house', '2026-10-21T17:00:00Z', 1, 0, 0, '2026-10-21T17:00:00Z', '2026-10-21T17:00:00Z');",
+        )
+        .unwrap();
+    }
+
+    fn insert_charge(conn: &Connection, kind: &str, amount: i64, night: Option<&str>, reverses: Option<i64>) -> rusqlite::Result<usize> {
+        conn.execute(
+            "INSERT INTO charges (stay_id, kind, description, amount_cents, night_date, reverses_charge_id, created_by, created_at)
+             VALUES (1, ?1, 'x', ?2, ?3, ?4, 1, '2026-10-21T17:00:00Z')",
+            rusqlite::params![kind, amount, night, reverses],
+        )
+    }
+
+    #[test]
+    fn migration_0009_creates_stay_schema() {
+        let conn = migrated();
+        for table in ["stays", "stay_occupants", "catalog_items", "charges", "payments", "refunds"] {
+            let n: i64 = conn
+                .query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?1", [table], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 1, "tabela {table} ausente");
+        }
+        let latest: i64 = conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).unwrap();
+        assert_eq!(latest, 9);
+        let fee: String = conn
+            .query_row("SELECT value FROM settings WHERE key = 'late_checkout_fee_bp'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(fee, "5000");
+    }
+
+    #[test]
+    fn charges_refuse_zero_amount_duplicate_nights_and_double_reversal() {
+        let conn = migrated();
+        seed_stay(&conn);
+
+        assert!(insert_charge(&conn, "consumption", 0, None, None).is_err());
+        insert_charge(&conn, "night", 20_000, Some("2026-10-21"), None).unwrap();
+        assert!(insert_charge(&conn, "night", 20_000, Some("2026-10-21"), None).is_err());
+        insert_charge(&conn, "consumption", 3_500, None, None).unwrap();
+        let original: i64 = conn.query_row("SELECT max(id) FROM charges", [], |r| r.get(0)).unwrap();
+        insert_charge(&conn, "reversal", -3_500, None, Some(original)).unwrap();
+        assert!(insert_charge(&conn, "reversal", -3_500, None, Some(original)).is_err());
     }
 }

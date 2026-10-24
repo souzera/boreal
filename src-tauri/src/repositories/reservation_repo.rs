@@ -22,7 +22,7 @@ const SELECT: &str = "SELECT r.id, r.code, r.room_id, rm.code, r.guest_id, g.ful
         r.occupants, r.status, r.list_total_cents, r.discount_cents, r.discount_reason, r.agreed_total_cents,
         r.deposit_expected_cents, r.deposit_paid_cents, r.deposit_due_date,
         (r.status = 'pending' AND r.deposit_paid_cents < r.deposit_expected_cents AND r.deposit_due_date < :today),
-        r.notes, r.cancelled_at, r.cancellation_fee_cents, r.version, r.created_at
+        r.notes, r.cancelled_at, r.cancellation_fee_cents, r.version, r.created_at, r.origin
      FROM reservations r
      JOIN rooms rm ON rm.id = r.room_id
      JOIN guests g ON g.id = r.guest_id";
@@ -55,6 +55,7 @@ fn map_reservation(r: &Row) -> rusqlite::Result<Reservation> {
         cancellation_fee_cents: r.get(23)?,
         version: r.get(24)?,
         created_at: r.get(25)?,
+        origin: r.get(26)?,
     })
 }
 
@@ -105,6 +106,13 @@ pub fn find(conn: &Connection, id: i64, today: NaiveDate) -> Result<Option<Reser
             named_params! { ":today": dates::format(today), ":id": id },
             map_reservation,
         )
+        .optional()?)
+}
+
+/// Hospedagem aberta a partir da reserva, se já houve check-in.
+pub fn stay_id(conn: &Connection, reservation_id: i64) -> Result<Option<i64>, AppError> {
+    Ok(conn
+        .query_row("SELECT id FROM stays WHERE reservation_id = ?1", [reservation_id], |r| r.get(0))
         .optional()?)
 }
 

@@ -55,6 +55,8 @@ pub struct Reservation {
     pub cancellation_fee_cents: Option<i64>,
     pub version: i64,
     pub created_at: String,
+    /// `booking` (reserva) ou `walk_in` (hospedagem sem reserva prévia).
+    pub origin: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -83,6 +85,8 @@ pub struct ReservationDetail {
     pub reservation: Reservation,
     pub nights: Vec<ReservationNight>,
     pub history: Vec<ReservationChange>,
+    /// Hospedagem aberta a partir desta reserva, se houver.
+    pub stay_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

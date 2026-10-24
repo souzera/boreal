@@ -213,6 +213,7 @@ impl ReservationService {
         Ok(ReservationDetail {
             nights: reservation_repo::nights(&conn, id)?,
             history: reservation_repo::changes(&conn, id)?,
+            stay_id: reservation_repo::stay_id(&conn, id)?,
             reservation,
         })
     }
@@ -1029,6 +1030,17 @@ mod tests {
         assert_eq!(detail.reservation.nights, 3);
         let nights: Vec<_> = detail.nights.iter().map(|n| (n.date.as_str(), n.amount_cents, n.rule.as_str())).collect();
         assert_eq!(nights, [("2026-10-25", 10_000, "weekday"), ("2026-10-26", 10_000, "weekday"), ("2026-10-27", 10_000, "weekday")]);
+    }
+
+    #[test]
+    fn a_booked_reservation_has_origin_booking_and_no_stay() {
+        let w = world();
+        let created = w.h.reservations.create(&w.admin, booking(&w, "2026-10-25", "2026-10-28")).unwrap();
+
+        let detail = w.h.reservations.get(&w.admin, created.id).unwrap();
+
+        assert_eq!(detail.reservation.origin, "booking");
+        assert_eq!(detail.stay_id, None);
     }
 
     #[test]
