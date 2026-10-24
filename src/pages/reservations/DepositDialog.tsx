@@ -24,17 +24,19 @@ export default function DepositDialog({ open, reservation, onClose, onDone, onCo
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setValue("");
     setError(null);
     setMessage(null);
+    setConfirming(null);
   }, [open]);
 
   const { requestClose, confirm } = useGuardedClose(value !== "", onClose);
 
-  const submit = async () => {
+  const review = () => {
     setMessage(null);
     const cents = parseMoney(value);
     if (cents === null || cents <= 0) {
@@ -42,11 +44,16 @@ export default function DepositDialog({ open, reservation, onClose, onDone, onCo
       return;
     }
     setError(null);
+    setConfirming(cents);
+  };
+
+  const submit = async (cents: number) => {
     setBusy(true);
     try {
       await recordReservationDeposit(token, reservation.id, cents, reservation.version);
       onDone(`Sinal de ${formatMoney(cents)} registrado.`);
     } catch (e) {
+      setConfirming(null);
       const apiError = e as ApiError;
       setMessage(apiError.message);
       if (apiError.code === "conflict") onConflict();
@@ -65,21 +72,38 @@ export default function DepositDialog({ open, reservation, onClose, onDone, onCo
               {`Esperado: ${formatMoney(reservation.deposit_expected_cents)}. Já registrado: ${formatMoney(reservation.deposit_paid_cents)}. Ao atingir o valor esperado, a reserva passa a confirmada.`}
             </DialogDescription>
           </DialogHeader>
-          <FormField id="dep-value" label="Valor recebido (R$)" required error={error ?? undefined}>
-            <Input id="dep-value" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
-          </FormField>
+          {confirming === null ? (
+            <FormField id="dep-value" label="Valor recebido (R$)" required error={error ?? undefined}>
+              <Input id="dep-value" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
+            </FormField>
+          ) : (
+            <p className="text-sm font-medium">
+              {`Registrar sinal de ${formatMoney(confirming)}? Depois de salvo, o valor não pode ser corrigido nesta tela.`}
+            </p>
+          )}
           {message && (
             <p role="alert" className="text-sm text-destructive">
               {message}
             </p>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={requestClose}>
-              Cancelar
-            </Button>
-            <Button disabled={busy} onClick={submit}>
-              Registrar
-            </Button>
+            {confirming === null ? (
+              <>
+                <Button variant="outline" onClick={requestClose}>
+                  Cancelar
+                </Button>
+                <Button onClick={review}>Registrar</Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setConfirming(null)}>
+                  Corrigir valor
+                </Button>
+                <Button disabled={busy} onClick={() => submit(confirming)}>
+                  Confirmar registro
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

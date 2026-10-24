@@ -87,7 +87,8 @@ export default function ReservationPage() {
   const { reservation: r, nights, history } = data;
   const open = isOpen(r.status);
   const today = toLocalIsoDate(new Date());
-  const arrivalPassed = r.check_in_date < today;
+  // A tolerância de chegada é aplicada pelo sistema ao marcar; a tela oferece a ação a partir do dia da chegada.
+  const arrivalPassed = r.check_in_date <= today;
 
   const run = async (action: () => Promise<unknown>, success: string) => {
     setError(null);

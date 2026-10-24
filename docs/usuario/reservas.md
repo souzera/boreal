@@ -42,7 +42,7 @@ Exige a permissão **Aplicar desconto**. Escolha **valor em reais** ou **percent
 
 ## Registrar sinal recebido
 
-Clique em **Registrar sinal recebido** e informe o valor. Quando o total recebido alcança o sinal esperado, a reserva passa a **Confirmada**. (Neste momento o registro é manual; os recebimentos completos chegam com o módulo financeiro.) Também é possível **Confirmar reserva** manualmente.
+Clique em **Registrar sinal recebido** e informe o valor. Quando o total recebido alcança o sinal esperado, a reserva passa a **Confirmada**. (Neste momento o registro é manual; os recebimentos completos chegam com o módulo financeiro.) O sistema pede uma confirmação mostrando o valor, porque neste momento o registro não pode ser corrigido. Também é possível **Confirmar reserva** manualmente.
 
 ## Cancelar
 
@@ -56,7 +56,7 @@ A política padrão (provisória, ajustável em **Configurações**): 7 dias ou 
 
 - **Sinal vencido** é só um aviso: a reserva continua pendente e o quarto continua bloqueado. **Nada é cancelado sozinho.**
 - Na lista de **Reservas**, o quadro **Reservas para revisar** reúne as reservas com sinal vencido e as cuja chegada já passou. Abra cada uma e decida.
-- **Marcar no-show** só aparece depois da data de chegada e pede confirmação. O sinal pago fica retido.
+- **Marcar no-show** aparece a partir do dia da chegada, pede confirmação e só é aceito depois do horário previsto de chegada mais a tolerância (configurável). O sinal pago fica retido.
 
 ## Se algo der errado
 

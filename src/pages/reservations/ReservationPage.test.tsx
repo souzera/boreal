@@ -396,8 +396,20 @@ describe("ReservationPage — desconto, confirmação, sinal e no-show", () => {
 
     await userEvent.type(dialog.getByLabelText(/Valor recebido/), "41,00");
     await userEvent.click(dialog.getByRole("button", { name: "Registrar" }));
+    expect(api.recordReservationDeposit).not.toHaveBeenCalled();
+    expect(await dialog.findByText("Registrar sinal de R$ 41,00? Depois de salvo, o valor não pode ser corrigido nesta tela.")).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Confirmar registro" }));
 
     await waitFor(() => expect(api.recordReservationDeposit).toHaveBeenCalledWith("t", 5, 4100, 3));
+  });
+
+  it("oferece no-show já no dia da chegada (o sistema aplica a tolerância)", async () => {
+    const d = new Date();
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    setDetail({ check_in_date: iso, check_out_date: "2099-12-31" });
+    await open();
+
+    expect(await screen.findByRole("button", { name: "Marcar no-show" })).toBeInTheDocument();
   });
 
   it("marca no-show depois de confirmar, quando a chegada já passou", async () => {
