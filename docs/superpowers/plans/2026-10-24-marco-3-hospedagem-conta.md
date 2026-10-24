@@ -409,16 +409,16 @@ docs/usuario/{hospedagem,conta-do-hospede}.md   docs/desenvolvimento/{hospedagem
 - [x] **Step 1:** Escrever a documentação e o `CHANGELOG.md` (`Added`: hospedagem, walk-in, conta, estorno, recebimento provisório, check-out com saldo e saída tardia, catálogo de itens, novas permissões; `Changed`: reservas passam a `checked_in`/`completed`, configuração de saída tardia).
 - [x] **Step 2: Run** `cargo test --manifest-path src-tauri/Cargo.toml`, `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`, `npm test`, `npm run build`; depois `graphify update .`.
 - [x] **Step 3:** Atualizar a seção Status deste plano (testes, desvios, pendências) e marcar o Marco 3 em `local/plano-completo.md`; listar o Marco 4 em "Marcos seguintes".
-- [ ] **Step 4:** Revisão final da branch por revisor independente; corrigir Críticos/Importantes (TDD); registrar menores.
-- [ ] **Step 5: Commit** `docs: close marco 3`
+- [x] **Step 4:** Revisão final da branch por revisor independente; corrigir Críticos/Importantes (TDD); registrar menores.
+- [x] **Step 5: Commit** `docs: close marco 3`
 
 ---
 
 ## Status
 
-**Implementado** na branch `marco-3-hospedagem` (T1 a T14, exceto a revisão final e o commit de fechamento, ainda pendentes). Migração `0009`.
+**Implementado e revisado** na branch `marco-3-hospedagem` (T1 a T14 e revisão final). Migração `0009`.
 
-- **Testes ao fechar a implementação:** `cargo test` 290 unitários + 4 de integração; `cargo clippy --all-targets -- -D warnings` limpo; `npm test` 261 (36 arquivos); `npm run build` ok (`tsc` + `vite build`); `graphify update .` executado.
+- **Testes ao fechar a implementação:** `cargo test` 295 unitários + 4 de integração (após a revisão final); `cargo clippy --all-targets -- -D warnings` limpo; `npm test` 261 (36 arquivos); `npm run build` ok (`tsc` + `vite build`); `graphify update .` executado.
 - **Desvios (rulings):** `catalog_items` usa `name_key UNIQUE` (unicidade sem acento/caixa) em vez de `COLLATE NOCASE`; a lista de ocupantes do check-in/walk-in **deve incluir o titular** (guest_id da reserva) e o titular é fixo na tela, então o aviso "Informe ao menos um ocupante" virou "Informe o nome de todos os ocupantes"; `CheckoutPreview` traz `balance_cents` e `balance_with_late_fee_cents` em vez de `can_checkout_without_exception`; `lançar/estornar/receber` incrementam `stays.version` (prévia de check-out antiga é recusada com `Conflict`); teto de R$ 1.000.000,00 por lançamento/recebimento e R$ 100.000,00 por item.
 - **Revisão final (revisor independente, modelo mais capaz):** 1 Crítico e 3 Importantes, todos corrigidos com teste RED→GREEN (suíte 295 + 4): (1) hospedagem em andamento atrasada **não bloqueava** o quarto (`blocking` agora sempre devolve `checked_in` e estende a ocupação até `agora`); (2) check-in depois da saída prevista da própria reserva passa a ser recusado; (3) cobrança de saída tardia de R$ 0,00 deixa de "aplicar" (antes, "Cobrar" falhava com erro técnico); (7) walk-in passa a usar o prefixo `AVU-` (antes colidia com `HOS-` do hóspede). Rulings: o achado 4 (hora real da saída/limpeza) fica para o Marco 4 e D-19/M3-10 foram reescritos.
 - **Menores adiados:** (a) check-out: prévia que cruza a tolerância entre ver e confirmar não recarrega sozinha (fechar e reabrir resolve); (b) falha ao carregar a prévia do check-out mostra "Carregando…" sem a mensagem; (c) `guest_id` de ocupante inexistente ou titular repetido gera erro técnico/duplicidade; (d) a tela de hospedagem sem reserva checa disponibilidade a partir das 14:00 padrão, enquanto o backend usa "agora" (o backend é quem decide).
