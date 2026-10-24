@@ -24,9 +24,10 @@ pub fn assess(
     fee_bp: u32,
 ) -> Result<LateAssessment, AppError> {
     let minutes_late = (now - expected_out).num_minutes().max(0);
-    let applies = fee_bp > 0 && minutes_late > i64::from(tolerance_minutes);
-    let fee_cents = if applies { money::percent_of(last_night_cents, fee_bp)? } else { 0 };
-    Ok(LateAssessment { minutes_late, applies, fee_cents })
+    let past_tolerance = fee_bp > 0 && minutes_late > i64::from(tolerance_minutes);
+    let fee_cents = if past_tolerance { money::percent_of(last_night_cents, fee_bp)? } else { 0 };
+    // Cobrança prevista de R$ 0,00 (por exemplo, sem diária vigente) não é cobrança: nada a decidir.
+    Ok(LateAssessment { minutes_late, applies: fee_cents > 0, fee_cents })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,6 +100,12 @@ mod tests {
     #[test]
     fn zero_fee_percent_never_applies() {
         let a = assess(dt("2026-10-23 12:00"), dt("2026-10-23 15:00"), 30, 20_000, 0).unwrap();
+        assert_eq!((a.minutes_late, a.applies, a.fee_cents), (180, false, 0));
+    }
+
+    #[test]
+    fn zero_last_night_means_no_fee_to_apply() {
+        let a = assess(dt("2026-10-23 12:00"), dt("2026-10-23 15:00"), 30, 0, 5_000).unwrap();
         assert_eq!((a.minutes_late, a.applies, a.fee_cents), (180, false, 0));
     }
 

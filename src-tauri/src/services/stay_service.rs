@@ -221,6 +221,11 @@ impl StayService {
         let out_time = parse_time(&reservation.expected_check_out_time).ok_or_else(|| invalid("Horário de saída inválido."))?;
         let now = self.ctx.local_now();
         let booked_start = check_in.and_time(in_time);
+        if now >= check_out.and_time(out_time) {
+            return Err(invalid(
+                "O horário de saída previsto desta reserva já passou. Altere as datas da reserva antes de fazer o check-in.",
+            ));
+        }
         let early = now < booked_start;
         if early {
             require(&actor, Permission::EarlyCheckIn)?;
@@ -229,7 +234,7 @@ impl StayService {
         // O quarto precisa estar livre desde o início real da ocupação (mais cedo entre o previsto e agora).
         let settings = settings_repo::load(&tx)?;
         let start = booked_start.min(now);
-        let existing = reservation_repo::blocking(&tx, room.id, start.date(), check_out)?;
+        let existing = reservation_repo::blocking(&tx, room.id, start.date(), check_out, now)?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
         let clashes = find_conflicts(
             &bookings,
@@ -327,7 +332,7 @@ impl StayService {
             )));
         }
 
-        let existing = reservation_repo::blocking(&tx, room.id, today, check_out)?;
+        let existing = reservation_repo::blocking(&tx, room.id, today, check_out, now)?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
         let clashes = find_conflicts(&bookings, today, in_time, check_out, out_time, settings.cleaning_interval_minutes, None);
         if !clashes.is_empty() {
@@ -336,7 +341,7 @@ impl StayService {
             return Err(invalid(conflict_message(&infos)));
         }
 
-        let code = sequence_repo::format_code("HOS", sequence_repo::next(&tx, "stay")?);
+        let code = sequence_repo::format_code("AVU", sequence_repo::next(&tx, "stay")?);
         let (today_s, out_s) = (dates::format(today), dates::format(check_out));
         let (in_s, out_time_s) = (in_time.format("%H:%M").to_string(), out_time.format("%H:%M").to_string());
         let at = self.ctx.utc.now_utc();
@@ -653,7 +658,7 @@ impl StayService {
 
         let mut risk = None;
         if assessment.minutes_late > 0 {
-            let nearby = reservation_repo::blocking(conn, stay.room_id, expected_out.date(), expected_out.date() + Duration::days(60))?;
+            let nearby = reservation_repo::blocking(conn, stay.room_id, expected_out.date(), expected_out.date() + Duration::days(60), now)?;
             let next = nearby
                 .into_iter()
                 .filter(|(b, _)| b.id != stay.reservation_id)
@@ -1178,7 +1183,7 @@ mod tests {
         let stay = w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-23", vec![holder(&w)])).unwrap();
 
         let detail = w.h.stays.get(&w.admin, stay).unwrap();
-        assert_eq!(detail.stay.code, "HOS-000001");
+        assert_eq!(detail.stay.code, "AVU-000001");
         assert_eq!(detail.stay.status, "in_house");
         assert_eq!(detail.account.charges.iter().filter(|c| c.kind == "night").count(), 2);
         assert_eq!(detail.account.balance_cents, 40_000);
@@ -1753,6 +1758,7 @@ mod tests {
         set_now(&w, "2026-10-23T16:30:00Z");
         assert!(w.h.stays.preview_checkout(&w.admin, stay).unwrap().risk.is_none());
 
+        set_now(&w, "2026-10-21T18:00:00Z");
         let next = book(&w.h, &w.admin, &w.seed, "2026-10-23", "2026-10-24");
         let _ = next;
         set_now(&w, "2026-10-23T14:00:00Z");
@@ -1774,5 +1780,83 @@ mod tests {
         let account = w.h.stays.get(&w.admin, stay).unwrap().account;
         assert_eq!(account.balance_cents, preview.balance_with_late_fee_cents);
         assert_eq!(account.charges.iter().find(|c| c.kind == "late_fee").unwrap().amount_cents, preview.late.fee_cents);
+    }
+
+    // ---- correções da revisão final ----
+
+    fn first_booking_conflict(result: Result<i64, AppError>) -> String {
+        match result {
+            Err(AppError::Validation(msg)) => msg,
+            other => panic!("esperava conflito de disponibilidade: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_in_is_blocked_while_the_previous_guest_is_still_in_the_room() {
+        let w = world();
+        let (_, _stay) = stay_with_balance(&w); // RES-000001 em andamento, saída prevista 23/10 12:00
+        let next = book(&w.h, &w.admin, &w.seed, "2026-10-23", "2026-10-24");
+        set_now(&w, "2026-10-23T17:00:00Z"); // 14:00 locais: o anterior está atrasado e ainda no quarto
+
+        let msg = first_booking_conflict(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])));
+
+        assert!(msg.contains("RES-000001"), "{msg}");
+        assert_eq!(count(&w, "stays"), 1);
+    }
+
+    #[test]
+    fn walk_in_and_new_reservations_are_blocked_by_a_stay_that_is_days_overdue() {
+        let w = world();
+        stay_with_balance(&w);
+        set_now(&w, "2026-10-25T15:00:00Z");
+
+        let msg = first_booking_conflict(w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-26", vec![holder(&w)])));
+        assert!(msg.contains("RES-000001"), "{msg}");
+
+        let created = w.h.reservations.create(
+            &w.admin,
+            crate::models::reservation::NewReservation {
+                room_id: w.seed.room_id,
+                guest_id: w.seed.guest_id,
+                check_in_date: "2026-10-25".into(),
+                check_out_date: "2026-10-26".into(),
+                // antes de agora + limpeza (12:00 + 60 min): o hóspede anterior ainda está no quarto
+                expected_check_in_time: Some("12:30".into()),
+                expected_check_out_time: None,
+                occupants: 1,
+                notes: String::new(),
+                exceed_capacity: false,
+            },
+        );
+        assert!(matches!(created, Err(AppError::Validation(_))), "{created:?}");
+    }
+
+    #[test]
+    fn check_in_after_the_booked_checkout_is_refused() {
+        let w = world();
+        let reservation = book(&w.h, &w.admin, &w.seed, "2026-10-21", "2026-10-23");
+        set_now(&w, "2026-10-24T13:00:00Z");
+
+        let msg = first_booking_conflict(w.h.stays.check_in(&w.admin, input(&w, reservation, vec![holder(&w)])));
+
+        assert!(msg.contains("horário de saída previsto"), "{msg}");
+        assert_eq!(count(&w, "stays"), 0);
+    }
+
+    #[test]
+    fn a_zero_late_fee_is_not_applicable_and_checkout_is_not_blocked() {
+        let w = world();
+        let (_, stay) = stay_with_balance(&w);
+        let night_ids: Vec<i64> = w.h.stays.get(&w.admin, stay).unwrap().account.charges.iter().filter(|c| c.kind == "night").map(|c| c.id).collect();
+        for id in night_ids {
+            w.h.stays.reverse_charge(&w.admin, stay, id, "Diárias lançadas por engano".into(), None).unwrap();
+        }
+        set_now(&w, OUT_PLUS_45);
+
+        let preview = w.h.stays.preview_checkout(&w.admin, stay).unwrap();
+        assert_eq!((preview.late.applies, preview.late.fee_cents), (false, 0));
+        let result = w.h.stays.checkout(&w.admin, checkout_input(&w, stay, LateFeeChoice::NotApplicable, Some("Crédito a devolver")));
+
+        assert!(result.is_ok(), "{result:?}");
     }
 }

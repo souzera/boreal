@@ -131,7 +131,7 @@ impl ReservationService {
             )));
         }
 
-        let existing = reservation_repo::blocking(&tx, room.id, check_in, check_out)?;
+        let existing = reservation_repo::blocking(&tx, room.id, check_in, check_out, self.ctx.local_now())?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
         let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, settings.cleaning_interval_minutes, None);
         if !clashes.is_empty() {
@@ -252,7 +252,7 @@ impl ReservationService {
         let settings = settings_repo::load(&conn)?;
         let (in_time, out_time) =
             resolve_times(None, None, &settings.default_check_in_time, &settings.default_check_out_time)?;
-        let existing = reservation_repo::blocking(&conn, room_id, check_in, check_out)?;
+        let existing = reservation_repo::blocking(&conn, room_id, check_in, check_out, self.ctx.local_now())?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
         let clashes = find_conflicts(
             &bookings,
@@ -328,6 +328,7 @@ impl ChangePlan {
 fn plan_change(
     conn: &rusqlite::Connection,
     today: NaiveDate,
+    now: chrono::NaiveDateTime,
     id: i64,
     request: &ChangeRequest,
 ) -> Result<ChangePlan, AppError> {
@@ -404,7 +405,7 @@ fn plan_change(
         &settings.default_check_in_time,
         &settings.default_check_out_time,
     )?;
-    let existing = reservation_repo::blocking(conn, new_room.id, check_in, check_out)?;
+    let existing = reservation_repo::blocking(conn, new_room.id, check_in, check_out, now)?;
     let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
     let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, settings.cleaning_interval_minutes, Some(id));
     let conflicts: Vec<ConflictInfo> =
@@ -433,7 +434,7 @@ impl ReservationService {
         let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
         require(&actor, Permission::ChangeReservation)?;
         let conn = self.ctx.conn()?;
-        let plan = plan_change(&conn, self.ctx.today(), id, &request)?;
+        let plan = plan_change(&conn, self.ctx.today(), self.ctx.local_now(), id, &request)?;
         Ok(ChangePreview {
             feasible: plan.feasible(),
             fingerprint: plan.fingerprint(),
@@ -468,7 +469,7 @@ impl ReservationService {
 
         let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
-        let plan = plan_change(&tx, self.ctx.today(), id, &request)?;
+        let plan = plan_change(&tx, self.ctx.today(), self.ctx.local_now(), id, &request)?;
         if plan.reservation.version != expected_version {
             return Err(AppError::Conflict);
         }

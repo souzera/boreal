@@ -16,7 +16,7 @@
 
 | # | Decisão | Custo se estiver errada |
 |---|---|---|
-| M3-1 | Walk-in cria também uma linha de `reservations` (`origin = walk_in`, `checked_in`, código `HOS-`). Disponibilidade, mapa e conflitos seguem lendo só `reservations`. | O walk-in aparece na lista de reservas. |
+| M3-1 | Walk-in cria também uma linha de `reservations` (`origin = walk_in`, `checked_in`, código `AVU-`, prefixo próprio para não colidir com o código de hóspede `HOS-`). Disponibilidade, mapa e conflitos seguem lendo só `reservations`. | O walk-in aparece na lista de reservas. |
 | M3-2 | Migração `0009` (o roteiro dizia `0004`). | — |
 | M3-3 | Recebimento provisório com uma forma de pagamento. | O Marco 5 o substitui. |
 | M3-4 | Sinal pago e desconto da reserva viram `payments`/`charges` no check-in. | — |
@@ -25,7 +25,7 @@
 | M3-7 | Saída tardia: `late_checkout_fee_bp` da última diária não estornada, uma vez, quando `minutos de atraso > tolerância`. | Valor provisório. |
 | M3-8 | Tolerância por hospedagem exige `ChangeReservation`. | — |
 | M3-9 | Saldo ≠ 0 (devedor ou crédito) exige `CheckoutWithBalance`. | Devolução do crédito só existe no Marco 5. |
-| M3-10 | Check-in confere o intervalo de limpeza (`find_conflicts`), não o estado "limpo". | O Marco 4 acrescenta. |
+| M3-10 | Check-in confere o intervalo de limpeza **previsto** (`find_conflicts`), não o estado "limpo" nem a hora real da saída anterior. | O Marco 4 acrescenta. |
 
 ## Serviços (`StayService`)
 
@@ -34,7 +34,7 @@ Toda operação: sessão → regras → **uma transação** com gravação + `re
 | Operação | Permissão | Efeitos |
 |---|---|---|
 | `check_in` | `EarlyCheckIn` (se antes do horário), `ExceedCapacity` (se acima da capacidade) | Cria hospedagem, ocupantes, diárias congeladas, desconto e sinal; reserva → `checked_in`. Revalida conflitos desde `min(início previsto, agora)`. O titular precisa constar entre os ocupantes. |
-| `walk_in` | `ExceedCapacity` (se acima da capacidade) | Cria reserva `HOS-` + hospedagem, preço pela tabela de tarifas. |
+| `walk_in` | `ExceedCapacity` (se acima da capacidade) | Cria reserva `AVU-` + hospedagem, preço pela tabela de tarifas. |
 | `add_charge` | — | Consumo/despesa extra (avulso ou do catálogo). |
 | `add_adjustment` | `ApplyDiscount` | Ajuste com justificativa. |
 | `reverse_charge` | `ReverseEntry` | Estorno (+ relançamento opcional) na mesma transação. |
@@ -45,6 +45,10 @@ Toda operação: sessão → regras → **uma transação** com gravação + `re
 Lançamentos, estornos e pagamentos incrementam `stays.version`; assim, uma prévia de check-out feita antes de uma mudança na conta é recusada (`Conflict`) e a tela recarrega o demonstrativo. `reverse_charge` recusa estornar `reversal`, lançamento já estornado e hospedagem encerrada.
 
 Limites: lançamento ou recebimento de R$ 0,01 a R$ 1.000.000,00; preço de item até R$ 100.000,00.
+
+## Disponibilidade e hospedagem em andamento
+
+`reservation_repo::blocking(conn, room, from, to, now)` devolve sempre as reservas `checked_in` do quarto, qualquer que seja a data; se a saída prevista já passou, a ocupação termina em `now` (o hóspede ainda não saiu). Assim check-in, hospedagem sem reserva, nova reserva e alteração enxergam o quarto ocupado até o check-out. O check-in é recusado quando `agora ≥ saída prevista` da própria reserva (altere as datas antes).
 
 ## Erros e limitações conhecidas
 

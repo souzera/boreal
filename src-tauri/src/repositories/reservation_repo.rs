@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use rusqlite::{named_params, params, Connection, OptionalExtension, Row, Transaction};
 
 use crate::domain::availability::Booking;
@@ -230,18 +230,23 @@ pub fn list(
 }
 
 /// Reservas que bloqueiam o quarto e tocam o período `from..=to` (com folga de um dia para a troca no mesmo dia).
+///
+/// Uma hospedagem em andamento (`checked_in`) bloqueia o quarto **enquanto o hóspede não sair**: ela é
+/// sempre devolvida, e se a saída prevista já passou, o fim da ocupação passa a ser `now`.
 pub fn blocking(
     conn: &Connection,
     room_id: i64,
     from: NaiveDate,
     to: NaiveDate,
+    now: NaiveDateTime,
 ) -> Result<Vec<(Booking, ConflictInfo)>, AppError> {
     let mut stmt = conn.prepare(
         "SELECT r.id, r.code, g.full_name, r.status, r.check_in_date, r.check_out_date,
                 r.expected_check_in_time, r.expected_check_out_time
          FROM reservations r JOIN guests g ON g.id = r.guest_id
-         WHERE r.room_id = ?1 AND r.status IN ('pending', 'confirmed', 'checked_in')
-           AND r.check_out_date >= ?2 AND r.check_in_date <= ?3
+         WHERE r.room_id = ?1
+           AND ((r.status IN ('pending', 'confirmed', 'checked_in') AND r.check_out_date >= ?2 AND r.check_in_date <= ?3)
+                OR r.status = 'checked_in')
          ORDER BY r.check_in_date, r.id",
     )?;
     let raw = stmt
@@ -272,6 +277,7 @@ pub fn blocking(
         ) else {
             return Err(AppError::Database(format!("reserva {code} com datas ou horários inválidos")));
         };
+        let (co, to_) = if status == "checked_in" && co.and_time(to_) < now { (now.date(), now.time()) } else { (co, to_) };
         out.push((
             Booking { id, check_in: ci, check_out: co, expected_in: ti, expected_out: to_ },
             ConflictInfo { reservation_id: id, code, guest_name, check_in_date: check_in, check_out_date: check_out, status },
