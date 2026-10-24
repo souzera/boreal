@@ -43,6 +43,7 @@ const base: api.Reservation = {
   cancellation_fee_cents: null,
   version: 1,
   created_at: "2026-10-21T12:00:00Z",
+  origin: "booking",
 };
 const confirmed: api.Reservation = {
   ...base, id: 2, code: "RES-000002", guest_name: "Bruno Lima", status: "confirmed", deposit_overdue: false,

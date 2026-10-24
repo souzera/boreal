@@ -16,6 +16,8 @@ import Search from "@/pages/Search";
 import ReservationFormPage from "@/pages/reservations/ReservationFormPage";
 import ReservationPage from "@/pages/reservations/ReservationPage";
 import ReservationsPage from "@/pages/reservations/ReservationsPage";
+import StayPage from "@/pages/stays/StayPage";
+import StaysPage from "@/pages/stays/StaysPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import UsersPage from "@/pages/users/UsersPage";
 import { useSessionStore } from "@/stores/session";
@@ -61,6 +63,8 @@ export const appRoutes: RouteObject[] = [
           { path: "/reservas", element: <ReservationsPage /> },
           { path: "/reservas/nova", element: <ReservationFormPage /> },
           { path: "/reservas/:id", element: <ReservationPage /> },
+          { path: "/hospedagens", element: <StaysPage /> },
+          { path: "/hospedagens/:id", element: <StayPage /> },
           { path: "/tarifas", element: <RatesPage /> },
           { path: "/quartos", element: <RoomsPage /> },
           { path: "/itens", element: <ItemsPage /> },

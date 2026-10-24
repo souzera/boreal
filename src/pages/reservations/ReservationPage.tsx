@@ -84,7 +84,7 @@ export default function ReservationPage() {
   }
   if (!data) return null;
 
-  const { reservation: r, nights, history } = data;
+  const { reservation: r, nights, history, stay_id: stayId } = data;
   const open = isOpen(r.status);
   const today = toLocalIsoDate(new Date());
   // A tolerância de chegada é aplicada pelo sistema ao marcar; a tela oferece a ação a partir do dia da chegada.
@@ -109,9 +109,16 @@ export default function ReservationPage() {
         title={`Reserva ${r.code}`}
         description={`${statusIcon[r.status]} ${statusLabel[r.status]}`}
         action={
-          <Button render={<Link to="/reservas" />} variant="outline">
-            Voltar
-          </Button>
+          <div className="flex gap-2">
+            {stayId !== null && (
+              <Button render={<Link to={`/hospedagens/${stayId}`} />} variant="outline">
+                Ver hospedagem
+              </Button>
+            )}
+            <Button render={<Link to="/reservas" />} variant="outline">
+              Voltar
+            </Button>
+          </div>
         }
       />
       {notice && (

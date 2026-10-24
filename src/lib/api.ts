@@ -417,6 +417,8 @@ export interface Reservation {
   cancellation_fee_cents: number | null;
   version: number;
   created_at: string;
+  /** `booking` (reserva) ou `walk_in` (hospedagem sem reserva prévia). */
+  origin: "booking" | "walk_in";
 }
 
 export interface ReservationNight {
@@ -442,6 +444,8 @@ export interface ReservationDetail {
   reservation: Reservation;
   nights: ReservationNight[];
   history: ReservationChange[];
+  /** Hospedagem aberta a partir desta reserva, se houver. */
+  stay_id: number | null;
 }
 
 export interface ReservationQuery {
@@ -629,3 +633,196 @@ export interface RoomMap {
 }
 
 export const roomMap = (token: string, from: string, days: number) => call<RoomMap>("room_map", { token, from, days });
+
+// ---- Hospedagens e conta do hóspede ----
+
+export type StayStatus = "in_house" | "checked_out";
+export type ChargeKind = "night" | "consumption" | "extra" | "discount" | "adjustment" | "late_fee" | "reversal";
+export type PaymentMethod = "cash" | "pix" | "debit" | "credit" | "transfer" | "prior_deposit";
+
+export interface Stay {
+  id: number;
+  code: string;
+  reservation_id: number;
+  status: StayStatus;
+  room_id: number;
+  room_code: string;
+  guest_id: number;
+  guest_name: string;
+  check_in_date: string;
+  check_out_date: string;
+  expected_check_in_time: string;
+  expected_check_out_time: string;
+  checked_in_at: string;
+  checked_out_at: string | null;
+  early_check_in: boolean;
+  late_tolerance_minutes: number | null;
+  version: number;
+}
+
+export interface Occupant {
+  id: number;
+  full_name: string;
+  guest_id: number | null;
+  document: string;
+  is_holder: boolean;
+}
+
+export interface ChargeLine {
+  id: number;
+  kind: ChargeKind;
+  description: string;
+  amount_cents: number;
+  night_date: string | null;
+  justification: string | null;
+  reverses_charge_id: number | null;
+  reversed: boolean;
+  created_by_name: string;
+  created_at: string;
+}
+
+export interface PaymentLine {
+  id: number;
+  code: string;
+  amount_cents: number;
+  method: PaymentMethod;
+  received_at: string;
+  received_by_name: string;
+}
+
+export interface RefundLine {
+  id: number;
+  code: string;
+  payment_code: string;
+  amount_cents: number;
+  reason: string;
+  refunded_at: string;
+}
+
+export interface StayAccount {
+  charges: ChargeLine[];
+  payments: PaymentLine[];
+  refunds: RefundLine[];
+  charges_total_cents: number;
+  received_cents: number;
+  refunded_cents: number;
+  balance_cents: number;
+}
+
+export interface StayDetail {
+  stay: Stay;
+  occupants: Occupant[];
+  account: StayAccount;
+}
+
+export interface DepartureRisk {
+  next_reservation_id: number;
+  next_code: string;
+  next_start: string;
+  ready_at: string;
+  overrun_minutes: number;
+}
+
+export interface StaySummary {
+  stay: Stay;
+  balance_cents: number;
+  minutes_late: number;
+  risk: DepartureRisk | null;
+}
+
+export interface StayQuery {
+  text?: string;
+  status?: StayStatus;
+  page: number;
+  page_size: number;
+}
+
+export interface OccupantInput {
+  full_name: string;
+  guest_id: number | null;
+  document: string;
+}
+
+export interface CheckInInput {
+  reservation_id: number;
+  expected_version: number;
+  occupants: OccupantInput[];
+  exceed_capacity: boolean;
+}
+
+export interface WalkInInput {
+  room_id: number;
+  guest_id: number;
+  check_out_date: string;
+  expected_check_out_time: string | null;
+  occupants: OccupantInput[];
+  exceed_capacity: boolean;
+}
+
+export interface ChargeInput {
+  kind: "consumption" | "extra";
+  description: string;
+  amount_cents: number;
+  item_id: number | null;
+}
+
+export interface AdjustmentInput {
+  description: string;
+  amount_cents: number;
+  justification: string;
+}
+
+export interface PaymentInput {
+  amount_cents: number;
+  method: Exclude<PaymentMethod, "prior_deposit">;
+  note: string;
+}
+
+export interface LateInfo {
+  minutes_late: number;
+  tolerance_minutes: number;
+  applies: boolean;
+  fee_cents: number;
+}
+
+export interface CheckoutPreview {
+  stay: Stay;
+  account: StayAccount;
+  late: LateInfo;
+  balance_cents: number;
+  balance_with_late_fee_cents: number;
+  risk: DepartureRisk | null;
+}
+
+export type LateFeeChoice = "not_applicable" | "charge" | { waive: { justification: string } };
+
+export interface CheckoutInput {
+  stay_id: number;
+  expected_version: number;
+  late_fee: LateFeeChoice;
+  balance_exception: { justification: string } | null;
+}
+
+export const checkInReservation = (token: string, input: CheckInInput) =>
+  call<number>("check_in_reservation", { token, input });
+export const walkIn = (token: string, input: WalkInInput) => call<number>("walk_in", { token, input });
+export const getStay = (token: string, id: number) => call<StayDetail>("get_stay", { token, id });
+export const listStays = (token: string, query: StayQuery) => call<Page<StaySummary>>("list_stays", { token, query });
+export const addStayCharge = (token: string, stayId: number, input: ChargeInput) =>
+  call<number>("add_stay_charge", { token, stayId, input });
+export const addStayAdjustment = (token: string, stayId: number, input: AdjustmentInput) =>
+  call<number>("add_stay_adjustment", { token, stayId, input });
+export const reverseStayCharge = (
+  token: string,
+  stayId: number,
+  chargeId: number,
+  justification: string,
+  replacement: ChargeInput | null,
+) => call<null>("reverse_stay_charge", { token, stayId, chargeId, justification, replacement });
+export const recordStayPayment = (token: string, stayId: number, input: PaymentInput) =>
+  call<number>("record_stay_payment", { token, stayId, input });
+export const previewStayCheckout = (token: string, stayId: number) =>
+  call<CheckoutPreview>("preview_stay_checkout", { token, stayId });
+export const checkoutStay = (token: string, input: CheckoutInput) => call<null>("checkout_stay", { token, input });
+export const setStayLateTolerance = (token: string, stayId: number, minutes: number | null, expectedVersion: number) =>
+  call<null>("set_stay_late_tolerance", { token, stayId, minutes, expectedVersion });

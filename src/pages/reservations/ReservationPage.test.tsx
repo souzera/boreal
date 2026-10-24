@@ -31,10 +31,11 @@ const reservation: api.Reservation = {
   expected_check_out_time: "12:00", nights: 3, occupants: 2, status: "pending", list_total_cents: 30000,
   discount_cents: 3000, discount_reason: "Cliente antigo", agreed_total_cents: 27000, deposit_expected_cents: 8100,
   deposit_paid_cents: 4000, deposit_due_date: "2099-10-24", deposit_overdue: false, notes: "Chegada tarde",
-  cancelled_at: null, cancellation_fee_cents: null, version: 3, created_at: "2099-10-01T12:00:00Z",
+  cancelled_at: null, cancellation_fee_cents: null, version: 3, created_at: "2099-10-01T12:00:00Z", origin: "booking",
 };
 const detail: api.ReservationDetail = {
   reservation,
+  stay_id: null,
   nights: [
     { date: "2099-10-25", amount_cents: 10000, rule: "weekday" },
     { date: "2099-10-26", amount_cents: 10000, rule: "weekday" },

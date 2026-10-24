@@ -59,7 +59,17 @@ export default function ReservationsPage() {
   });
 
   const columns: ColumnDef<Reservation>[] = [
-    { key: "code", header: "Código", sortable: true, render: (r) => <strong>{r.code}</strong> },
+    {
+      key: "code",
+      header: "Código",
+      sortable: true,
+      render: (r) => (
+        <span>
+          <strong>{r.code}</strong>
+          {r.origin === "walk_in" && <span className="block text-xs text-muted-foreground">Sem reserva</span>}
+        </span>
+      ),
+    },
     { key: "guest_name", header: "Hóspede", sortable: true, render: (r) => r.guest_name },
     { key: "room_code", header: "Quarto", sortable: true, render: (r) => r.room_code },
     { key: "check_in_date", header: "Entrada", sortable: true, render: (r) => formatDate(r.check_in_date) },
