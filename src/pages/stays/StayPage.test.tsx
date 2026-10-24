@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -8,7 +8,7 @@ import StayPage from "./StayPage";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return { ...actual, getStay: vi.fn(), myPermissions: vi.fn() };
+  return { ...actual, getStay: vi.fn(), myPermissions: vi.fn(), setStayLateTolerance: vi.fn() };
 });
 
 const stay: api.Stay = {
@@ -111,5 +111,37 @@ describe("StayPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Lançar consumo" }));
     expect(within(await screen.findByRole("dialog")).getByText("Lançar consumo", { selector: "[data-slot='dialog-title'], h2" })).toBeInTheDocument();
+  });
+
+  it("quem pode alterar reservas ajusta a tolerância de saída desta hospedagem", async () => {
+    vi.mocked(api.myPermissions).mockResolvedValue(["change_reservation"]);
+    vi.mocked(api.setStayLateTolerance).mockReset().mockResolvedValue(null);
+    open();
+    const field = await screen.findByLabelText("Tolerância em minutos");
+
+    await userEvent.type(field, "120");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar tolerância" }));
+
+    await waitFor(() => expect(api.setStayLateTolerance).toHaveBeenCalledWith("t", 3, 120, 4));
+    expect(await screen.findByText("Tolerância de saída tardia salva.")).toBeInTheDocument();
+  });
+
+  it("tolerância inválida não chama o backend", async () => {
+    vi.mocked(api.myPermissions).mockResolvedValue(["change_reservation"]);
+    vi.mocked(api.setStayLateTolerance).mockReset();
+    open();
+
+    await userEvent.type(await screen.findByLabelText("Tolerância em minutos"), "700");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar tolerância" }));
+
+    expect(await screen.findByText(/Informe de 0 a 600 minutos/)).toBeInTheDocument();
+    expect(api.setStayLateTolerance).not.toHaveBeenCalled();
+  });
+
+  it("sem a permissão não mostra a tolerância", async () => {
+    open();
+    await screen.findByText("Hospedagem RES-000003");
+
+    expect(screen.queryByLabelText("Tolerância em minutos")).toBeNull();
   });
 });

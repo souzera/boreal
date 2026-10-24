@@ -4,13 +4,15 @@ import { Link, useLocation, useParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePermissions } from "@/hooks/usePermissions";
-import { getStay } from "@/lib/api";
+import { getStay, setStayLateTolerance, type ApiError } from "@/lib/api";
 import { formatDate, formatInstant, formatMoney } from "@/lib/format";
 import { balanceLabel, chargeKindLabel, paymentMethodLabel, stayStatusIcon, stayStatusLabel } from "@/lib/stay";
 import { useSessionStore } from "@/stores/session";
 import ChargeDialog from "./ChargeDialog";
+import CheckoutDialog from "./CheckoutDialog";
 import PaymentDialog from "./PaymentDialog";
 import ReverseDialog from "./ReverseDialog";
 
@@ -34,6 +36,8 @@ export default function StayPage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string | null>((location.state as { notice?: string } | null)?.notice ?? null);
   const [dialog, setDialog] = useState<StayDialog>(null);
+  const [tolerance, setTolerance] = useState<string | null>(null);
+  const [toleranceError, setToleranceError] = useState<string | null>(null);
   const { data, isError } = useQuery({ queryKey: ["stay", stayId], queryFn: () => getStay(token, stayId) });
 
   if (isError) {
@@ -51,6 +55,22 @@ export default function StayPage() {
   const { stay, occupants, account } = data;
   const inHouse = stay.status === "in_house";
   const reversing = typeof dialog === "object" && dialog !== null ? (account.charges.find((c) => c.id === dialog.reverse) ?? null) : null;
+  const saveTolerance = async () => {
+    setToleranceError(null);
+    const text = (tolerance ?? "").trim();
+    const minutes = text === "" ? null : Number(text);
+    if (minutes !== null && (!Number.isInteger(minutes) || minutes < 0 || minutes > 600)) {
+      setToleranceError("Informe de 0 a 600 minutos, ou deixe em branco para usar o padrão.");
+      return;
+    }
+    try {
+      await setStayLateTolerance(token, stay.id, minutes, stay.version);
+      setTolerance(null);
+      done("Tolerância de saída tardia salva.");
+    } catch (e) {
+      setToleranceError((e as ApiError).message);
+    }
+  };
   const done = (message: string) => {
     setDialog(null);
     setNotice(message);
@@ -123,6 +143,30 @@ export default function StayPage() {
         </div>
       )}
 
+      {inHouse && can("change_reservation") && (
+        <section aria-label="Tolerância de saída" className="grid gap-2 text-sm">
+          <h2 className="text-base font-semibold">Tolerância de saída tardia desta hospedagem</h2>
+          <div className="flex flex-wrap items-end gap-2">
+            <Input
+              aria-label="Tolerância em minutos"
+              className="w-32"
+              inputMode="numeric"
+              placeholder="padrão"
+              value={tolerance ?? (stay.late_tolerance_minutes === null ? "" : String(stay.late_tolerance_minutes))}
+              onChange={(e) => setTolerance(e.target.value)}
+            />
+            <Button type="button" size="sm" variant="outline" onClick={saveTolerance}>
+              Salvar tolerância
+            </Button>
+          </div>
+          {toleranceError && (
+            <p role="alert" className="text-destructive">
+              {toleranceError}
+            </p>
+          )}
+        </section>
+      )}
+
       <section aria-label="Conta">
         <h2 className="mb-2 text-base font-semibold">Conta da hospedagem</h2>
         <Table>
@@ -186,6 +230,7 @@ export default function StayPage() {
 
       <ChargeDialog open={dialog === "charge"} stayId={stay.id} onClose={() => setDialog(null)} onDone={done} />
       <PaymentDialog open={dialog === "payment"} stayId={stay.id} balanceCents={account.balance_cents} onClose={() => setDialog(null)} onDone={done} />
+      <CheckoutDialog open={dialog === "checkout"} stayId={stay.id} onClose={() => setDialog(null)} onDone={done} />
       <ReverseDialog open={reversing !== null} stayId={stay.id} charge={reversing} onClose={() => setDialog(null)} onDone={done} />
     </section>
   );
