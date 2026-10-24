@@ -362,3 +362,218 @@ export const getCancellationPolicy = (token: string) =>
   call<CancellationPolicy>("get_cancellation_policy", { token });
 export const updateCancellationPolicy = (token: string, tiers: CancellationTier[], expectedVersion: number) =>
   call<number>("update_cancellation_policy", { token, tiers, expectedVersion });
+
+// ---- Reservas ----
+
+export type ReservationStatus = "pending" | "confirmed" | "checked_in" | "completed" | "cancelled" | "no_show";
+
+export interface Reservation {
+  id: number;
+  code: string;
+  room_id: number;
+  room_code: string;
+  guest_id: number;
+  guest_name: string;
+  check_in_date: string;
+  check_out_date: string;
+  expected_check_in_time: string;
+  expected_check_out_time: string;
+  nights: number;
+  occupants: number;
+  status: ReservationStatus;
+  list_total_cents: number;
+  discount_cents: number;
+  discount_reason: string | null;
+  agreed_total_cents: number;
+  deposit_expected_cents: number;
+  deposit_paid_cents: number;
+  deposit_due_date: string;
+  deposit_overdue: boolean;
+  notes: string;
+  cancelled_at: string | null;
+  cancellation_fee_cents: number | null;
+  version: number;
+  created_at: string;
+}
+
+export interface ReservationNight {
+  date: string;
+  amount_cents: number;
+  rule: AppliedRule;
+}
+
+export interface ReservationChange {
+  id: number;
+  changed_at: string;
+  changed_by: number;
+  changed_by_name: string;
+  kind: string;
+  before_json: string;
+  after_json: string;
+  price_before_cents: number | null;
+  price_after_cents: number | null;
+  justification: string | null;
+}
+
+export interface ReservationDetail {
+  reservation: Reservation;
+  nights: ReservationNight[];
+  history: ReservationChange[];
+}
+
+export interface ReservationQuery {
+  text?: string;
+  status?: ReservationStatus[];
+  room_id?: number;
+  from?: string;
+  to?: string;
+  page: number;
+  page_size: number;
+  sort?: string;
+  direction?: "asc" | "desc";
+}
+
+export interface NewReservationInput {
+  room_id: number;
+  guest_id: number;
+  check_in_date: string;
+  check_out_date: string;
+  expected_check_in_time: string | null;
+  expected_check_out_time: string | null;
+  occupants: number;
+  notes: string;
+  exceed_capacity: boolean;
+}
+
+export interface CreatedReservation {
+  id: number;
+  code: string;
+  agreed_total_cents: number;
+  deposit_expected_cents: number;
+  deposit_due_date: string;
+}
+
+export interface ConflictInfo {
+  reservation_id: number;
+  code: string;
+  guest_name: string;
+  check_in_date: string;
+  check_out_date: string;
+  status: ReservationStatus;
+}
+
+export interface AvailabilityResult {
+  available: boolean;
+  conflicts: ConflictInfo[];
+}
+
+export interface ChangeRequest {
+  room_id: number | null;
+  check_in_date: string | null;
+  check_out_date: string | null;
+}
+
+export interface NightChange {
+  date: string;
+  amount_cents: number;
+  kept: boolean;
+  rule: AppliedRule;
+}
+
+export interface ChangePreview {
+  feasible: boolean;
+  fingerprint: string;
+  price_before_cents: number;
+  price_after_cents: number;
+  difference_cents: number;
+  new_deposit_expected_cents: number;
+  nights: NightChange[];
+  missing_dates: string[];
+  conflicts: ConflictInfo[];
+  problems: string[];
+}
+
+export interface CancellationPreview {
+  days_before: number;
+  deposit_paid_cents: number;
+  refund_cents: number;
+  retained_cents: number;
+  tier_min_days: number | null;
+  can_cancel: boolean;
+}
+
+export interface CancellationOverride {
+  retained_cents: number;
+  justification: string;
+}
+
+export interface CancellationResult {
+  refund_cents: number;
+  retained_cents: number;
+}
+
+export interface DiscountInput {
+  kind: "amount" | "percent";
+  amount_cents: number | null;
+  percent_bp: number | null;
+  justification: string;
+}
+
+export interface ReviewItem {
+  reservation: Reservation;
+  reasons: ("no_show_candidate" | "deposit_overdue")[];
+}
+
+export const createReservation = (token: string, input: NewReservationInput) =>
+  call<CreatedReservation>("create_reservation", { token, input });
+export const getReservation = (token: string, id: number) => call<ReservationDetail>("get_reservation", { token, id });
+export const listReservations = (token: string, query: ReservationQuery) =>
+  call<Page<Reservation>>("list_reservations", { token, query });
+export const checkRoomAvailability = (
+  token: string,
+  roomId: number,
+  checkIn: string,
+  checkOut: string,
+  ignoreReservationId?: number,
+) =>
+  call<AvailabilityResult>("check_room_availability", {
+    token,
+    roomId,
+    checkIn,
+    checkOut,
+    ignoreReservationId: ignoreReservationId ?? null,
+  });
+export const previewReservationChange = (token: string, id: number, request: ChangeRequest) =>
+  call<ChangePreview>("preview_reservation_change", { token, id, request });
+export const applyReservationChange = (
+  token: string,
+  id: number,
+  request: ChangeRequest,
+  expectedVersion: number,
+  justification: string,
+  fingerprint: string,
+) => call<null>("apply_reservation_change", { token, id, request, expectedVersion, justification, fingerprint });
+export const previewReservationCancellation = (token: string, id: number) =>
+  call<CancellationPreview>("preview_reservation_cancellation", { token, id });
+export const cancelReservation = (
+  token: string,
+  id: number,
+  expectedVersion: number,
+  exception: CancellationOverride | null,
+) => call<CancellationResult>("cancel_reservation", { token, id, expectedVersion, exception });
+export const markReservationNoShow = (token: string, id: number, expectedVersion: number) =>
+  call<null>("mark_reservation_no_show", { token, id, expectedVersion });
+export const listReservationsNeedingReview = (token: string) =>
+  call<ReviewItem[]>("list_reservations_needing_review", { token });
+export const applyReservationDiscount = (token: string, id: number, input: DiscountInput, expectedVersion: number) =>
+  call<null>("apply_reservation_discount", { token, id, input, expectedVersion });
+export const confirmReservation = (token: string, id: number, expectedVersion: number) =>
+  call<null>("confirm_reservation", { token, id, expectedVersion });
+export const recordReservationDeposit = (token: string, id: number, amountCents: number, expectedVersion: number) =>
+  call<null>("record_reservation_deposit", { token, id, amountCents, expectedVersion });
+export const setReservationNotes = (token: string, id: number, notes: string, expectedVersion: number) =>
+  call<null>("set_reservation_notes", { token, id, notes, expectedVersion });
+
+// ---- Permissões da sessão ----
+
+export const myPermissions = (token: string) => call<string[]>("my_permissions", { token });
