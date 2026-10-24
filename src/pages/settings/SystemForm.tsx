@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -29,6 +29,12 @@ const schema = z.object({
   late_checkout_tolerance_minutes: whole(0, 600, "minutos"),
   no_show_tolerance_minutes: whole(0, 600, "minutos"),
   cleaning_interval_minutes: whole(0, 600, "minutos"),
+  deposit_percent: z
+    .number({ error: "Informe um número." })
+    .min(0, "Informe de 0 a 100%.")
+    .max(100, "Informe de 0 a 100%."),
+  deposit_due_days_after_booking: whole(0, 60, "dias"),
+  deposit_due_days_before_arrival: whole(0, 60, "dias"),
 });
 type Values = z.infer<typeof schema>;
 
@@ -38,20 +44,27 @@ export default function SystemForm({ onDirtyChange }: { onDirtyChange: (dirty: b
   const token = useSessionStore((s) => s.token) ?? "";
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["settings"], queryFn: () => getSettings(token) });
+  // O sinal é guardado em pontos-base (3000 = 30%) e mostrado em percentual.
+  const formValues = useMemo<Values | undefined>(() => {
+    if (!data) return undefined;
+    const { deposit_percent_bp, ...rest } = data.settings;
+    return { ...rest, deposit_percent: deposit_percent_bp / 100 };
+  }, [data]);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string; conflict?: boolean } | null>(null);
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors, isDirty, isSubmitting },
-  } = useForm<Values>({ resolver: zodResolver(schema), values: data?.settings });
+  } = useForm<Values>({ resolver: zodResolver(schema), values: formValues });
 
   useEffect(() => onDirtyChange(isDirty), [isDirty, onDirtyChange]);
 
   const onSubmit = handleSubmit(async (values) => {
     setMessage(null);
     try {
-      await updateSettings(token, values, data?.version ?? 0);
+      const { deposit_percent, ...rest } = values;
+      await updateSettings(token, { ...rest, deposit_percent_bp: Math.round(deposit_percent * 100) }, data?.version ?? 0);
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
       reset(values);
       // O backend já aplica o novo limite; a interface passa a usá-lo na hora.
@@ -101,6 +114,15 @@ export default function SystemForm({ onDirtyChange }: { onDirtyChange: (dirty: b
           </FormField>
           <FormField id="s-cleaning" label="Intervalo de limpeza entre hospedagens (minutos)" required error={errors.cleaning_interval_minutes?.message}>
             <Input id="s-cleaning" type="number" {...register("cleaning_interval_minutes", number)} />
+          </FormField>
+          <FormField id="s-deposit" label="Sinal (% do total da reserva)" required error={errors.deposit_percent?.message}>
+            <Input id="s-deposit" type="number" step="0.01" {...register("deposit_percent", number)} />
+          </FormField>
+          <FormField id="s-deposit-after" label="Sinal vence em até (dias após a reserva)" required error={errors.deposit_due_days_after_booking?.message}>
+            <Input id="s-deposit-after" type="number" {...register("deposit_due_days_after_booking", number)} />
+          </FormField>
+          <FormField id="s-deposit-before" label="Sinal vence, no máximo, (dias antes da chegada)" required error={errors.deposit_due_days_before_arrival?.message}>
+            <Input id="s-deposit-before" type="number" {...register("deposit_due_days_before_arrival", number)} />
           </FormField>
           <div className="grid gap-3 sm:col-span-2">
             {message && (

@@ -72,6 +72,9 @@ export interface AppSettings {
   late_checkout_tolerance_minutes: number;
   no_show_tolerance_minutes: number;
   cleaning_interval_minutes: number;
+  deposit_percent_bp: number;
+  deposit_due_days_after_booking: number;
+  deposit_due_days_before_arrival: number;
 }
 
 export interface SettingsView {
@@ -342,3 +345,20 @@ export const createHoliday = (token: string, date: string, name: string) =>
 export const deleteHoliday = (token: string, id: number) => call<null>("delete_holiday", { token, id });
 export const quoteStay = (token: string, categoryId: number, checkIn: string, checkOut: string) =>
   call<Quote>("quote_stay", { token, categoryId, checkIn, checkOut });
+
+// ---- Política de cancelamento ----
+
+export interface CancellationTier {
+  min_days_before: number;
+  refund_bp: number;
+}
+
+export interface CancellationPolicy {
+  tiers: CancellationTier[];
+  version: number;
+}
+
+export const getCancellationPolicy = (token: string) =>
+  call<CancellationPolicy>("get_cancellation_policy", { token });
+export const updateCancellationPolicy = (token: string, tiers: CancellationTier[], expectedVersion: number) =>
+  call<number>("update_cancellation_policy", { token, tiers, expectedVersion });

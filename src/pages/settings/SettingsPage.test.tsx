@@ -17,6 +17,8 @@ vi.mock("@/lib/api", async () => {
     getPousadaLogo: vi.fn(),
     updatePousada: vi.fn(),
     getAppInfo: vi.fn(),
+    getCancellationPolicy: vi.fn(),
+    updateCancellationPolicy: vi.fn(),
   };
 });
 
@@ -29,6 +31,9 @@ const settings: api.AppSettings = {
   late_checkout_tolerance_minutes: 30,
   no_show_tolerance_minutes: 60,
   cleaning_interval_minutes: 60,
+  deposit_percent_bp: 3000,
+  deposit_due_days_after_booking: 3,
+  deposit_due_days_before_arrival: 1,
 };
 
 beforeEach(() => {
@@ -38,6 +43,15 @@ beforeEach(() => {
   vi.mocked(api.getPousada).mockResolvedValue({ name: "", address: "", phone: "", has_logo: false, version: 1 });
   vi.mocked(api.getPousadaLogo).mockResolvedValue(null);
   vi.mocked(api.updatePousada).mockReset().mockResolvedValue(2);
+  vi.mocked(api.getCancellationPolicy).mockReset().mockResolvedValue({
+    tiers: [
+      { min_days_before: 7, refund_bp: 10000 },
+      { min_days_before: 3, refund_bp: 5000 },
+      { min_days_before: 0, refund_bp: 0 },
+    ],
+    version: 1,
+  });
+  vi.mocked(api.updateCancellationPolicy).mockReset().mockResolvedValue(2);
   vi.mocked(api.getAppInfo).mockResolvedValue({
     app_version: "0.1.0",
     schema_version: 3,
@@ -171,5 +185,125 @@ describe("SettingsPage", () => {
 
     await screen.findByText("Configurações salvas.");
     expect(useSessionStore.getState().idleMinutes).toBe(3);
+  });
+
+  it("mostra o sinal em percentual e salva em pontos-base", async () => {
+    await open();
+    const field = screen.getByLabelText(/Sinal \(% do total/);
+    expect(field).toHaveValue(30);
+
+    await userEvent.clear(field);
+    await userEvent.type(field, "25.5");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar configurações" }));
+
+    await waitFor(() =>
+      expect(api.updateSettings).toHaveBeenCalledWith("t", { ...settings, deposit_percent_bp: 2550 }, 1),
+    );
+  });
+
+  it("valida o sinal e os prazos sem chamar o backend", async () => {
+    await open();
+    const percent = screen.getByLabelText(/Sinal \(% do total/);
+    const after = screen.getByLabelText(/Sinal vence em até/);
+
+    await userEvent.clear(percent);
+    await userEvent.type(percent, "150");
+    await userEvent.clear(after);
+    await userEvent.type(after, "61");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar configurações" }));
+
+    expect(await screen.findByText("Informe de 0 a 100%.")).toBeInTheDocument();
+    expect(screen.getByText("Informe de 0 a 60 dias.")).toBeInTheDocument();
+    expect(api.updateSettings).not.toHaveBeenCalled();
+  });
+
+  describe("política de cancelamento", () => {
+    async function openPolicy() {
+      await open();
+      await screen.findByLabelText("Devolução do sinal (%), faixa 2");
+    }
+
+    it("mostra as faixas e avisa que os valores são provisórios", async () => {
+      await openPolicy();
+
+      expect(screen.getByLabelText("Dias de antecedência, faixa 1")).toHaveValue(7);
+      expect(screen.getByLabelText("Devolução do sinal (%), faixa 1")).toHaveValue(100);
+      expect(screen.getByLabelText("Devolução do sinal (%), faixa 2")).toHaveValue(50);
+      expect(screen.getByText(/valores provisórios/i)).toBeInTheDocument();
+    });
+
+    it("salva uma faixa alterada em pontos-base com a versão", async () => {
+      await openPolicy();
+      const field = screen.getByLabelText("Devolução do sinal (%), faixa 2");
+
+      await userEvent.clear(field);
+      await userEvent.type(field, "40");
+      await userEvent.click(screen.getByRole("button", { name: "Salvar política" }));
+
+      await waitFor(() =>
+        expect(api.updateCancellationPolicy).toHaveBeenCalledWith(
+          "t",
+          [
+            { min_days_before: 7, refund_bp: 10000 },
+            { min_days_before: 3, refund_bp: 4000 },
+            { min_days_before: 0, refund_bp: 0 },
+          ],
+          1,
+        ),
+      );
+      expect(await screen.findByText("Política de cancelamento salva.")).toBeInTheDocument();
+    });
+
+    it("adiciona e remove faixas", async () => {
+      await openPolicy();
+
+      await userEvent.click(screen.getByRole("button", { name: "Adicionar faixa" }));
+      await userEvent.type(screen.getByLabelText("Dias de antecedência, faixa 4"), "15");
+      await userEvent.type(screen.getByLabelText("Devolução do sinal (%), faixa 4"), "100");
+      await userEvent.click(screen.getByRole("button", { name: "Remover faixa 2" }));
+      await userEvent.click(screen.getByRole("button", { name: "Salvar política" }));
+
+      await waitFor(() =>
+        expect(api.updateCancellationPolicy).toHaveBeenCalledWith(
+          "t",
+          [
+            { min_days_before: 7, refund_bp: 10000 },
+            { min_days_before: 0, refund_bp: 0 },
+            { min_days_before: 15, refund_bp: 10000 },
+          ],
+          1,
+        ),
+      );
+    });
+
+    it("recusa política sem a faixa de 0 dia ou com devolução acima de 100%", async () => {
+      await openPolicy();
+
+      await userEvent.click(screen.getByRole("button", { name: "Remover faixa 3" }));
+      await userEvent.click(screen.getByRole("button", { name: "Salvar política" }));
+      expect(await screen.findByText("Inclua a faixa de 0 dia.")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Adicionar faixa" }));
+      await userEvent.type(screen.getByLabelText("Dias de antecedência, faixa 3"), "0");
+      await userEvent.type(screen.getByLabelText("Devolução do sinal (%), faixa 3"), "120");
+      await userEvent.click(screen.getByRole("button", { name: "Salvar política" }));
+      expect(await screen.findByText("A devolução vai de 0% a 100%.")).toBeInTheDocument();
+      expect(api.updateCancellationPolicy).not.toHaveBeenCalled();
+    });
+
+    it("mostra o erro do backend e mantém as faixas digitadas", async () => {
+      vi.mocked(api.updateCancellationPolicy).mockRejectedValue(
+        new api.ApiError("validation", "A devolução não pode aumentar quando a antecedência diminui."),
+      );
+      await openPolicy();
+      const field = screen.getByLabelText("Devolução do sinal (%), faixa 3");
+      await userEvent.clear(field);
+      await userEvent.type(field, "80");
+
+      await userEvent.click(screen.getByRole("button", { name: "Salvar política" }));
+
+      expect(await screen.findByText(/não pode aumentar quando a antecedência diminui/)).toBeInTheDocument();
+      expect(field).toHaveValue(80);
+    });
   });
 });
