@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader } from "@/components/PageHeader";
@@ -21,9 +21,10 @@ import { useSessionStore } from "@/stores/session";
 import CancelDialog from "./CancelDialog";
 import ChangeDialog from "./ChangeDialog";
 import DepositDialog from "./DepositDialog";
+import CheckInDialog from "../stays/CheckInDialog";
 import DiscountDialog from "./DiscountDialog";
 
-type Dialogs = "change" | "cancel" | "discount" | "deposit" | "no_show" | null;
+type Dialogs = "change" | "cancel" | "discount" | "deposit" | "no_show" | "check_in" | null;
 
 const kindLabel: Record<string, string> = {
   change: "Alteração de datas ou quarto",
@@ -49,6 +50,7 @@ export default function ReservationPage() {
   const reservationId = Number(id);
   const token = useSessionStore((s) => s.token) ?? "";
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { can } = usePermissions();
   const [dialog, setDialog] = useState<Dialogs>(null);
@@ -159,6 +161,7 @@ export default function ReservationPage() {
       </div>
 
       <div className="flex flex-wrap gap-2">
+        {open && <Button onClick={() => setDialog("check_in")}>Confirmar check-in</Button>}
         {open && can("change_reservation") && <Button onClick={() => setDialog("change")}>Alterar datas ou quarto</Button>}
         {open && can("apply_discount") && (
           <Button variant="outline" onClick={() => setDialog("discount")}>
@@ -285,6 +288,17 @@ export default function ReservationPage() {
         onConflict={refresh}
       />
       <DiscountDialog open={dialog === "discount"} reservation={r} onClose={() => setDialog(null)} onDone={done} onConflict={refresh} />
+      <CheckInDialog
+        open={dialog === "check_in"}
+        reservation={r}
+        onClose={() => setDialog(null)}
+        onConflict={refresh}
+        onDone={(stayId) => {
+          setDialog(null);
+          refresh();
+          navigate(`/hospedagens/${stayId}`, { state: { notice: "Check-in confirmado e salvo neste computador." } });
+        }}
+      />
       <DepositDialog open={dialog === "deposit"} reservation={r} onClose={() => setDialog(null)} onDone={done} onConflict={refresh} />
       <ConfirmDialog
         open={dialog === "no_show"}

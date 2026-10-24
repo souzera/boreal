@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,8 @@ export default function StayPage() {
   const stayId = Number(id);
   const token = useSessionStore((s) => s.token) ?? "";
   const { can } = usePermissions();
+  const location = useLocation();
+  const notice = (location.state as { notice?: string } | null)?.notice ?? null;
   const [, setDialog] = useState<StayDialog>(null);
   const { data, isError } = useQuery({ queryKey: ["stay", stayId], queryFn: () => getStay(token, stayId) });
 
@@ -61,6 +63,12 @@ export default function StayPage() {
           </div>
         }
       />
+
+      {notice && (
+        <p role="status" className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+          {notice}
+        </p>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2">
         <dl className="grid gap-2 text-sm">

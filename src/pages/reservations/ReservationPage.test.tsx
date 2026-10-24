@@ -151,15 +151,24 @@ describe("ReservationPage — dados", () => {
     await open();
 
     expect(screen.getByRole("button", { name: "Cancelar reserva" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar check-in" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Alterar datas ou quarto" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Aplicar desconto" })).toBeNull();
+  });
+
+  it("reserva já hospedada leva à hospedagem e não oferece novo check-in", async () => {
+    vi.mocked(api.getReservation).mockResolvedValue({ ...detail, stay_id: 12, reservation: { ...reservation, status: "checked_in" } });
+    await open();
+
+    expect(screen.getByRole("link", { name: "Ver hospedagem" })).toHaveAttribute("href", "/hospedagens/12");
+    expect(screen.queryByRole("button", { name: "Confirmar check-in" })).toBeNull();
   });
 
   it("reserva cancelada não oferece ações", async () => {
     setDetail({ status: "cancelled" });
     await open();
 
-    for (const name of ["Cancelar reserva", "Alterar datas ou quarto", "Aplicar desconto", "Confirmar reserva", "Registrar sinal recebido"]) {
+    for (const name of ["Cancelar reserva", "Alterar datas ou quarto", "Aplicar desconto", "Confirmar reserva", "Registrar sinal recebido", "Confirmar check-in"]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
   });
