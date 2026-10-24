@@ -2,6 +2,7 @@ pub mod app;
 pub mod auth;
 pub mod catalog;
 pub mod guests;
+pub mod items;
 pub mod policy;
 pub mod pousada;
 pub mod rates;

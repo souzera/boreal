@@ -7,6 +7,7 @@ use crate::migrations::{current_version, last_applied_at, run_migrations};
 use crate::services::auth_service::AuthService;
 use crate::services::catalog_service::CatalogService;
 use crate::services::guest_service::GuestService;
+use crate::services::item_service::ItemService;
 use crate::services::policy_service::PolicyService;
 use crate::services::pousada_service::PousadaService;
 use crate::services::rate_service::RateService;
@@ -31,6 +32,7 @@ pub struct AppState {
     pub pousada: PousadaService,
     pub catalog: CatalogService,
     pub guests: GuestService,
+    pub items: ItemService,
     pub rates: RateService,
     pub policy: PolicyService,
     pub reservations: ReservationService,
@@ -67,6 +69,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         pousada: PousadaService::new(ctx.clone()),
         catalog: CatalogService::new(ctx.clone()),
         guests: GuestService::new(ctx.clone()),
+        items: ItemService::new(ctx.clone()),
         rates: RateService::new(ctx.clone()),
         policy: PolicyService::new(ctx.clone()),
         reservations: ReservationService::new(ctx.clone()),

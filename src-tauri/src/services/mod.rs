@@ -1,6 +1,7 @@
 pub mod auth_service;
 pub mod catalog_service;
 pub mod guest_service;
+pub mod item_service;
 pub mod policy_service;
 pub mod pousada_service;
 pub mod rate_service;

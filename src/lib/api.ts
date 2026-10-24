@@ -223,6 +223,28 @@ export const updateCategory = (token: string, id: number, input: CategoryInput, 
   call<null>("update_category", { token, id, input, expectedVersion });
 export const setCategoryActive = (token: string, id: number, active: boolean) =>
   call<null>("set_category_active", { token, id, active });
+// ---- Itens e serviços (catálogo de lançamentos) ----
+
+export interface Item {
+  id: number;
+  name: string;
+  default_price_cents: number;
+  active: boolean;
+  version: number;
+}
+
+export interface ItemInput {
+  name: string;
+  default_price_cents: number;
+}
+
+export const listItems = (token: string, onlyActive: boolean) => call<Item[]>("list_items", { token, onlyActive });
+export const createItem = (token: string, input: ItemInput) => call<number>("create_item", { token, input });
+export const updateItem = (token: string, id: number, input: ItemInput, expectedVersion: number) =>
+  call<null>("update_item", { token, id, input, expectedVersion });
+export const setItemActive = (token: string, id: number, active: boolean, expectedVersion: number) =>
+  call<null>("set_item_active", { token, id, active, expectedVersion });
+
 export const listRooms = (token: string, query: RoomQuery) => call<Page<Room>>("list_rooms", { token, query });
 export const createRoom = (token: string, input: RoomInput) => call<number>("create_room", { token, input });
 export const updateRoom = (token: string, id: number, input: RoomInput, expectedVersion: number) =>

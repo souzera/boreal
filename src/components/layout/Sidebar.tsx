@@ -40,6 +40,9 @@ export default function Sidebar() {
       <NavLink to="/tarifas" className={linkClass}>
         Tarifas
       </NavLink>
+      <NavLink to="/itens" className={linkClass}>
+        Itens e serviços
+      </NavLink>
       {upcoming.map((item) => (
         <span
           key={item}

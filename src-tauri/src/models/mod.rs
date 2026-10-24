@@ -1,5 +1,6 @@
 pub mod catalog;
 pub mod guest;
+pub mod item;
 pub mod page;
 pub mod pousada;
 pub mod rate;
