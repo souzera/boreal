@@ -39,6 +39,7 @@ pub fn run() {
             commands::auth::session_status,
             commands::auth::create_user,
             commands::auth::reset_password,
+            commands::auth::my_permissions,
             commands::users::grantable_permissions,
             commands::users::set_extra_permissions,
             commands::users::list_users,

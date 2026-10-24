@@ -188,6 +188,17 @@ impl AuthService {
             .touch_allow_pending(token, self.ctx.clock.now())
     }
 
+    /// Permissões sensíveis da sessão (do perfil e as extras), para a interface decidir o que oferecer.
+    /// A verificação de verdade continua sendo feita no backend a cada operação.
+    pub fn my_permissions(&self, token: &str) -> Result<Vec<String>, AppError> {
+        let info = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        Ok(crate::auth::permissions::Permission::ALL
+            .iter()
+            .filter(|p| crate::auth::permissions::role_has(info.role, **p) || info.extra.contains(**p))
+            .map(|p| p.as_str().to_string())
+            .collect())
+    }
+
     /// Estado da sessão para a interface: ativa ou bloqueada por inatividade.
     pub fn session_state(&self, token: &str) -> Result<SessionStatus, AppError> {
         let (state, info) = match self.session_status(token) {
@@ -577,6 +588,27 @@ mod tests {
 
         assert!(h.auth.session_status(&current).is_ok());
         assert!(matches!(h.auth.session_status(&other), Err(AppError::Unauthorized)));
+    }
+
+    #[test]
+    fn my_permissions_lists_what_the_session_can_do() {
+        use crate::auth::permissions::Permission;
+        use crate::services::test_support::recepcao_token;
+        let h = harness();
+        let admin = admin_token(&h);
+        let rec = recepcao_token(&h, &admin);
+
+        let all = h.auth.my_permissions(&admin).unwrap();
+        assert_eq!(all.len(), Permission::ALL.len());
+        assert!(all.contains(&"manage_users".to_string()));
+        assert!(h.auth.my_permissions(&rec).unwrap().is_empty());
+
+        let rec_id = h.auth.login("rec", "Definitiva-456").unwrap().user.id;
+        h.users.set_extra_permissions(&admin, rec_id, &[Permission::ApplyDiscount, Permission::ExceedCapacity]).unwrap();
+        let rec = h.auth.login("rec", "Definitiva-456").unwrap().token;
+        let mut mine = h.auth.my_permissions(&rec).unwrap();
+        mine.sort();
+        assert_eq!(mine, ["apply_discount", "exceed_capacity"]);
     }
 
     #[test]

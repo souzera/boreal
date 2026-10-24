@@ -82,3 +82,8 @@ pub fn reset_password(
         .users
         .reset_password(&token, user_id, &temp_password, expected_version)
 }
+
+#[tauri::command]
+pub fn my_permissions(app: State<'_, App>, token: String) -> Result<Vec<String>, AppError> {
+    app.state()?.auth.my_permissions(&token)
+}
