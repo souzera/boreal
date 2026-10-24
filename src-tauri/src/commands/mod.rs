@@ -6,5 +6,6 @@ pub mod policy;
 pub mod pousada;
 pub mod rates;
 pub mod reservations;
+pub mod room_map;
 pub mod settings;
 pub mod users;

@@ -5,6 +5,7 @@ pub mod policy_service;
 pub mod pousada_service;
 pub mod rate_service;
 pub mod reservation_service;
+pub mod room_map_service;
 pub mod settings_service;
 pub mod user_service;
 

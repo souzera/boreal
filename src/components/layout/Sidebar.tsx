@@ -25,6 +25,9 @@ export default function Sidebar() {
       <NavLink to="/" end className={linkClass}>
         Dashboard
       </NavLink>
+      <NavLink to="/mapa" className={linkClass}>
+        Mapa de quartos
+      </NavLink>
       <NavLink to="/reservas" className={linkClass}>
         Reservas
       </NavLink>

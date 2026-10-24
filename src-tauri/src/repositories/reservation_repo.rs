@@ -411,3 +411,50 @@ pub fn update_notes(tx: &Transaction, id: i64, notes: &str, expected_version: i6
         params![notes, stamp(at), id, expected_version],
     )?)
 }
+
+pub struct MapReservation {
+    pub id: i64,
+    pub code: String,
+    pub room_id: i64,
+    pub guest_name: String,
+    pub status: String,
+    pub check_in: String,
+    pub check_out: String,
+}
+
+/// Quartos (ativos e inativos) em ordem de código, para as linhas do mapa.
+pub fn map_rooms(conn: &Connection) -> Result<Vec<(i64, String, String, bool)>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id, r.code, c.name, r.active FROM rooms r JOIN room_categories c ON c.id = r.category_id
+         ORDER BY r.code COLLATE NOCASE, r.id",
+    )?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? == 1)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Reservas que ocupam quarto (inclui concluídas) e tocam o período `from..=to`.
+pub fn map_reservations(conn: &Connection, from: NaiveDate, to: NaiveDate) -> Result<Vec<MapReservation>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id, r.code, r.room_id, g.full_name, r.status, r.check_in_date, r.check_out_date
+         FROM reservations r JOIN guests g ON g.id = r.guest_id
+         WHERE r.status IN ('pending', 'confirmed', 'checked_in', 'completed')
+           AND r.check_out_date >= ?1 AND r.check_in_date <= ?2
+         ORDER BY r.room_id, r.check_in_date, r.id",
+    )?;
+    let rows = stmt
+        .query_map(params![dates::format(from), dates::format(to)], |r| {
+            Ok(MapReservation {
+                id: r.get(0)?,
+                code: r.get(1)?,
+                room_id: r.get(2)?,
+                guest_name: r.get(3)?,
+                status: r.get(4)?,
+                check_in: r.get(5)?,
+                check_out: r.get(6)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}

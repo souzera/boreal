@@ -577,3 +577,32 @@ export const setReservationNotes = (token: string, id: number, notes: string, ex
 // ---- Permissões da sessão ----
 
 export const myPermissions = (token: string) => call<string[]>("my_permissions", { token });
+
+// ---- Mapa de quartos ----
+
+export interface RoomMapRoom {
+  id: number;
+  code: string;
+  category_name: string;
+  active: boolean;
+}
+
+export interface RoomMapCell {
+  room_id: number;
+  date: string;
+  reservation_id: number;
+  code: string;
+  guest_name: string;
+  status: ReservationStatus;
+  is_check_in: boolean;
+  is_check_out: boolean;
+}
+
+export interface RoomMap {
+  from: string;
+  to: string;
+  rooms: RoomMapRoom[];
+  cells: RoomMapCell[];
+}
+
+export const roomMap = (token: string, from: string, days: number) => call<RoomMap>("room_map", { token, from, days });

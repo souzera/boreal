@@ -2,6 +2,7 @@ import { Navigate, Outlet, type RouteObject } from "react-router-dom";
 
 import AppShell from "@/components/layout/AppShell";
 import LockGate from "@/components/layout/LockGate";
+import RoomMapPage from "@/pages/calendar/RoomMapPage";
 import ChangePassword from "@/pages/ChangePassword";
 import CategoriesPage from "@/pages/catalog/CategoriesPage";
 import RoomsPage from "@/pages/catalog/RoomsPage";
@@ -55,6 +56,7 @@ export const appRoutes: RouteObject[] = [
           { path: "/busca", element: <Search /> },
           { path: "/hospedes", element: <GuestsPage /> },
           { path: "/hospedes/:id", element: <GuestFormPage /> },
+          { path: "/mapa", element: <RoomMapPage /> },
           { path: "/reservas", element: <ReservationsPage /> },
           { path: "/reservas/nova", element: <ReservationFormPage /> },
           { path: "/reservas/:id", element: <ReservationPage /> },

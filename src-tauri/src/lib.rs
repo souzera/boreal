@@ -92,6 +92,7 @@ pub fn run() {
             commands::reservations::confirm_reservation,
             commands::reservations::record_reservation_deposit,
             commands::reservations::set_reservation_notes,
+            commands::room_map::room_map,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
