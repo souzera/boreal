@@ -14,6 +14,9 @@ pub enum Permission {
     RestoreBackup,
     ManageSettings,
     ManageCatalog,
+    EarlyCheckIn,
+    CheckoutWithBalance,
+    WaiveLateFee,
 }
 
 impl Permission {
@@ -29,6 +32,9 @@ impl Permission {
         Permission::RestoreBackup,
         Permission::ManageSettings,
         Permission::ManageCatalog,
+        Permission::EarlyCheckIn,
+        Permission::CheckoutWithBalance,
+        Permission::WaiveLateFee,
     ];
 
     /// Permissões que o administrador pode conceder individualmente à recepção.
@@ -40,6 +46,9 @@ impl Permission {
             Permission::CancellationException,
             Permission::ChangeReservation,
             Permission::ReleaseRoom,
+            Permission::EarlyCheckIn,
+            Permission::CheckoutWithBalance,
+            Permission::WaiveLateFee,
         ]
     }
 
@@ -56,6 +65,9 @@ impl Permission {
             Permission::RestoreBackup => "restore_backup",
             Permission::ManageSettings => "manage_settings",
             Permission::ManageCatalog => "manage_catalog",
+            Permission::EarlyCheckIn => "early_check_in",
+            Permission::CheckoutWithBalance => "checkout_with_balance",
+            Permission::WaiveLateFee => "waive_late_fee",
         }
     }
 
@@ -106,6 +118,17 @@ mod tests {
             assert!(!grantable.contains(&p), "{p:?} não pode ser concedida");
         }
         assert!(grantable.contains(&Permission::ApplyDiscount));
+    }
+
+    #[test]
+    fn grantable_includes_stay_permissions() {
+        for p in [Permission::EarlyCheckIn, Permission::CheckoutWithBalance, Permission::WaiveLateFee] {
+            assert!(Permission::grantable().contains(&p), "{p:?} deveria ser concedível");
+            assert!(Permission::ALL.contains(&p));
+        }
+        assert_eq!(Permission::EarlyCheckIn.as_str(), "early_check_in");
+        assert_eq!(Permission::CheckoutWithBalance.as_str(), "checkout_with_balance");
+        assert_eq!(Permission::WaiveLateFee.as_str(), "waive_late_fee");
     }
 
     #[test]
