@@ -34,6 +34,9 @@ export default function Sidebar() {
       <NavLink to="/hospedagens" className={linkClass}>
         Hospedagens
       </NavLink>
+      <NavLink to="/limpeza" className={linkClass}>
+        Limpeza
+      </NavLink>
       <NavLink to="/hospedes" className={linkClass}>
         Hóspedes
       </NavLink>

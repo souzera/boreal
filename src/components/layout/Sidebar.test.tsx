@@ -20,6 +20,13 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Configurações" })).toHaveAttribute("href", "/configuracoes");
   });
 
+  it("mostra Limpeza como link para a fila de limpeza", () => {
+    signIn(recepcaoUser);
+    renderSidebar();
+
+    expect(screen.getByRole("link", { name: "Limpeza" })).toHaveAttribute("href", "/limpeza");
+  });
+
   it("recepção não vê Configurações", () => {
     signIn(recepcaoUser);
     renderSidebar();
