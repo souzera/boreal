@@ -1,7 +1,12 @@
+pub mod block_repo;
 pub mod catalog_repo;
+pub mod cleaning_repo;
 pub mod guest_repo;
 pub mod item_repo;
+pub mod maintenance_repo;
 pub mod permission_repo;
+#[cfg(test)]
+pub mod test_db;
 pub mod policy_repo;
 pub mod pousada_repo;
 pub mod rate_repo;

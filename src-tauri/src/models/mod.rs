@@ -1,6 +1,9 @@
+pub mod block;
 pub mod catalog;
+pub mod cleaning;
 pub mod guest;
 pub mod item;
+pub mod maintenance;
 pub mod page;
 pub mod pousada;
 pub mod rate;
