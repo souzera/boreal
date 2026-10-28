@@ -407,6 +407,12 @@ pub fn active_in_period(
     Ok(rows)
 }
 
+/// O quarto tem hóspede em casa (reserva hospedada que ainda não fez o check-out)?
+pub fn has_in_house(conn: &Connection, room_id: i64) -> Result<bool, AppError> {
+    let n: i64 = conn.query_row("SELECT count(*) FROM reservations WHERE room_id = ?1 AND status = 'checked_in'", [room_id], |r| r.get(0))?;
+    Ok(n > 0)
+}
+
 /// Próxima chegada prevista (reserva pendente ou confirmada) no quarto; chegadas atrasadas contam.
 pub fn next_arrival(conn: &Connection, room_id: i64) -> Result<Option<NaiveDateTime>, AppError> {
     let row: Option<(String, String)> = conn
