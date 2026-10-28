@@ -45,6 +45,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 9,
         sql: include_str!("sql/0009_stays.sql"),
     },
+    Migration {
+        version: 10,
+        sql: include_str!("sql/0010_cleaning_maintenance.sql"),
+    },
 ];
 
 /// Versão atual do esquema (0 se nenhuma migração foi aplicada).
@@ -209,6 +213,44 @@ mod tests {
         conn
     }
 
+    #[test]
+    fn migration_0010_creates_cleaning_and_maintenance_tables() {
+        let conn = migrated();
+        seed_stay(&conn);
+        let stamp = "'2026-10-23T12:00:00Z'";
+
+        for table in ["cleaning_tasks", "room_blocks", "maintenance_orders", "maintenance_conflicts"] {
+            let n: i64 = conn
+                .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 1, "{table}");
+        }
+        conn.execute("UPDATE rooms SET cleaning_interval_minutes = 90 WHERE id = 1", []).unwrap();
+        assert!(conn.execute("UPDATE rooms SET cleaning_interval_minutes = 1441 WHERE id = 1", []).is_err());
+
+        let task = format!(
+            "INSERT INTO cleaning_tasks (room_id, stay_id, status, ready_since, created_at, updated_at) VALUES (1, 1, 'awaiting', {stamp}, {stamp}, {stamp})"
+        );
+        conn.execute(&task, []).unwrap();
+        assert!(conn.execute(&task, []).is_err(), "uma tarefa por hospedagem");
+
+        let block = |status: &str| {
+            conn.execute(
+                &format!(
+                    "INSERT INTO room_blocks (room_id, kind, status, start_date, reason, created_by, created_at, updated_at)
+                     VALUES (1, 'manual', '{status}', '2026-11-01', 'x', 1, {stamp}, {stamp})"
+                ),
+                [],
+            )
+        };
+        assert!(block("x").is_err());
+        block("active").unwrap();
+
+        let next: i64 = conn.query_row("SELECT next_value FROM sequences WHERE name='maintenance'", [], |r| r.get(0)).unwrap();
+        assert_eq!(next, 1);
+        assert_eq!(super::current_version(&conn).unwrap(), 10);
+    }
+
     /// Usuário, hóspede, categoria, quarto, reserva e hospedagem mínimos para exercitar as restrições.
     fn seed_stay(conn: &Connection) {
         conn.execute_batch(
@@ -250,7 +292,7 @@ mod tests {
             assert_eq!(n, 1, "tabela {table} ausente");
         }
         let latest: i64 = conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).unwrap();
-        assert_eq!(latest, 9);
+        assert_eq!(latest, 10);
         let fee: String = conn
             .query_row("SELECT value FROM settings WHERE key = 'late_checkout_fee_bp'", [], |r| r.get(0))
             .unwrap();
