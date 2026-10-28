@@ -1,5 +1,6 @@
 pub mod auth_service;
 pub mod catalog_service;
+pub mod cleaning_service;
 pub mod guest_service;
 pub mod item_service;
 pub mod policy_service;

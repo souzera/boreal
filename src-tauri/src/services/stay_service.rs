@@ -22,7 +22,7 @@ use crate::models::stay::{
 };
 use crate::repositories::stay_repo::{self, NewCharge};
 use crate::repositories::reservation_repo::NewRow;
-use crate::repositories::{catalog_repo, guest_repo, item_repo, reservation_repo, sequence_repo, settings_repo};
+use crate::repositories::{catalog_repo, cleaning_repo, guest_repo, item_repo, reservation_repo, sequence_repo, settings_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -782,6 +782,8 @@ impl StayService {
             at,
         )?;
         reservation_repo::set_status(&tx, reservation.id, "completed", reservation.version, at)?;
+        // O quarto fica aguardando limpeza desde a hora efetiva da saída (spec §7).
+        cleaning_repo::insert_awaiting(&tx, stay.room_id, stay.id, at, at)?;
 
         let before = json!({ "status": "in_house", "balance_cents": before_balance });
         let after = json!({

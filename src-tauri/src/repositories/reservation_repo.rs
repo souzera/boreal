@@ -374,6 +374,26 @@ pub fn set_closed(
     Ok(())
 }
 
+/// Próxima chegada prevista (reserva pendente ou confirmada) no quarto; chegadas atrasadas contam.
+pub fn next_arrival(conn: &Connection, room_id: i64) -> Result<Option<NaiveDateTime>, AppError> {
+    let row: Option<(String, String)> = conn
+        .query_row(
+            "SELECT check_in_date, expected_check_in_time FROM reservations
+             WHERE room_id = ?1 AND status IN ('pending', 'confirmed')
+             ORDER BY check_in_date, expected_check_in_time LIMIT 1",
+            [room_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let Some((date, time)) = row else {
+        return Ok(None);
+    };
+    match (dates::parse(&date), NaiveTime::parse_from_str(&time, "%H:%M")) {
+        (Some(d), Ok(t)) => Ok(Some(d.and_time(t))),
+        _ => Err(AppError::Database("reserva com data ou horário de chegada inválidos".into())),
+    }
+}
+
 /// Reservas pendentes/confirmadas cuja chegada é hoje ou já passou, ou cujo sinal está vencido.
 pub fn review_candidates(conn: &Connection, today: NaiveDate) -> Result<Vec<Reservation>, AppError> {
     let mut stmt = conn.prepare(&format!(

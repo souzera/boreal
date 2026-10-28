@@ -17,3 +17,13 @@ pub struct CleaningTask {
     pub completed_by: Option<i64>,
     pub version: i64,
 }
+
+/// Tarefa da fila com a prioridade já resolvida (ajuste manual, senão a sugerida).
+#[derive(Debug, Clone, Serialize)]
+pub struct CleaningItem {
+    pub task: CleaningTask,
+    pub priority: String,
+    pub suggested_priority: String,
+    /// Próxima chegada prevista no quarto, `AAAA-MM-DDTHH:MM`.
+    pub next_arrival: Option<String>,
+}
