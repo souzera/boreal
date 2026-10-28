@@ -2,6 +2,7 @@ use chrono::{NaiveDate, NaiveTime};
 use serde_json::json;
 
 use super::rate_service::quote_in;
+use super::room_rules;
 use super::Ctx;
 use crate::audit::{self, AuditEntry};
 use crate::auth::permissions::Permission;
@@ -133,7 +134,7 @@ impl ReservationService {
 
         let existing = reservation_repo::blocking(&tx, room.id, check_in, check_out, self.ctx.local_now())?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
-        let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, settings.cleaning_interval_minutes, None);
+        let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, room_rules::cleaning_minutes(&tx, room.id, &settings)?, None);
         if !clashes.is_empty() {
             let infos: Vec<ConflictInfo> =
                 existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
@@ -260,7 +261,7 @@ impl ReservationService {
             in_time,
             check_out,
             out_time,
-            settings.cleaning_interval_minutes,
+            room_rules::cleaning_minutes(&conn, room_id, &settings)?,
             ignore_reservation_id,
         );
         let conflicts: Vec<ConflictInfo> =
@@ -407,7 +408,7 @@ fn plan_change(
     )?;
     let existing = reservation_repo::blocking(conn, new_room.id, check_in, check_out, now)?;
     let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
-    let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, settings.cleaning_interval_minutes, Some(id));
+    let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, room_rules::cleaning_minutes(conn, new_room.id, &settings)?, Some(id));
     let conflicts: Vec<ConflictInfo> =
         existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
 
@@ -1100,6 +1101,24 @@ mod tests {
         w.h.reservations.create(&w.admin, booking(&w, "2026-11-03", "2026-11-05")).unwrap();
         too_early.expected_check_in_time = Some("12:30".into());
         assert!(matches!(w.h.reservations.create(&w.admin, too_early), Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn room_interval_override_changes_the_same_day_turnover() {
+        let w = world();
+        w.h.reservations.create(&w.admin, booking(&w, "2026-10-25", "2026-10-27")).unwrap(); // sai 12:00
+        w.h.catalog.set_room_cleaning_interval(&w.admin, w.room, Some(180), 1).unwrap();
+
+        // Entrada 14:00 = 120 min depois da saída: cabe no padrão (60), não em 180.
+        assert!(matches!(
+            w.h.reservations.create(&w.admin, booking(&w, "2026-10-27", "2026-10-29")),
+            Err(AppError::Validation(_))
+        ));
+        let free = w.h.reservations.check_availability(&w.admin, w.room, "2026-10-27", "2026-10-29", None).unwrap();
+        assert!(!free.available);
+
+        w.h.catalog.set_room_cleaning_interval(&w.admin, w.room, None, 2).unwrap();
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-27", "2026-10-29")).is_ok());
     }
 
     #[test]

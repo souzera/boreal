@@ -3,6 +3,7 @@ use rusqlite::{Connection, Transaction};
 use serde_json::json;
 
 use super::rate_service::quote_in;
+use super::room_rules;
 use super::reservation_service::{br, conflict_message, parse_date, parse_time, resolve_times};
 use super::Ctx;
 use crate::audit::{self, AuditEntry};
@@ -226,6 +227,8 @@ impl StayService {
                 "O horário de saída previsto desta reserva já passou. Altere as datas da reserva antes de fazer o check-in.",
             ));
         }
+        let offset = i64::from(self.ctx.utc.local_offset().local_minus_utc());
+        room_rules::ensure_room_clean(&tx, room.id, &room.code, room_rules::cleaning_minutes(&tx, room.id, &settings_repo::load(&tx)?)?, now, offset)?;
         let early = now < booked_start;
         if early {
             require(&actor, Permission::EarlyCheckIn)?;
@@ -242,7 +245,7 @@ impl StayService {
             start.time(),
             check_out,
             out_time,
-            settings.cleaning_interval_minutes,
+            room_rules::cleaning_minutes(&tx, room.id, &settings)?,
             Some(reservation.id),
         );
         if !clashes.is_empty() {
@@ -332,9 +335,11 @@ impl StayService {
             )));
         }
 
+        let offset = i64::from(self.ctx.utc.local_offset().local_minus_utc());
+        room_rules::ensure_room_clean(&tx, room.id, &room.code, room_rules::cleaning_minutes(&tx, room.id, &settings)?, now, offset)?;
         let existing = reservation_repo::blocking(&tx, room.id, today, check_out, now)?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
-        let clashes = find_conflicts(&bookings, today, in_time, check_out, out_time, settings.cleaning_interval_minutes, None);
+        let clashes = find_conflicts(&bookings, today, in_time, check_out, out_time, room_rules::cleaning_minutes(&tx, room.id, &settings)?, None);
         if !clashes.is_empty() {
             let infos: Vec<ConflictInfo> =
                 existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
@@ -666,7 +671,7 @@ impl StayService {
                 .filter(|(start, _)| *start >= expected_out)
                 .min_by_key(|(start, _)| *start);
             if let Some((next_start, info)) = next {
-                risk = late_checkout::departure_risk(expected_out, now, settings.cleaning_interval_minutes, next_start).map(|r| {
+                risk = late_checkout::departure_risk(expected_out, now, room_rules::cleaning_minutes(conn, stay.room_id, settings)?, next_start).map(|r| {
                     DepartureRiskView {
                         next_reservation_id: info.reservation_id,
                         next_code: info.code,
@@ -1782,6 +1787,90 @@ mod tests {
         let account = w.h.stays.get(&w.admin, stay).unwrap().account;
         assert_eq!(account.balance_cents, preview.balance_with_late_fee_cents);
         assert_eq!(account.charges.iter().find(|c| c.kind == "late_fee").unwrap().amount_cents, preview.late.fee_cents);
+    }
+
+    // ---- Marco 4: portão "quarto limpo" ----
+
+    /// Hóspede sai às 12:00 de 23/10 com a conta quitada; devolve a tarefa de limpeza e uma reserva seguinte 23→24/10.
+    fn checked_out_with_next(w: &World) -> (i64, i64) {
+        let (_, stay) = stay_with_balance(w);
+        pay(w, stay, 24_000);
+        set_now(w, OUT);
+        w.h.stays.checkout(&w.admin, checkout_input(w, stay, LateFeeChoice::NotApplicable, None)).unwrap();
+        let next = book(&w.h, &w.admin, &w.seed, "2026-10-23", "2026-10-24");
+        let task: i64 = w.h.db.lock().unwrap().query_row("SELECT id FROM cleaning_tasks", [], |r| r.get(0)).unwrap();
+        (next, task)
+    }
+
+    fn clean_message(result: Result<i64, AppError>) -> String {
+        match result {
+            Err(AppError::Validation(msg)) => msg,
+            other => panic!("esperava recusa por limpeza: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_in_is_refused_while_cleaning_is_awaiting() {
+        let w = world();
+        let (next, _) = checked_out_with_next(&w);
+        set_now(&w, "2026-10-23T17:00:00Z");
+
+        let msg = clean_message(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])));
+
+        assert!(msg.contains("aguardando limpeza"), "{msg}");
+        assert_eq!(count(&w, "stays"), 1);
+    }
+
+    #[test]
+    fn check_in_is_refused_while_cleaning_is_in_progress() {
+        let w = world();
+        let (next, task) = checked_out_with_next(&w);
+        w.h.cleaning.start(&w.admin, task, 1).unwrap();
+        set_now(&w, "2026-10-23T17:00:00Z");
+
+        let msg = clean_message(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])));
+
+        assert!(msg.contains("em limpeza"), "{msg}");
+    }
+
+    #[test]
+    fn check_in_waits_for_the_interval_after_cleaning_is_done() {
+        let w = world();
+        let (next, task) = checked_out_with_next(&w);
+        w.h.cleaning.start(&w.admin, task, 1).unwrap();
+        set_now(&w, "2026-10-23T17:00:00Z"); // 14:00 locais
+        w.h.cleaning.complete(&w.admin, task, 2).unwrap();
+
+        set_now(&w, "2026-10-23T17:30:00Z");
+        let msg = clean_message(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])));
+        assert!(msg.contains("15:00") && msg.contains("23/10/2026"), "{msg}");
+        assert_eq!(count(&w, "stays"), 1);
+
+        set_now(&w, "2026-10-23T18:00:00Z"); // 15:00 locais = fim do intervalo
+        assert!(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])).is_ok());
+    }
+
+    #[test]
+    fn walk_in_is_refused_in_a_dirty_room() {
+        let w = world();
+        checked_out_with_next(&w);
+        set_now(&w, "2026-10-23T17:00:00Z");
+
+        let msg = clean_message(w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-24", vec![holder(&w)])));
+
+        assert!(msg.contains("aguardando limpeza"), "{msg}");
+    }
+
+    #[test]
+    fn room_interval_overrides_the_default_for_the_clean_gate() {
+        let w = world();
+        let (next, task) = checked_out_with_next(&w);
+        w.h.catalog.set_room_cleaning_interval(&w.admin, w.seed.room_id, Some(0), 1).unwrap();
+        w.h.cleaning.start(&w.admin, task, 1).unwrap();
+        set_now(&w, "2026-10-23T17:00:00Z");
+        w.h.cleaning.complete(&w.admin, task, 2).unwrap();
+
+        assert!(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])).is_ok());
     }
 
     // ---- correções da revisão final ----

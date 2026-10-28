@@ -246,6 +246,35 @@ impl CatalogService {
         Ok(())
     }
 
+    /// Intervalo mínimo de limpeza do quarto (0 a 1440 minutos); `None` volta ao padrão das configurações.
+    pub fn set_room_cleaning_interval(
+        &self,
+        token: &str,
+        id: i64,
+        minutes: Option<u32>,
+        expected_version: i64,
+    ) -> Result<(), AppError> {
+        let actor = self.write(token)?;
+        if minutes.is_some_and(|m| m > 1440) {
+            return Err(invalid("Intervalo de limpeza: informe de 0 a 1440 minutos."));
+        }
+        let mut conn = self.ctx.conn()?;
+        let before = catalog_repo::find_room(&conn, id)?.ok_or_else(|| invalid("Quarto não encontrado."))?;
+        let tx = conn.transaction()?;
+        catalog_repo::set_room_cleaning_interval(&tx, id, minutes.map(i64::from), expected_version, self.ctx.utc.now_utc())?;
+        self.audit(
+            &tx,
+            &actor,
+            "set_room_cleaning_interval",
+            "room",
+            id,
+            Some(json!({ "cleaning_interval_minutes": before.cleaning_interval_minutes })),
+            Some(json!({ "cleaning_interval_minutes": minutes })),
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn set_room_active(&self, token: &str, id: i64, active: bool) -> Result<(), AppError> {
         let actor = self.write(token)?;
         let mut conn = self.ctx.conn()?;
@@ -438,6 +467,23 @@ mod tests {
         q.page = 2;
         let page2 = h.catalog.list_rooms(&admin, q).unwrap();
         assert_eq!((page2.total, page2.items.len()), (4, 2));
+    }
+
+    #[test]
+    fn room_interval_needs_manage_catalog_and_accepts_0_to_1440() {
+        let (h, admin, cat) = setup();
+        let rec = recepcao_token(&h, &admin);
+        let room_id = h.catalog.create_room(&admin, room("A1", cat)).unwrap();
+
+        assert!(matches!(h.catalog.set_room_cleaning_interval(&rec, room_id, Some(30), 1), Err(AppError::Forbidden)));
+        assert!(matches!(h.catalog.set_room_cleaning_interval(&admin, room_id, Some(1441), 1), Err(AppError::Validation(_))));
+        assert!(matches!(h.catalog.set_room_cleaning_interval(&admin, room_id, Some(30), 9), Err(AppError::Conflict)));
+        assert!(matches!(h.catalog.set_room_cleaning_interval(&admin, 999, Some(30), 1), Err(AppError::Validation(_))));
+
+        h.catalog.set_room_cleaning_interval(&admin, room_id, Some(0), 1).unwrap();
+        assert_eq!(h.catalog.list_rooms(&admin, query()).unwrap().items[0].cleaning_interval_minutes, Some(0));
+        h.catalog.set_room_cleaning_interval(&admin, room_id, None, 2).unwrap();
+        assert_eq!(h.catalog.list_rooms(&admin, query()).unwrap().items[0].cleaning_interval_minutes, None);
     }
 
     #[test]
