@@ -82,9 +82,16 @@ pub fn list(conn: &Connection, include_released: bool) -> Result<Vec<RoomBlock>,
 
 /// Bloqueios não liberados do quarto que tocam as noites `[start, end)` (`end` ausente = sem fim).
 /// Inclui os preventivos: eles impedem novas reservas.
-pub fn overlapping(conn: &Connection, room_id: i64, start: NaiveDate, end: Option<NaiveDate>) -> Result<Vec<RoomBlock>, AppError> {
+pub fn overlapping(
+    conn: &Connection,
+    room_id: i64,
+    start: NaiveDate,
+    end: Option<NaiveDate>,
+    effective_only: bool,
+) -> Result<Vec<RoomBlock>, AppError> {
+    let statuses = if effective_only { "'active', 'awaiting_release'" } else { "'preventive', 'active', 'awaiting_release'" };
     let mut stmt = conn.prepare(&format!(
-        "{SELECT} WHERE b.room_id = ?1 AND b.status <> 'released'
+        "{SELECT} WHERE b.room_id = ?1 AND b.status IN ({statuses})
            AND (b.end_date IS NULL OR b.end_date > ?2)
            AND (?3 IS NULL OR b.start_date < ?3)
          ORDER BY b.start_date, b.id"
@@ -162,10 +169,10 @@ mod tests {
         let mut conn = db();
         add(&mut conn, "active", "2026-11-10", Some("2026-11-13"));
 
-        assert!(overlapping(&conn, 1, d("2026-11-13"), Some(d("2026-11-15"))).unwrap().is_empty());
-        assert!(overlapping(&conn, 1, d("2026-11-08"), Some(d("2026-11-10"))).unwrap().is_empty());
-        assert_eq!(overlapping(&conn, 1, d("2026-11-12"), Some(d("2026-11-14"))).unwrap().len(), 1);
-        assert!(overlapping(&conn, 2, d("2026-11-12"), Some(d("2026-11-14"))).unwrap().is_empty());
+        assert!(overlapping(&conn, 1, d("2026-11-13"), Some(d("2026-11-15")), false).unwrap().is_empty());
+        assert!(overlapping(&conn, 1, d("2026-11-08"), Some(d("2026-11-10")), false).unwrap().is_empty());
+        assert_eq!(overlapping(&conn, 1, d("2026-11-12"), Some(d("2026-11-14")), false).unwrap().len(), 1);
+        assert!(overlapping(&conn, 2, d("2026-11-12"), Some(d("2026-11-14")), false).unwrap().is_empty());
     }
 
     #[test]
@@ -173,9 +180,9 @@ mod tests {
         let mut conn = db();
         add(&mut conn, "active", "2026-11-10", None);
 
-        assert_eq!(overlapping(&conn, 1, d("2027-06-01"), Some(d("2027-06-03"))).unwrap().len(), 1);
-        assert!(overlapping(&conn, 1, d("2026-11-01"), Some(d("2026-11-10"))).unwrap().is_empty());
-        assert_eq!(overlapping(&conn, 1, d("2026-11-01"), None).unwrap().len(), 1);
+        assert_eq!(overlapping(&conn, 1, d("2027-06-01"), Some(d("2027-06-03")), false).unwrap().len(), 1);
+        assert!(overlapping(&conn, 1, d("2026-11-01"), Some(d("2026-11-10")), false).unwrap().is_empty());
+        assert_eq!(overlapping(&conn, 1, d("2026-11-01"), None, false).unwrap().len(), 1);
     }
 
     #[test]
@@ -186,7 +193,7 @@ mod tests {
         release(&tx, id, 1, "obra terminou", 1, at()).unwrap();
         tx.commit().unwrap();
 
-        assert!(overlapping(&conn, 1, d("2026-11-10"), Some(d("2026-11-13"))).unwrap().is_empty());
+        assert!(overlapping(&conn, 1, d("2026-11-10"), Some(d("2026-11-13")), false).unwrap().is_empty());
         assert!(!active_now(&conn, 1, d("2026-11-11")).unwrap());
         assert!(list(&conn, false).unwrap().is_empty());
         assert_eq!(list(&conn, true).unwrap().len(), 1);
@@ -201,6 +208,15 @@ mod tests {
         assert!(!active_now(&conn, 1, d("2026-11-11")).unwrap());
         assert!(!active_now(&conn, 1, d("2026-11-19")).unwrap());
         assert!(active_now(&conn, 1, d("2026-11-20")).unwrap());
+    }
+
+    #[test]
+    fn effective_only_leaves_out_preventive_blocks() {
+        let mut conn = db();
+        add(&mut conn, "preventive", "2026-11-10", Some("2026-11-13"));
+
+        assert_eq!(overlapping(&conn, 1, d("2026-11-10"), Some(d("2026-11-13")), false).unwrap().len(), 1);
+        assert!(overlapping(&conn, 1, d("2026-11-10"), Some(d("2026-11-13")), true).unwrap().is_empty());
     }
 
     #[test]

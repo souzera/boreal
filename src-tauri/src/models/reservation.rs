@@ -119,6 +119,8 @@ pub struct ConflictInfo {
 pub struct AvailabilityResult {
     pub available: bool,
     pub conflicts: Vec<ConflictInfo>,
+    /// Bloqueios (inclusive preventivos) que tocam o período.
+    pub blocks: Vec<crate::models::block::RoomBlock>,
 }
 
 /// O que o usuário quer mudar; campos ausentes ficam como estão.

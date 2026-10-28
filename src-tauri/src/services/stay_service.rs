@@ -229,6 +229,7 @@ impl StayService {
         }
         let offset = i64::from(self.ctx.utc.local_offset().local_minus_utc());
         room_rules::ensure_room_clean(&tx, room.id, &room.code, room_rules::cleaning_minutes(&tx, room.id, &settings_repo::load(&tx)?)?, now, offset)?;
+        room_rules::ensure_no_blocks(&tx, room.id, booked_start.min(now).date(), Some(check_out), true)?;
         let early = now < booked_start;
         if early {
             require(&actor, Permission::EarlyCheckIn)?;
@@ -337,6 +338,7 @@ impl StayService {
 
         let offset = i64::from(self.ctx.utc.local_offset().local_minus_utc());
         room_rules::ensure_room_clean(&tx, room.id, &room.code, room_rules::cleaning_minutes(&tx, room.id, &settings)?, now, offset)?;
+        room_rules::ensure_no_blocks(&tx, room.id, today, Some(check_out), false)?;
         let existing = reservation_repo::blocking(&tx, room.id, today, check_out, now)?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
         let clashes = find_conflicts(&bookings, today, in_time, check_out, out_time, room_rules::cleaning_minutes(&tx, room.id, &settings)?, None);
@@ -1871,6 +1873,42 @@ mod tests {
         w.h.cleaning.complete(&w.admin, task, 2).unwrap();
 
         assert!(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])).is_ok());
+    }
+
+    fn block_from_sql(w: &World, status: &str, from: &str, to: Option<&str>) {
+        w.h.db
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO room_blocks (room_id, kind, status, start_date, end_date, reason, created_by, created_at, updated_at)
+                 VALUES (?1, 'maintenance', ?2, ?3, ?4, 'Troca do chuveiro', 1, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z')",
+                rusqlite::params![w.seed.room_id, status, from, to],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn check_in_and_walk_in_respect_an_effective_block_starting_today() {
+        let w = world();
+        let reservation = book(&w.h, &w.admin, &w.seed, "2026-10-21", "2026-10-23");
+        block_from_sql(&w, "active", "2026-10-21", Some("2026-10-22"));
+        set_now(&w, "2026-10-21T17:00:00Z");
+
+        let msg = clean_message(w.h.stays.check_in(&w.admin, input(&w, reservation, vec![holder(&w)])));
+        assert!(msg.contains("bloqueado") && msg.contains("Troca do chuveiro"), "{msg}");
+        let msg = clean_message(w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-22", vec![holder(&w)])));
+        assert!(msg.contains("bloqueado"), "{msg}");
+        assert_eq!(count(&w, "stays"), 0);
+    }
+
+    #[test]
+    fn a_preventive_block_does_not_stop_the_check_in_of_an_existing_reservation() {
+        let w = world();
+        let reservation = book(&w.h, &w.admin, &w.seed, "2026-10-21", "2026-10-23");
+        block_from_sql(&w, "preventive", "2026-10-21", Some("2026-10-23"));
+        set_now(&w, "2026-10-21T17:00:00Z");
+
+        assert!(w.h.stays.check_in(&w.admin, input(&w, reservation, vec![holder(&w)])).is_ok());
     }
 
     // ---- correções da revisão final ----

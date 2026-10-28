@@ -374,6 +374,39 @@ pub fn set_closed(
     Ok(())
 }
 
+/// Reservas ativas (pendentes, confirmadas ou hospedadas) que tocam as noites `[start, end)` do quarto
+/// (`end` ausente = sem fim). Uma hospedagem em curso ocupa o quarto, no mínimo, a noite de `today`.
+pub fn active_in_period(
+    conn: &Connection,
+    room_id: i64,
+    start: NaiveDate,
+    end: Option<NaiveDate>,
+    today: NaiveDate,
+) -> Result<Vec<ConflictInfo>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id, r.code, g.full_name, r.status, r.check_in_date, r.check_out_date
+         FROM reservations r JOIN guests g ON g.id = r.guest_id
+         WHERE r.room_id = ?1
+           AND (?3 IS NULL OR r.check_in_date < ?3)
+           AND ((r.status IN ('pending', 'confirmed') AND r.check_out_date > ?2)
+                OR (r.status = 'checked_in' AND MAX(r.check_out_date, ?4) > ?2))
+         ORDER BY r.check_in_date, r.id",
+    )?;
+    let rows = stmt
+        .query_map(params![room_id, dates::format(start), end.map(dates::format), dates::format(today + chrono::Duration::days(1))], |r| {
+            Ok(ConflictInfo {
+                reservation_id: r.get(0)?,
+                code: r.get(1)?,
+                guest_name: r.get(2)?,
+                status: r.get(3)?,
+                check_in_date: r.get(4)?,
+                check_out_date: r.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 /// Próxima chegada prevista (reserva pendente ou confirmada) no quarto; chegadas atrasadas contam.
 pub fn next_arrival(conn: &Connection, room_id: i64) -> Result<Option<NaiveDateTime>, AppError> {
     let row: Option<(String, String)> = conn

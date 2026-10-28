@@ -1,12 +1,13 @@
 //! Regras de quarto compartilhadas pelos serviços: intervalo de limpeza efetivo e portão "quarto limpo".
 
-use chrono::{DateTime, Duration, NaiveDateTime};
+use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime};
 use rusqlite::Connection;
 
 use super::reservation_service::br;
 use crate::error::AppError;
+use crate::models::block::RoomBlock;
 use crate::models::settings::AppSettings;
-use crate::repositories::{catalog_repo, cleaning_repo};
+use crate::repositories::{block_repo, catalog_repo, cleaning_repo};
 
 /// Intervalo mínimo de limpeza do quarto: o próprio, se houver, senão o padrão das configurações.
 pub(crate) fn cleaning_minutes(conn: &Connection, room_id: i64, settings: &AppSettings) -> Result<u32, AppError> {
@@ -49,4 +50,38 @@ pub(crate) fn ensure_room_clean(
         )));
     }
     Ok(())
+}
+
+/// Texto para a recepção: o que bloqueia o quarto e por quê.
+pub(crate) fn blocks_message(blocks: &[RoomBlock]) -> String {
+    let list = blocks
+        .iter()
+        .map(|b| {
+            let period = match &b.end_date {
+                Some(end) => format!("de {} a {}", br(&b.start_date), br(end)),
+                None => format!("a partir de {} até ser liberado", br(&b.start_date)),
+            };
+            let kind = if b.status == "preventive" { "tem bloqueio preventivo" } else { "está bloqueado" };
+            format!("{} {kind} {period} ({})", b.room_code, b.reason)
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!("O quarto {list}.")
+}
+
+/// Recusa o período se algum bloqueio o toca. `effective_only` ignora os preventivos (que só impedem
+/// novas reservas — uma reserva já existente ainda pode fazer o check-in).
+pub(crate) fn ensure_no_blocks(
+    conn: &Connection,
+    room_id: i64,
+    start: NaiveDate,
+    end: Option<NaiveDate>,
+    effective_only: bool,
+) -> Result<(), AppError> {
+    let blocks = block_repo::overlapping(conn, room_id, start, end, effective_only)?;
+    if blocks.is_empty() {
+        Ok(())
+    } else {
+        Err(AppError::Validation(blocks_message(&blocks)))
+    }
 }
