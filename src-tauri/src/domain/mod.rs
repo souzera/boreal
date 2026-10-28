@@ -5,6 +5,7 @@ pub mod cleaning;
 pub mod cpf;
 pub mod dates;
 pub mod late_checkout;
+pub mod maintenance;
 pub mod money;
 pub mod phone;
 pub mod pricing;

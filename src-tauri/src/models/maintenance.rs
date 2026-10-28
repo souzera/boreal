@@ -44,3 +44,29 @@ pub struct NewOrderInput {
     #[serde(default)]
     pub notes: String,
 }
+
+use super::block::RoomBlock;
+use super::reservation::ConflictInfo;
+
+/// Resultado de abrir uma ordem: reservas afetadas exigem resolução antes da indisponibilidade efetiva.
+#[derive(Debug, Clone, Serialize)]
+pub struct OpenedOrder {
+    pub id: i64,
+    pub code: String,
+    pub conflicts: Vec<ConflictInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ApplyResult {
+    /// Conflitos que ainda impedem a indisponibilidade efetiva.
+    pub still_open: Vec<MaintenanceConflict>,
+    /// O quarto já está indisponível de fato (bloqueio efetivo).
+    pub effective: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OrderDetail {
+    pub order: MaintenanceOrder,
+    pub conflicts: Vec<MaintenanceConflict>,
+    pub block: Option<RoomBlock>,
+}

@@ -8,7 +8,7 @@ use crate::auth::session::{require, SessionInfo};
 use crate::error::AppError;
 use crate::models::block::{NewBlockInput, RoomBlock};
 use crate::repositories::block_repo::{self, NewBlock};
-use crate::repositories::{catalog_repo, reservation_repo};
+use crate::repositories::{catalog_repo, maintenance_repo, reservation_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -129,6 +129,12 @@ impl BlockService {
         let before = block_repo::find(&tx, block_id)?.ok_or_else(|| invalid("Bloqueio não encontrado."))?;
         if before.version != expected_version || before.status == "released" {
             return Err(AppError::Conflict);
+        }
+        if let Some(order_id) = before.maintenance_order_id {
+            let order = maintenance_repo::find_order(&tx, order_id)?;
+            if order.is_some_and(|o| o.status != "completed") {
+                return Err(invalid("Conclua a ordem de manutenção antes de liberar o quarto."));
+            }
         }
         let at = self.ctx.utc.now_utc();
         block_repo::release(&tx, block_id, actor.user_id, &justification, expected_version, at)?;

@@ -6,6 +6,7 @@ use rusqlite::Connection;
 
 use super::auth_service::AuthService;
 use super::block_service::BlockService;
+use super::maintenance_service::MaintenanceService;
 use super::catalog_service::CatalogService;
 use super::cleaning_service::CleaningService;
 use super::guest_service::GuestService;
@@ -73,6 +74,7 @@ pub struct Harness {
     pub stays: StayService,
     pub cleaning: CleaningService,
     pub blocks: BlockService,
+    pub maintenance: MaintenanceService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -110,7 +112,8 @@ pub fn harness() -> Harness {
         room_map: RoomMapService::new(ctx.clone()),
         stays: StayService::new(ctx.clone()),
         cleaning: CleaningService::new(ctx.clone()),
-        blocks: BlockService::new(ctx),
+        blocks: BlockService::new(ctx.clone()),
+        maintenance: MaintenanceService::new(ctx),
         utc,
         clock,
         db,
