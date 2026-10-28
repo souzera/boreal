@@ -15,6 +15,7 @@ vi.mock("@/lib/api", async () => {
     createRoom: vi.fn(),
     updateRoom: vi.fn(),
     setRoomActive: vi.fn(),
+    setRoomCleaningInterval: vi.fn(),
   };
 });
 
@@ -40,6 +41,7 @@ beforeEach(() => {
   vi.mocked(api.createRoom).mockReset().mockResolvedValue(11);
   vi.mocked(api.updateRoom).mockReset().mockResolvedValue(null);
   vi.mocked(api.setRoomActive).mockReset().mockResolvedValue(null);
+  vi.mocked(api.setRoomCleaningInterval).mockReset().mockResolvedValue(null);
 });
 
 async function open() {
@@ -76,6 +78,33 @@ describe("RoomsPage", () => {
     await waitFor(() =>
       expect(api.listRooms).toHaveBeenLastCalledWith("t", expect.objectContaining({ text: "10" })),
     );
+  });
+
+  it("mostra o intervalo de limpeza do quarto e edita com limite de 0 a 1440 minutos", async () => {
+    await open();
+    const row = within(screen.getByText("101").closest("tr") as HTMLElement);
+    expect(row.getByText("Padrão da pousada")).toBeInTheDocument();
+
+    await userEvent.click(row.getByRole("button", { name: "Intervalo de limpeza" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.type(dialog.getByLabelText(/Intervalo mínimo/), "1441");
+    await userEvent.click(dialog.getByRole("button", { name: "Salvar intervalo" }));
+    expect(await dialog.findByText("Informe de 0 a 1440 minutos, ou deixe em branco para usar o padrão.")).toBeInTheDocument();
+    expect(api.setRoomCleaningInterval).not.toHaveBeenCalled();
+
+    await userEvent.clear(dialog.getByLabelText(/Intervalo mínimo/));
+    await userEvent.type(dialog.getByLabelText(/Intervalo mínimo/), "90");
+    await userEvent.click(dialog.getByRole("button", { name: "Salvar intervalo" }));
+
+    await waitFor(() => expect(api.setRoomCleaningInterval).toHaveBeenCalledWith("t", 10, 90, 4));
+    expect(await screen.findByText("Intervalo de limpeza do quarto 101 atualizado.")).toBeInTheDocument();
+  });
+
+  it("recepção não edita o intervalo de limpeza", async () => {
+    signIn(recepcaoUser);
+    await open();
+
+    expect(screen.queryByRole("button", { name: "Intervalo de limpeza" })).toBeNull();
   });
 
   it("recepção não vê as ações de escrita", async () => {

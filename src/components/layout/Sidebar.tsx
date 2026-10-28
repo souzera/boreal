@@ -37,6 +37,12 @@ export default function Sidebar() {
       <NavLink to="/limpeza" className={linkClass}>
         Limpeza
       </NavLink>
+      <NavLink to="/bloqueios" className={linkClass}>
+        Bloqueios
+      </NavLink>
+      <NavLink to="/manutencao" className={linkClass}>
+        Manutenção
+      </NavLink>
       <NavLink to="/hospedes" className={linkClass}>
         Hóspedes
       </NavLink>

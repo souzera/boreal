@@ -16,7 +16,10 @@ import Search from "@/pages/Search";
 import ReservationFormPage from "@/pages/reservations/ReservationFormPage";
 import ReservationPage from "@/pages/reservations/ReservationPage";
 import ReservationsPage from "@/pages/reservations/ReservationsPage";
+import BlocksPage from "@/pages/blocks/BlocksPage";
 import CleaningQueuePage from "@/pages/cleaning/CleaningQueuePage";
+import MaintenanceOrderPage from "@/pages/maintenance/MaintenanceOrderPage";
+import MaintenancePage from "@/pages/maintenance/MaintenancePage";
 import StayPage from "@/pages/stays/StayPage";
 import WalkInPage from "@/pages/stays/WalkInPage";
 import StaysPage from "@/pages/stays/StaysPage";
@@ -67,6 +70,9 @@ export const appRoutes: RouteObject[] = [
           { path: "/reservas/:id", element: <ReservationPage /> },
           { path: "/hospedagens", element: <StaysPage /> },
           { path: "/limpeza", element: <CleaningQueuePage /> },
+          { path: "/bloqueios", element: <BlocksPage /> },
+          { path: "/manutencao", element: <MaintenancePage /> },
+          { path: "/manutencao/:id", element: <MaintenanceOrderPage /> },
           { path: "/hospedagens/nova", element: <WalkInPage /> },
           { path: "/hospedagens/:id", element: <StayPage /> },
           { path: "/tarifas", element: <RatesPage /> },

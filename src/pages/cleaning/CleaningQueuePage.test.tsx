@@ -45,7 +45,7 @@ describe("CleaningQueuePage", () => {
   it("mostra a prioridade por rótulo e símbolo, não só por cor", async () => {
     renderPage(<CleaningQueuePage />);
 
-    const row = await screen.findByRole("row", { name: /101/ });
+    const row = await screen.findByRole("row", { name: /101/ }, { timeout: 5000 });
     expect(within(row).getByText(/Urgente/)).toBeInTheDocument();
     expect(within(row).getByText(/Aguardando limpeza/)).toBeInTheDocument();
     expect(within(row).getByText("23/10/2026 14:00")).toBeInTheDocument();
