@@ -29,6 +29,7 @@ const room101: api.Room = {
   description: "Vista para o jardim",
   notes: "",
   active: true,
+  cleaning_interval_minutes: null,
   version: 4,
 };
 

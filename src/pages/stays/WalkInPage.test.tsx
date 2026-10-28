@@ -40,11 +40,11 @@ beforeEach(() => {
   vi.mocked(api.myPermissions).mockReset().mockResolvedValue([]);
   vi.mocked(api.listGuests).mockReset().mockResolvedValue({ items: [guest], total: 1, page: 1, page_size: 8 });
   vi.mocked(api.listRooms).mockResolvedValue({
-    items: [{ id: 1, code: "101", category_id: 1, category_name: "Standard", max_capacity: 2, description: "", notes: "", active: true, version: 1 }],
+    items: [{ id: 1, code: "101", category_id: 1, category_name: "Standard", max_capacity: 2, description: "", notes: "", active: true, cleaning_interval_minutes: null, version: 1 }],
     total: 1, page: 1, page_size: 100,
   });
   vi.mocked(api.quoteStay).mockReset().mockResolvedValue(quote());
-  vi.mocked(api.checkRoomAvailability).mockReset().mockResolvedValue({ available: true, conflicts: [] });
+  vi.mocked(api.checkRoomAvailability).mockReset().mockResolvedValue({ available: true, conflicts: [], blocks: [] });
   vi.mocked(api.walkIn).mockReset().mockResolvedValue(9);
 });
 
@@ -76,6 +76,7 @@ describe("WalkInPage", () => {
     vi.mocked(api.checkRoomAvailability).mockResolvedValue({
       available: false,
       conflicts: [{ reservation_id: 1, code: "RES-000001", guest_name: "Caio", check_in_date: "2099-10-20", check_out_date: "2099-10-22", status: "checked_in" }],
+      blocks: [],
     });
     await fill();
 

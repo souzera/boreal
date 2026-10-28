@@ -5,7 +5,16 @@ import { useSessionStore } from "@/stores/session";
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
-import { sessionStatus } from "./api";
+import {
+  completeCleaning,
+  createBlock,
+  listRoomStatus,
+  openMaintenance,
+  releaseBlock,
+  sessionStatus,
+  setCleaningPriority,
+  setRoomCleaningInterval,
+} from "./api";
 
 const user = {
   id: 1,
@@ -50,5 +59,58 @@ describe("tratamento de erros do backend", () => {
     await expect(sessionStatus("t")).rejects.toBeTruthy();
 
     expect(useSessionStore.getState().state).toBe("anonymous");
+  });
+});
+
+describe("limpeza, bloqueios e manutenção", () => {
+  it("cada função chama o comando certo com os argumentos esperados", async () => {
+    invoke.mockResolvedValue(undefined);
+
+    await completeCleaning("t", 7, 3);
+    expect(invoke).toHaveBeenLastCalledWith("complete_cleaning", { token: "t", taskId: 7, expectedVersion: 3 });
+
+    await setCleaningPriority("t", 7, "high", "Hóspede chega cedo", 2);
+    expect(invoke).toHaveBeenLastCalledWith("set_cleaning_priority", {
+      token: "t",
+      taskId: 7,
+      priority: "high",
+      justification: "Hóspede chega cedo",
+      expectedVersion: 2,
+    });
+
+    const block = { room_id: 1, start_date: "2026-11-01", end_date: null, reason: "Pintura" };
+    await createBlock("t", block);
+    expect(invoke).toHaveBeenLastCalledWith("create_block", { token: "t", input: block });
+
+    await releaseBlock("t", 4, "Obra terminou", 1);
+    expect(invoke).toHaveBeenLastCalledWith("release_block", {
+      token: "t",
+      blockId: 4,
+      justification: "Obra terminou",
+      expectedVersion: 1,
+    });
+
+    const order = {
+      room_id: 1,
+      description: "Trocar o chuveiro",
+      priority: "high" as const,
+      planned_start: "2026-11-10",
+      planned_end: null,
+      responsible: "",
+      notes: "",
+    };
+    await openMaintenance("t", order);
+    expect(invoke).toHaveBeenLastCalledWith("open_maintenance", { token: "t", input: order });
+
+    await setRoomCleaningInterval("t", 1, null, 5);
+    expect(invoke).toHaveBeenLastCalledWith("set_room_cleaning_interval", {
+      token: "t",
+      roomId: 1,
+      minutes: null,
+      expectedVersion: 5,
+    });
+
+    await listRoomStatus("t");
+    expect(invoke).toHaveBeenLastCalledWith("list_room_status", { token: "t" });
   });
 });

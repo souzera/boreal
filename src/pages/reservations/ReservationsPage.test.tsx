@@ -63,7 +63,7 @@ beforeEach(() => {
   vi.mocked(api.listReservationsNeedingReview).mockReset().mockResolvedValue([]);
   vi.mocked(api.listRooms).mockResolvedValue({
     items: [
-      { id: 1, code: "101", category_id: 1, category_name: "Standard", max_capacity: 2, description: "", notes: "", active: true, version: 1 },
+      { id: 1, code: "101", category_id: 1, category_name: "Standard", max_capacity: 2, description: "", notes: "", active: true, cleaning_interval_minutes: null, version: 1 },
     ],
     total: 1,
     page: 1,

@@ -18,8 +18,8 @@ function map(from: string, patch: Partial<api.RoomMap> = {}): api.RoomMap {
     from,
     to: from,
     rooms: [
-      { id: 1, code: "101", category_name: "Standard", active: true },
-      { id: 2, code: "102", category_name: "Luxo", active: false },
+      { id: 1, code: "101", category_name: "Standard", active: true, state: "available", state_label: "Disponível", free_at: null },
+      { id: 2, code: "102", category_name: "Luxo", active: false, state: null, state_label: null, free_at: null },
     ],
     cells: [
       { room_id: 1, date: "2099-10-25", reservation_id: 5, code: "RES-000005", guest_name: "Ana Souza", status: "confirmed", is_check_in: true, is_check_out: false },

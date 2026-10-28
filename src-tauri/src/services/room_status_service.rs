@@ -7,7 +7,7 @@ use crate::domain::room_state::{room_state, CleaningFact, CleaningStatus, RoomFa
 use crate::error::AppError;
 use crate::models::cleaning::CleaningTask;
 use crate::models::room_status::RoomStatus;
-use crate::repositories::{block_repo, catalog_repo, cleaning_repo, reservation_repo, settings_repo};
+use crate::repositories::{block_repo, cleaning_repo, reservation_repo, settings_repo};
 
 fn to_local(utc: &str, offset_seconds: i64) -> Option<NaiveDateTime> {
     chrono::DateTime::parse_from_rfc3339(utc).ok().map(|d| d.naive_utc() + Duration::seconds(offset_seconds))
