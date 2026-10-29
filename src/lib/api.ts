@@ -494,6 +494,8 @@ export interface AvailabilityResult {
   available: boolean;
   conflicts: ConflictInfo[];
   blocks: RoomBlock[];
+  /** Motivo de o quarto não estar pronto para hospedar hoje (limpeza pendente ou intervalo). */
+  not_ready: string | null;
 }
 
 export interface ChangeRequest {

@@ -331,7 +331,7 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
 
 ## Status
 
-**Implementado** na branch `marco-4-limpeza` (a partir de `marco-3-hospedagem`, que ainda não foi integrada em `dev`). T1 a T13 concluídas; falta a revisão final independente (registrada abaixo quando feita). Migração `0010`.
+**Implementado e revisado** na branch `marco-4-limpeza` (a partir de `marco-3-hospedagem`, que ainda não foi integrada em `dev`). T1 a T13 concluídas; revisão final feita (abaixo). Migração `0010`.
 
 - **Testes:** `cargo test` 384 unitários + 4 de integração; `cargo clippy --all-targets -- -D warnings` limpo; `npm test` 296 (42 arquivos); `npx tsc --noEmit` limpo e `npm run build` ok; `graphify update .` executado.
 - **Desvios do plano:** (a) a numeração do Anexo A ficou D-20 a D-23 (prioridade, disponibilidade, permissões, bloqueios) em vez de uma única linha; (b) `AvailabilityResult` ganhou `blocks`, `Room` ganhou `cleaning_interval_minutes` e `RoomRow` ganhou `state`/`state_label`/`free_at`; (c) o intervalo por quarto é editado por `set_room_cleaning_interval` (não por `UpdateRoom`); (d) consultas de estado por quarto, sem lote; (e) `BlockService::release` recusa liberar bloqueio de manutenção enquanto a ordem não está concluída; (f) a data do mapa passou para o parâmetro `?de=` da URL; (g) o Dashboard ganhou o atalho "Quartos aguardando limpeza". Rulings completos: ledger da execução.
@@ -350,3 +350,18 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
 - **Migrações:** `0010` única; Marco 5 usa `0011`.
 - **Valores provisórios:** só a prioridade (4 h / hoje) é número novo; vive em constantes nomeadas em `domain/cleaning.rs` e entra no Anexo A.4 como **aguardando aprovação**.
 - **Proporção:** corpos de função a cargo do implementador; testes trazem os valores exatos (intervalo 60 min, 10:00 → 11:00, chegada em 4 h, `MAN-000001`).
+
+## Revisão final
+
+Revisor independente (modelo mais capaz) sobre a branch inteira. Corrigidos em uma passada, cada um com teste que falhou antes:
+
+- **Crítico C1** — o bloqueio de manutenção copiava o fim previsto e deixava de valer depois dele, liberando o quarto sozinho. Agora bloqueio ligado a ordem ignora `end_date` até a liberação (teste `completed_maintenance_still_shows_blocked_until_release`, que antes mascarava o defeito com um `UPDATE`).
+- **Importante I1** — resolução manual de conflito tornava o bloqueio efetivo sobre reserva ainda ativa sem permissão: agora exige `ReleaseRoom`.
+- **Importante I2** — formulários de reserva e de hospedagem sem reserva ignoravam `blocks`; agora listam motivo e período (componente `BlockItems`).
+- **Importante I3** — hospedagem sem reserva dizia "Quarto disponível agora." para quarto sujo: `check_availability` devolve `not_ready` para chegadas de hoje e a tela o mostra e impede a confirmação.
+
+**Menores adiados:** M1 a nota de resolução é apagada quando a gravação falha; M2 os diálogos de prioridade e liberação ficam presos à versão antiga após um `Conflict` (fechar e reabrir resolve); M3 "livre às HH:MM" e "Saiu às" sem data; M4 chegada antiga não marcada como no-show deixa a limpeza urgente para sempre; M5 reserva afetada não pode ser encurtada dentro do período do bloqueio preventivo; M6 o Dashboard conta limpezas em andamento como "aguardando"; M7 datas gravadas do texto de entrada (inofensivo hoje).
+
+**Decisões de produto levantadas pelo revisor (para confirmar):** o quarto virar *Disponível* sozinho depois do intervalo pós-limpeza (D-21); qualquer usuário poder iniciar/concluir limpeza (spec fala em "usuário autorizado"); qualquer usuário abrir ordem de manutenção sem conflito já gera bloqueio efetivo, o que contorna o `ReleaseRoom` do bloqueio manual; a prioridade não considera "risco de conflito"; quarto sem histórico de limpeza (inclusive com check-out antes da migração) é considerado limpo; bloqueio hoje esconde a limpeza pendente no mapa.
+
+Testes após a correção: `cargo test` 385 + 4, clippy limpo; `npm test` 299 (42 arquivos), `tsc` e `npm run build` ok.

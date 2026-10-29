@@ -121,6 +121,8 @@ pub struct AvailabilityResult {
     pub conflicts: Vec<ConflictInfo>,
     /// Bloqueios (inclusive preventivos) que tocam o período.
     pub blocks: Vec<crate::models::block::RoomBlock>,
+    /// Motivo de o quarto não estar pronto para hospedar hoje (limpeza pendente ou intervalo); só vale para chegadas de hoje.
+    pub not_ready: Option<String>,
 }
 
 /// O que o usuário quer mudar; campos ausentes ficam como estão.

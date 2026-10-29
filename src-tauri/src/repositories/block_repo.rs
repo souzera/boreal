@@ -92,7 +92,7 @@ pub fn overlapping(
     let statuses = if effective_only { "'active', 'awaiting_release'" } else { "'preventive', 'active', 'awaiting_release'" };
     let mut stmt = conn.prepare(&format!(
         "{SELECT} WHERE b.room_id = ?1 AND b.status IN ({statuses})
-           AND (b.end_date IS NULL OR b.end_date > ?2)
+           AND (b.end_date IS NULL OR b.end_date > ?2 OR b.maintenance_order_id IS NOT NULL)
            AND (?3 IS NULL OR b.start_date < ?3)
          ORDER BY b.start_date, b.id"
     ))?;
@@ -108,7 +108,7 @@ pub fn active_now(conn: &Connection, room_id: i64, today: NaiveDate) -> Result<b
     let n: i64 = conn.query_row(
         "SELECT count(*) FROM room_blocks
          WHERE room_id = ?1 AND status IN ('active', 'awaiting_release')
-           AND start_date <= ?2 AND (end_date IS NULL OR end_date > ?2)",
+           AND start_date <= ?2 AND (end_date IS NULL OR end_date > ?2 OR maintenance_order_id IS NOT NULL)",
         params![room_id, today],
         |r| r.get(0),
     )?;

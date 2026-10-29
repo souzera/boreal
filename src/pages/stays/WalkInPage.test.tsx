@@ -44,7 +44,7 @@ beforeEach(() => {
     total: 1, page: 1, page_size: 100,
   });
   vi.mocked(api.quoteStay).mockReset().mockResolvedValue(quote());
-  vi.mocked(api.checkRoomAvailability).mockReset().mockResolvedValue({ available: true, conflicts: [], blocks: [] });
+  vi.mocked(api.checkRoomAvailability).mockReset().mockResolvedValue({ available: true, conflicts: [], blocks: [], not_ready: null });
   vi.mocked(api.walkIn).mockReset().mockResolvedValue(9);
 });
 
@@ -77,10 +77,41 @@ describe("WalkInPage", () => {
       available: false,
       conflicts: [{ reservation_id: 1, code: "RES-000001", guest_name: "Caio", check_in_date: "2099-10-20", check_out_date: "2099-10-22", status: "checked_in" }],
       blocks: [],
+      not_ready: null,
     });
     await fill();
 
     expect(await screen.findByText(/RES-000001/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar check-in" })).toBeDisabled();
+  });
+
+  it("bloqueio do quarto aparece com motivo e período e bloqueia a confirmação", async () => {
+    vi.mocked(api.checkRoomAvailability).mockResolvedValue({
+      available: false,
+      conflicts: [],
+      blocks: [
+        { id: 4, room_id: 1, room_code: "101", kind: "maintenance", status: "active", start_date: "2099-10-20", end_date: null, reason: "Troca do chuveiro", maintenance_order_id: 2, released_at: null, release_justification: null, version: 1 },
+      ],
+      not_ready: null,
+    });
+    await fill();
+
+    expect(await screen.findByText(/Troca do chuveiro/)).toBeInTheDocument();
+    expect(screen.getByText(/a partir de 20\/10\/2099/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar check-in" })).toBeDisabled();
+  });
+
+  it("quarto sujo não é anunciado como disponível: mostra a mensagem e bloqueia a confirmação", async () => {
+    vi.mocked(api.checkRoomAvailability).mockResolvedValue({
+      available: true,
+      conflicts: [],
+      blocks: [],
+      not_ready: "O quarto 101 está aguardando limpeza. Conclua a limpeza antes de hospedar.",
+    });
+    await fill();
+
+    expect(await screen.findByText(/aguardando limpeza/)).toBeInTheDocument();
+    expect(screen.queryByText("Quarto disponível agora.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirmar check-in" })).toBeDisabled();
   });
 

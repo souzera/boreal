@@ -7,6 +7,7 @@ Plano: `docs/superpowers/plans/2026-10-27-marco-4-limpeza-manutencao.md`. Migra�
 - Período em noites: `start_date` inclusivo, `end_date` exclusivo; sem `end_date` = até liberação manual. Sem intervalo de limpeza nas bordas.
 - `kind`: `manual | preventive | maintenance`. `status`: `preventive | active | awaiting_release | released`.
 - Criação manual (`BlockService::create`, `ReleaseRoom`): motivo 1–500, início ≥ hoje, fim > início, quarto ativo. **Recusada** se há reserva ativa (pendente/confirmada/hospedada) tocando o período ou outro bloqueio não liberado (uma hospedagem em curso ocupa pelo menos a noite de hoje, mesmo atrasada). Para quarto com reservas, abre-se ordem de manutenção.
+- **O bloqueio de uma ordem de manutenção não expira pela data prevista** (`maintenance_order_id` ignora `end_date` nas consultas): só a liberação o encerra. `resolve_conflict_manually` exige `ReleaseRoom`.
 - Liberação (`release`, `ReleaseRoom`, justificativa): `Conflict` se a versão mudou ou já estava liberado; bloqueio de manutenção só libera com a ordem **concluída**.
 
 ## Integração com a disponibilidade
@@ -16,6 +17,7 @@ Plano: `docs/superpowers/plans/2026-10-27-marco-4-limpeza-manutencao.md`. Migra�
 - Reserva nova, alteração (vira `problem` na prévia), consulta de disponibilidade (`AvailabilityResult.blocks`) e walk-in: contam **todos** os bloqueios, inclusive preventivos.
 - Check-in de reserva existente: só bloqueios **efetivos** (`active`/`awaiting_release`); o preventivo existe justamente porque há reservas afetadas e só impede novas (spec §8).
 - Reserva que termina no dia em que o bloqueio começa passa.
+- `check_availability` devolve também `not_ready` (limpeza pendente ou intervalo) para chegadas de hoje; a tela de hospedagem sem reserva o mostra e impede a confirmação.
 
 ## Ordens de manutenção
 

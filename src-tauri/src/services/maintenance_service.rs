@@ -5,7 +5,8 @@ use serde_json::json;
 use super::reservation_service::parse_date;
 use super::Ctx;
 use crate::audit::{self, AuditEntry};
-use crate::auth::session::SessionInfo;
+use crate::auth::permissions::Permission;
+use crate::auth::session::{require, SessionInfo};
 use crate::domain::cleaning::Priority;
 use crate::domain::maintenance::{transition, OrderStatus};
 use crate::error::AppError;
@@ -228,6 +229,8 @@ impl MaintenanceService {
     /// Resolução manual de um conflito (por exemplo, a reserva foi remanejada fora do sistema). Nota obrigatória.
     pub fn resolve_conflict_manually(&self, token: &str, conflict_id: i64, note: String) -> Result<(), AppError> {
         let actor = self.touch(token)?;
+        // Marcar uma reserva ativa como resolvida torna o bloqueio efetivo: é uma exceção autorizada.
+        require(&actor, Permission::ReleaseRoom)?;
         let note = clean_text(&note, 500, "a nota da resolução", true)?;
         let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
@@ -483,6 +486,8 @@ mod tests {
         let w = world();
         let (id, _) = with_conflict(&w);
         let conflict = w.h.maintenance.get(&w.admin, id).unwrap().conflicts[0].id;
+        let rec = recepcao_token(&w.h, &w.admin);
+        assert!(matches!(w.h.maintenance.resolve_conflict_manually(&rec, conflict, "Remanejado".into()), Err(AppError::Forbidden)));
 
         assert!(matches!(w.h.maintenance.resolve_conflict_manually(&w.admin, conflict, "  ".into()), Err(AppError::Validation(_))));
         w.h.maintenance.resolve_conflict_manually(&w.admin, conflict, "Hóspede remanejado para o quarto 102".into()).unwrap();

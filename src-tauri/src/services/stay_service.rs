@@ -1853,6 +1853,25 @@ mod tests {
     }
 
     #[test]
+    fn availability_reports_a_dirty_room_for_today_without_blocking_future_dates() {
+        let w = world();
+        let (_, task) = checked_out_with_next(&w);
+        set_now(&w, "2026-10-23T17:00:00Z");
+
+        let today = w.h.reservations.check_availability(&w.admin, w.seed.room_id, "2026-10-23", "2026-10-24", None).unwrap();
+        assert!(today.not_ready.as_deref().is_some_and(|m| m.contains("aguardando limpeza")), "{:?}", today.not_ready);
+        let later = w.h.reservations.check_availability(&w.admin, w.seed.room_id, "2026-10-25", "2026-10-26", None).unwrap();
+        assert!(later.not_ready.is_none());
+
+        w.h.cleaning.start(&w.admin, task, 1).unwrap();
+        set_now(&w, "2026-10-23T16:00:00Z");
+        w.h.cleaning.complete(&w.admin, task, 2).unwrap();
+        set_now(&w, "2026-10-23T18:00:00Z");
+        let clean = w.h.reservations.check_availability(&w.admin, w.seed.room_id, "2026-10-23", "2026-10-24", None).unwrap();
+        assert!(clean.not_ready.is_none());
+    }
+
+    #[test]
     fn walk_in_is_refused_in_a_dirty_room() {
         let w = world();
         checked_out_with_next(&w);

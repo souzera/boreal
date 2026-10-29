@@ -1,3 +1,4 @@
+import { BlockItems } from "@/components/BlockItems";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -68,7 +69,7 @@ export default function WalkInPage() {
   const overCapacity = room !== null && people > room.max_capacity;
   const mayExceed = can("exceed_capacity");
   const blocked =
-    (availability && !availability.available) ||
+    (availability && (!availability.available || !!availability.not_ready)) ||
     (quote && quote.missing_dates.length > 0) ||
     (overCapacity && (!mayExceed || !exceed));
 
@@ -200,17 +201,19 @@ export default function WalkInPage() {
 
         {live && availability && (
           <div className="sm:col-span-2" role="status">
+            {availability.not_ready && <p className="text-sm text-destructive">{availability.not_ready}</p>}
             {availability.available ? (
-              <p className="text-sm">Quarto disponível agora.</p>
+              !availability.not_ready && <p className="text-sm">Quarto disponível agora.</p>
             ) : (
               <div className="text-sm text-destructive">
-                <p>O quarto não está disponível. Reservas e hospedagens que bloqueiam o período:</p>
+                <p>O quarto não está disponível. O que impede o período:</p>
                 <ul className="list-disc pl-5">
                   {availability.conflicts.map((c) => (
                     <li key={c.reservation_id}>
                       {conflictText(c)} · {formatDate(c.check_in_date)} a {formatDate(c.check_out_date)} · {statusLabel[c.status]}
                     </li>
                   ))}
+                  <BlockItems blocks={availability.blocks} />
                 </ul>
               </div>
             )}

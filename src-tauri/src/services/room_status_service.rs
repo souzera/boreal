@@ -214,7 +214,6 @@ mod tests {
         assert_eq!(state(&w).0, "blocked");
 
         set_now(&w, "2026-10-30T12:00:00Z"); // bem depois do fim previsto, sem liberação...
-        w.h.db.lock().unwrap().execute("UPDATE room_blocks SET end_date = NULL", []).unwrap();
         assert_eq!(state(&w).0, "blocked");
         let (block, version): (i64, i64) =
             w.h.db.lock().unwrap().query_row("SELECT id, version FROM room_blocks", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();

@@ -268,7 +268,19 @@ impl ReservationService {
         let conflicts: Vec<ConflictInfo> =
             existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
         let blocks = block_repo::overlapping(&conn, room_id, check_in, Some(check_out), false)?;
-        Ok(AvailabilityResult { available: conflicts.is_empty() && blocks.is_empty(), conflicts, blocks })
+        let not_ready = if check_in <= self.ctx.today() {
+            let offset = i64::from(self.ctx.utc.local_offset().local_minus_utc());
+            let minutes = room_rules::cleaning_minutes(&conn, room_id, &settings)?;
+            let code = catalog_repo::find_room(&conn, room_id)?.map(|r| r.code).unwrap_or_default();
+            match room_rules::ensure_room_clean(&conn, room_id, &code, minutes, self.ctx.local_now(), offset) {
+                Err(AppError::Validation(message)) => Some(message),
+                Err(other) => return Err(other),
+                Ok(()) => None,
+            }
+        } else {
+            None
+        };
+        Ok(AvailabilityResult { available: conflicts.is_empty() && blocks.is_empty(), conflicts, blocks, not_ready })
     }
 }
 
