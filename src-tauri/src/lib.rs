@@ -7,6 +7,8 @@ pub mod domain;
 pub mod error;
 pub mod migrations;
 pub mod models;
+#[cfg(feature = "dev-seed")]
+pub mod seed;
 pub mod repositories;
 pub mod services;
 

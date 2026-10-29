@@ -39,6 +39,14 @@ opt-level = 3
 panic = "abort"
 strip = true
 
+[features]
+# Dados fictícios para desenvolvimento (`cargo run --example seed --features dev-seed`); fora do build de produção.
+dev-seed = []
+
+[[example]]
+name = "seed"
+required-features = ["dev-seed"]
+
 [dev-dependencies]
 tempfile = "3.27.0"
 
