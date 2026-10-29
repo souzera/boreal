@@ -94,11 +94,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
 **Interfaces:**
 - Produces (tabelas): `rooms.cleaning_interval_minutes INTEGER NULL CHECK (BETWEEN 0 AND 1440)`; `cleaning_tasks(id, room_id, stay_id UNIQUE NULL, status 'awaiting'|'in_progress'|'done', ready_since, priority_override NULL 'urgent'|'high'|'normal'|'low', priority_justification, started_at, started_by, completed_at, completed_by, version, created_at, updated_at)`; `room_blocks(id, room_id, kind 'manual'|'preventive'|'maintenance', status 'preventive'|'active'|'awaiting_release'|'released', start_date, end_date NULL, reason, maintenance_order_id NULL, created_by, released_at, released_by, release_justification, version, created_at, updated_at)`; `maintenance_orders(id, code, room_id, description, priority, status 'open'|'in_progress'|'awaiting_resolution'|'completed', planned_start, planned_end, actual_start, actual_end, responsible, notes, version, created_by, created_at, updated_at)`; `maintenance_conflicts(id, order_id, reservation_id, status 'open'|'resolved', resolution_note, resolved_at, resolved_by)`. Sequência `maintenance` (`MAN-000001`) em `sequences`.
 
-- [ ] **Step 1: Write the failing test** em `migrations/mod.rs`: `migration_0010_creates_cleaning_and_maintenance_tables` (as quatro tabelas existem; `rooms` tem `cleaning_interval_minutes`; `cleaning_tasks.stay_id` rejeita duplicata; `room_blocks` rejeita `status='x'`; `current_version == 10`).
-- [ ] **Step 2: Run** `cargo test migration_0010` — Expected: FAIL (versão 9).
-- [ ] **Step 3: Write** `0010_cleaning_maintenance.sql` com as tabelas acima, índices em `(room_id, status)` e `(order_id)`, e registrar `Migration { version: 10, ... }`.
-- [ ] **Step 4: Run** `cargo test migration` — Expected: PASS (inclui testes de migrações anteriores).
-- [ ] **Step 5: Commit** `feat: migration 0010 cleaning and maintenance`
+- [x] **Step 1: Write the failing test** em `migrations/mod.rs`: `migration_0010_creates_cleaning_and_maintenance_tables` (as quatro tabelas existem; `rooms` tem `cleaning_interval_minutes`; `cleaning_tasks.stay_id` rejeita duplicata; `room_blocks` rejeita `status='x'`; `current_version == 10`).
+- [x] **Step 2: Run** `cargo test migration_0010` — Expected: FAIL (versão 9).
+- [x] **Step 3: Write** `0010_cleaning_maintenance.sql` com as tabelas acima, índices em `(room_id, status)` e `(order_id)`, e registrar `Migration { version: 10, ... }`.
+- [x] **Step 4: Run** `cargo test migration` — Expected: PASS (inclui testes de migrações anteriores).
+- [x] **Step 5: Commit** `feat: migration 0010 cleaning and maintenance`
 
 ---
 
@@ -116,11 +116,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
   - `enum Priority { Urgent, High, Normal, Low }` (`as_str`: `urgent|high|normal|low`, `parse`).
   - `fn suggest_priority(next_arrival: Option<NaiveDateTime>, now: NaiveDateTime) -> Priority` — `Urgent` se chegada ≤ `now + 4h` (inclui já passada); `High` se mesma data de `now`; `Normal` se depois; `Low` se `None`.
 
-- [ ] **Step 1: Write the failing tests** (`room_state.rs`): `occupied_wins_over_everything_else`; `blocked_wins_over_cleaning`; `awaiting_and_in_progress_map_to_their_states`; `done_cleaning_waits_for_the_interval` (concluída 10:00, intervalo 60: às 10:59 ⇒ `CleanWaitingInterval{free_at 11:00}`, às 11:00 ⇒ `Available`); `no_cleaning_history_is_available`; `time_alone_never_clears_awaiting_cleaning` (limpeza `awaiting` e `now` +30 dias ⇒ ainda `AwaitingCleaning`); `interval_zero_is_available_right_after_cleaning`. (`cleaning.rs`): `arrival_in_4h_is_urgent` (exato 4h ⇒ urgent; 4h01 no mesmo dia ⇒ high); `arrival_already_late_is_urgent`; `arrival_today_is_high`; `arrival_tomorrow_across_midnight_is_normal` (now 23:30, chegada 00:30 do dia seguinte, 1h ⇒ urgent; chegada 14:00 do dia seguinte ⇒ normal); `no_arrival_is_low`.
-- [ ] **Step 2: Run** `cargo test domain::room_state domain::cleaning` — Expected: FAIL (módulos inexistentes).
-- [ ] **Step 3: Implement** as funções acima; sem banco, sem relógio global.
-- [ ] **Step 4: Run** os mesmos testes — Expected: PASS; `cargo clippy --all-targets -- -D warnings` limpo.
-- [ ] **Step 5: Commit** `feat: pure room state and cleaning priority`
+- [x] **Step 1: Write the failing tests** (`room_state.rs`): `occupied_wins_over_everything_else`; `blocked_wins_over_cleaning`; `awaiting_and_in_progress_map_to_their_states`; `done_cleaning_waits_for_the_interval` (concluída 10:00, intervalo 60: às 10:59 ⇒ `CleanWaitingInterval{free_at 11:00}`, às 11:00 ⇒ `Available`); `no_cleaning_history_is_available`; `time_alone_never_clears_awaiting_cleaning` (limpeza `awaiting` e `now` +30 dias ⇒ ainda `AwaitingCleaning`); `interval_zero_is_available_right_after_cleaning`. (`cleaning.rs`): `arrival_in_4h_is_urgent` (exato 4h ⇒ urgent; 4h01 no mesmo dia ⇒ high); `arrival_already_late_is_urgent`; `arrival_today_is_high`; `arrival_tomorrow_across_midnight_is_normal` (now 23:30, chegada 00:30 do dia seguinte, 1h ⇒ urgent; chegada 14:00 do dia seguinte ⇒ normal); `no_arrival_is_low`.
+- [x] **Step 2: Run** `cargo test domain::room_state domain::cleaning` — Expected: FAIL (módulos inexistentes).
+- [x] **Step 3: Implement** as funções acima; sem banco, sem relógio global.
+- [x] **Step 4: Run** os mesmos testes — Expected: PASS; `cargo clippy --all-targets -- -D warnings` limpo.
+- [x] **Step 5: Commit** `feat: pure room state and cleaning priority`
 
 ---
 
@@ -137,11 +137,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
   - `maintenance_repo::insert_order`, `find_order`, `set_status`, `insert_conflict`, `open_conflicts(conn, order_id)`, `resolve_conflict(tx, id, user, note, at)`, `list(conn, filter)`.
   - Em cada `models/*`: structs `Serialize` (`CleaningTask`, `RoomBlock`, `MaintenanceOrder`, `MaintenanceConflict`) com campos de nome do quarto para exibição.
 
-- [ ] **Step 1: Write the failing tests** em cada repositório (banco em memória via `test_support`): `cleaning_repo` — `insert_awaiting_twice_for_same_stay_fails`, `complete_with_stale_version_is_conflict`, `queue_orders_open_tasks_only`; `block_repo` — `overlapping_uses_half_open_periods` (bloqueio 10→13: período 13→15 não toca; 12→14 toca; sem fim toca tudo depois), `released_blocks_are_ignored`, `active_now_ignores_preventive`; `maintenance_repo` — `open_conflicts_lists_only_open`.
-- [ ] **Step 2: Run** `cargo test repositories::cleaning_repo repositories::block_repo repositories::maintenance_repo` — Expected: FAIL.
-- [ ] **Step 3: Implement** modelos e repositórios (SQL escrito à mão, mesmo estilo de `stay_repo`).
-- [ ] **Step 4: Run** os testes — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: cleaning, block and maintenance repositories`
+- [x] **Step 1: Write the failing tests** em cada repositório (banco em memória via `test_support`): `cleaning_repo` — `insert_awaiting_twice_for_same_stay_fails`, `complete_with_stale_version_is_conflict`, `queue_orders_open_tasks_only`; `block_repo` — `overlapping_uses_half_open_periods` (bloqueio 10→13: período 13→15 não toca; 12→14 toca; sem fim toca tudo depois), `released_blocks_are_ignored`, `active_now_ignores_preventive`; `maintenance_repo` — `open_conflicts_lists_only_open`.
+- [x] **Step 2: Run** `cargo test repositories::cleaning_repo repositories::block_repo repositories::maintenance_repo` — Expected: FAIL.
+- [x] **Step 3: Implement** modelos e repositórios (SQL escrito à mão, mesmo estilo de `stay_repo`).
+- [x] **Step 4: Run** os testes — Expected: PASS.
+- [x] **Step 5: Commit** `feat: cleaning, block and maintenance repositories`
 
 ---
 
@@ -160,11 +160,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
   - `set_priority(&self, token, task_id, priority: Option<String>, justification: String, expected_version) -> Result<(), AppError>` (justificativa obrigatória; `None` remove o ajuste).
   - Auditoria `module: "cleaning"`, operações `cleaning_started|cleaning_completed|cleaning_priority_changed`, na mesma transação.
 
-- [ ] **Step 1: Write the failing tests** (`cleaning_service`, mesmo `World` do `stay_service`): `checkout_creates_one_awaiting_task_with_the_effective_time`; `checkout_failure_leaves_no_task` (saldo ≠ 0 sem exceção); `double_checkout_does_not_duplicate_task`; `start_then_complete_records_user_and_time`; `complete_without_start_is_refused`; `double_complete_is_conflict_and_keeps_first_user`; `queue_orders_by_priority_then_age` (quarto com chegada em 2 h antes de quarto sem reserva); `late_departure_task_uses_the_real_time_and_urgent_priority_follows_the_arrival`; `override_needs_a_justification_and_is_audited`; `clearing_override_returns_to_the_suggestion`; `recepcao_can_start_and_complete`; `check_out_audit_is_in_the_same_transaction`.
-- [ ] **Step 2: Run** `cargo test cleaning_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** o serviço; em `checkout`, após `reservation_repo::set_status(... "completed" ...)`, chamar `cleaning_repo::insert_awaiting(&tx, room_id, stay.id, at, at)`.
-- [ ] **Step 4: Run** `cargo test cleaning_service stay_service` — Expected: PASS (testes do Marco 3 continuam verdes).
-- [ ] **Step 5: Commit** `feat: cleaning queue and task created at checkout`
+- [x] **Step 1: Write the failing tests** (`cleaning_service`, mesmo `World` do `stay_service`): `checkout_creates_one_awaiting_task_with_the_effective_time`; `checkout_failure_leaves_no_task` (saldo ≠ 0 sem exceção); `double_checkout_does_not_duplicate_task`; `start_then_complete_records_user_and_time`; `complete_without_start_is_refused`; `double_complete_is_conflict_and_keeps_first_user`; `queue_orders_by_priority_then_age` (quarto com chegada em 2 h antes de quarto sem reserva); `late_departure_task_uses_the_real_time_and_urgent_priority_follows_the_arrival`; `override_needs_a_justification_and_is_audited`; `clearing_override_returns_to_the_suggestion`; `recepcao_can_start_and_complete`; `check_out_audit_is_in_the_same_transaction`.
+- [x] **Step 2: Run** `cargo test cleaning_service` — Expected: FAIL.
+- [x] **Step 3: Implement** o serviço; em `checkout`, após `reservation_repo::set_status(... "completed" ...)`, chamar `cleaning_repo::insert_awaiting(&tx, room_id, stay.id, at, at)`.
+- [x] **Step 4: Run** `cargo test cleaning_service stay_service` — Expected: PASS (testes do Marco 3 continuam verdes).
+- [x] **Step 5: Commit** `feat: cleaning queue and task created at checkout`
 
 ---
 
@@ -178,11 +178,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
 - Produces: `effective_cleaning_minutes(conn, room_id, settings) -> Result<u32, AppError>` (override do quarto ou padrão); `ensure_room_clean(conn, room_id, interval, now: NaiveDateTime) -> Result<(), AppError>` — recusa com mensagem "O quarto {código} está aguardando limpeza." / "…está em limpeza." / "…foi limpo e fica livre às HH:MM de DD/MM/AAAA (intervalo mínimo)."
 - Consumes: `cleaning_repo::open_for_room`, `last_done_for_room`.
 
-- [ ] **Step 1: Write the failing tests:** `reservation_service` — `room_interval_override_changes_the_same_day_turnover` (quarto com 180 min: saída 12:00 e entrada 14:00 do mesmo dia conflita; com padrão 60 passa); `stay_service` — `check_in_is_refused_while_cleaning_is_awaiting`, `…while_cleaning_is_in_progress`, `…before_the_interval_after_cleaning_is_done` (concluída 10:00, intervalo 60, check-in 10:30 recusado e 11:00 aceito), `check_in_allowed_in_a_room_never_used`, `walk_in_is_refused_in_a_dirty_room`, `refused_check_in_writes_nothing`; `catalog_service` — `room_interval_needs_manage_catalog_and_accepts_0_to_1440`.
-- [ ] **Step 2: Run** `cargo test room_interval check_in_is walk_in_is` — Expected: FAIL.
-- [ ] **Step 3: Implement** os helpers e trocar `settings.cleaning_interval_minutes` por `effective_cleaning_minutes(...)` em todas as chamadas de `find_conflicts`; chamar `ensure_room_clean` no check-in e no walk-in, dentro da transação, com `now = self.ctx.local_now()`.
-- [ ] **Step 4: Run** `cargo test` completo — Expected: PASS (os 295 existentes + novos; ajustar fixtures do Marco 3 que fazem check-out e depois novo check-in no mesmo quarto, concluindo a limpeza no teste).
-- [ ] **Step 5: Commit** `feat: per-room cleaning interval and clean-room gate at check-in`
+- [x] **Step 1: Write the failing tests:** `reservation_service` — `room_interval_override_changes_the_same_day_turnover` (quarto com 180 min: saída 12:00 e entrada 14:00 do mesmo dia conflita; com padrão 60 passa); `stay_service` — `check_in_is_refused_while_cleaning_is_awaiting`, `…while_cleaning_is_in_progress`, `…before_the_interval_after_cleaning_is_done` (concluída 10:00, intervalo 60, check-in 10:30 recusado e 11:00 aceito), `check_in_allowed_in_a_room_never_used`, `walk_in_is_refused_in_a_dirty_room`, `refused_check_in_writes_nothing`; `catalog_service` — `room_interval_needs_manage_catalog_and_accepts_0_to_1440`.
+- [x] **Step 2: Run** `cargo test room_interval check_in_is walk_in_is` — Expected: FAIL.
+- [x] **Step 3: Implement** os helpers e trocar `settings.cleaning_interval_minutes` por `effective_cleaning_minutes(...)` em todas as chamadas de `find_conflicts`; chamar `ensure_room_clean` no check-in e no walk-in, dentro da transação, com `now = self.ctx.local_now()`.
+- [x] **Step 4: Run** `cargo test` completo — Expected: PASS (os 295 existentes + novos; ajustar fixtures do Marco 3 que fazem check-out e depois novo check-in no mesmo quarto, concluindo a limpeza no teste).
+- [x] **Step 5: Commit** `feat: per-room cleaning interval and clean-room gate at check-in`
 
 ---
 
@@ -199,11 +199,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
   - `list(&self, token, include_released: bool) -> Vec<RoomBlock>`.
   - `pub(crate) fn blocks_in_period(conn, room_id, start, end) -> Result<Vec<RoomBlock>, AppError>` e `blocks_message(&[RoomBlock]) -> String` ("O quarto 101 está bloqueado de 10/11/2026 a 13/11/2026 (manutenção)."), usados por reserva, alteração, consulta, check-in e walk-in antes de gravar.
 
-- [ ] **Step 1: Write the failing tests:** `create_needs_release_room_and_valid_input` (sem permissão; motivo vazio/só espaços; fim ≤ início; início no passado; quarto inativo/inexistente — nada gravado); `create_over_an_active_reservation_is_refused_listing_it`; `create_over_a_stay_in_house_is_refused`; `reservation_over_a_block_is_refused`; `reservation_ending_the_day_the_block_starts_is_allowed`; `open_ended_block_blocks_every_future_date`; `change_into_a_blocked_period_is_unfeasible`; `check_availability_reports_the_block`; `check_in_and_walk_in_respect_a_block_starting_today`; `release_needs_permission_and_a_justification_and_double_release_is_conflict`; `released_block_stops_blocking`; `block_events_are_audited` (`block_created`, `block_released`).
-- [ ] **Step 2: Run** `cargo test block_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** o serviço e plugar `blocks_in_period` nas cinco chamadas; a mensagem de bloqueio vem **antes** da de conflito de reserva.
-- [ ] **Step 4: Run** `cargo test` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: room blocks integrated with availability`
+- [x] **Step 1: Write the failing tests:** `create_needs_release_room_and_valid_input` (sem permissão; motivo vazio/só espaços; fim ≤ início; início no passado; quarto inativo/inexistente — nada gravado); `create_over_an_active_reservation_is_refused_listing_it`; `create_over_a_stay_in_house_is_refused`; `reservation_over_a_block_is_refused`; `reservation_ending_the_day_the_block_starts_is_allowed`; `open_ended_block_blocks_every_future_date`; `change_into_a_blocked_period_is_unfeasible`; `check_availability_reports_the_block`; `check_in_and_walk_in_respect_a_block_starting_today`; `release_needs_permission_and_a_justification_and_double_release_is_conflict`; `released_block_stops_blocking`; `block_events_are_audited` (`block_created`, `block_released`).
+- [x] **Step 2: Run** `cargo test block_service` — Expected: FAIL.
+- [x] **Step 3: Implement** o serviço e plugar `blocks_in_period` nas cinco chamadas; a mensagem de bloqueio vem **antes** da de conflito de reserva.
+- [x] **Step 4: Run** `cargo test` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: room blocks integrated with availability`
 
 ---
 
@@ -221,11 +221,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
   - `start(&self, token, order_id, expected_version)` (`open → in_progress`, `actual_start`; recusa se há conflitos abertos); `request_resolution(…)` (`in_progress → awaiting_resolution`); `complete(…)` (`awaiting_resolution → completed`, `actual_end`, bloqueio → `awaiting_release`; **não libera**); `list`, `get`.
   - Auditoria `module: "maintenance"`; códigos `MAN-000001`.
 
-- [ ] **Step 1: Write the failing tests:** `open_without_conflict_blocks_effectively_and_returns_a_code`; `open_with_conflicts_creates_a_preventive_block_and_lists_the_reservations`; `preventive_block_refuses_new_reservations_in_the_period`; `applying_with_open_conflicts_keeps_the_preventive_block`; `cancelling_the_affected_reservation_then_applying_makes_it_effective`; `manual_resolution_needs_a_note_and_is_audited`; `start_is_refused_with_open_conflicts`; `state_machine_rejects_skipped_steps` (`open → completed`, voltar atrás); `complete_does_not_release_the_room` (estado continua bloqueado; check-in recusado); `release_after_completion_needs_release_room` (integra com `BlockService::release`); `double_complete_is_conflict`; `invalid_input_writes_nothing` (descrição vazia, prioridade desconhecida, período invertido, quarto inativo); `order_with_a_stay_in_house_in_the_period_lists_it_as_a_conflict`; `all_transitions_are_audited_in_the_same_transaction`.
-- [ ] **Step 2: Run** `cargo test maintenance_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** a máquina de estados da ordem como função pura em `domain/maintenance.rs` (`transition(from, to) -> Result<(), AppError>`, mesmo padrão de `domain/stay.rs`) e o serviço sobre ela.
-- [ ] **Step 4: Run** `cargo test maintenance` — Expected: PASS; `cargo clippy --all-targets -- -D warnings` limpo.
-- [ ] **Step 5: Commit** `feat: maintenance orders with conflict resolution`
+- [x] **Step 1: Write the failing tests:** `open_without_conflict_blocks_effectively_and_returns_a_code`; `open_with_conflicts_creates_a_preventive_block_and_lists_the_reservations`; `preventive_block_refuses_new_reservations_in_the_period`; `applying_with_open_conflicts_keeps_the_preventive_block`; `cancelling_the_affected_reservation_then_applying_makes_it_effective`; `manual_resolution_needs_a_note_and_is_audited`; `start_is_refused_with_open_conflicts`; `state_machine_rejects_skipped_steps` (`open → completed`, voltar atrás); `complete_does_not_release_the_room` (estado continua bloqueado; check-in recusado); `release_after_completion_needs_release_room` (integra com `BlockService::release`); `double_complete_is_conflict`; `invalid_input_writes_nothing` (descrição vazia, prioridade desconhecida, período invertido, quarto inativo); `order_with_a_stay_in_house_in_the_period_lists_it_as_a_conflict`; `all_transitions_are_audited_in_the_same_transaction`.
+- [x] **Step 2: Run** `cargo test maintenance_service` — Expected: FAIL.
+- [x] **Step 3: Implement** a máquina de estados da ordem como função pura em `domain/maintenance.rs` (`transition(from, to) -> Result<(), AppError>`, mesmo padrão de `domain/stay.rs`) e o serviço sobre ela.
+- [x] **Step 4: Run** `cargo test maintenance` — Expected: PASS; `cargo clippy --all-targets -- -D warnings` limpo.
+- [x] **Step 5: Commit** `feat: maintenance orders with conflict resolution`
 
 ---
 
@@ -239,11 +239,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
 - Consumes: `domain::room_state::room_state`, `effective_cleaning_minutes`, `cleaning_repo`, `block_repo::active_now`, `stay_repo` (hospedagem em curso do quarto).
 - Produces: `RoomStatusService::list(&self, token) -> Vec<RoomStatus>` com `RoomStatus { room_id, code, category_name, state: String, free_at: Option<String>, label_pt: String, cleaning_task_id: Option<i64>, next_arrival: Option<String> }`; `RoomRow` do mapa ganha `state` e `free_at`. Rótulos: `Ocupado`, `Aguardando limpeza`, `Em limpeza`, `Limpo — aguardando intervalo`, `Disponível`, `Em manutenção ou bloqueado`.
 
-- [ ] **Step 1: Write the failing tests:** matriz ponta a ponta com o relógio injetado — `state_matrix_follows_the_whole_cycle` (reserva → check-in ⇒ `occupied` → check-out ⇒ `awaiting_cleaning` → iniciar ⇒ `cleaning` → concluir 10:00 ⇒ `clean_waiting_interval` com `free_at` 11:00 → 11:00 ⇒ `available`); `advancing_the_clock_never_frees_a_dirty_room`; `an_effective_block_today_shows_blocked_and_a_future_block_does_not`; `completed_maintenance_still_shows_blocked_until_release`; `inactive_rooms_are_listed_as_inactive_state_none` (decisão: inativo não entra na lista de estado; o mapa continua mostrando-o como já faz); `room_map_rows_carry_the_state`.
-- [ ] **Step 2: Run** `cargo test room_status` — Expected: FAIL.
-- [ ] **Step 3: Implement** a montagem dos fatos por quarto (uma consulta por tabela, sem N+1 por quarto) e a chamada à função pura.
-- [ ] **Step 4: Run** `cargo test` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: calculated room state in the room map`
+- [x] **Step 1: Write the failing tests:** matriz ponta a ponta com o relógio injetado — `state_matrix_follows_the_whole_cycle` (reserva → check-in ⇒ `occupied` → check-out ⇒ `awaiting_cleaning` → iniciar ⇒ `cleaning` → concluir 10:00 ⇒ `clean_waiting_interval` com `free_at` 11:00 → 11:00 ⇒ `available`); `advancing_the_clock_never_frees_a_dirty_room`; `an_effective_block_today_shows_blocked_and_a_future_block_does_not`; `completed_maintenance_still_shows_blocked_until_release`; `inactive_rooms_are_listed_as_inactive_state_none` (decisão: inativo não entra na lista de estado; o mapa continua mostrando-o como já faz); `room_map_rows_carry_the_state`.
+- [x] **Step 2: Run** `cargo test room_status` — Expected: FAIL.
+- [x] **Step 3: Implement** a montagem dos fatos por quarto (uma consulta por tabela, sem N+1 por quarto) e a chamada à função pura.
+- [x] **Step 4: Run** `cargo test` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: calculated room state in the room map`
 
 ---
 
@@ -256,11 +256,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
 **Interfaces:**
 - Produces comandos (token em todos): `cleaning_queue`, `start_cleaning(task_id, expected_version)`, `complete_cleaning(task_id, expected_version)`, `set_cleaning_priority(task_id, priority, justification, expected_version)`, `list_blocks(include_released)`, `create_block(input)`, `release_block(block_id, justification, expected_version)`, `list_maintenance`, `get_maintenance(id)`, `open_maintenance(input)`, `apply_maintenance_unavailability(id, expected_version)`, `resolve_maintenance_conflict(conflict_id, note)`, `start_maintenance`, `request_maintenance_resolution`, `complete_maintenance`, `list_room_status`, `set_room_cleaning_interval(room_id, minutes, expected_version)`. Em `api.ts`, funções e tipos TS espelhando os modelos Rust (mesmo estilo dos de `stays`).
 
-- [ ] **Step 1: Write the failing tests** em `api.test.ts`: cada função chama `invoke` com o nome e os argumentos esperados (`completeCleaning(7, 3)` ⇒ `invoke("complete_cleaning", { token, taskId: 7, expectedVersion: 3 })`), e erros `Conflict` chegam traduzidos como nos demais.
-- [ ] **Step 2: Run** `npm test -- api` — Expected: FAIL.
-- [ ] **Step 3: Implement** comandos finos (sem regra) e funções em `api.ts`; registrar tudo em `generate_handler!`.
-- [ ] **Step 4: Run** `npm test -- api` e `cargo build` — Expected: PASS / compila.
-- [ ] **Step 5: Commit** `feat: cleaning, block and maintenance commands`
+- [x] **Step 1: Write the failing tests** em `api.test.ts`: cada função chama `invoke` com o nome e os argumentos esperados (`completeCleaning(7, 3)` ⇒ `invoke("complete_cleaning", { token, taskId: 7, expectedVersion: 3 })`), e erros `Conflict` chegam traduzidos como nos demais.
+- [x] **Step 2: Run** `npm test -- api` — Expected: FAIL.
+- [x] **Step 3: Implement** comandos finos (sem regra) e funções em `api.ts`; registrar tudo em `generate_handler!`.
+- [x] **Step 4: Run** `npm test -- api` e `cargo build` — Expected: PASS / compila.
+- [x] **Step 5: Commit** `feat: cleaning, block and maintenance commands`
 
 ---
 
@@ -273,11 +273,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
 **Interfaces:**
 - Produces: `roomState.ts` — `ROOM_STATE_LABEL: Record<RoomStateKey, string>`, `ROOM_STATE_STYLE` (classe de cor **e** ícone `lucide-react` por estado), usado também pelo mapa (T12). `CleaningQueuePage`: lista por prioridade (rótulo `Urgente|Alta|Normal|Baixa` + cor + ícone), mostra quarto, "saiu às HH:MM", próxima chegada, botões `Iniciar limpeza` / `Concluir limpeza` conforme o estado e `Ajustar prioridade` (diálogo com justificativa obrigatória).
 
-- [ ] **Step 1: Write the failing tests:** `shows_priority_label_not_only_color`; `awaiting_task_offers_start_and_in_progress_offers_complete`; `completing_calls_the_api_with_the_task_version_and_shows_the_result` ("Limpeza do quarto 101 concluída. Livre às 11:00."); `a_conflict_error_reloads_and_explains`; `priority_dialog_requires_a_justification_and_keeps_the_text_on_failure`; `empty_queue_says_there_is_nothing_to_clean`; `roomState.test` — todo estado tem rótulo, cor e ícone distintos.
-- [ ] **Step 2: Run** `npm test -- CleaningQueuePage roomState` — Expected: FAIL.
-- [ ] **Step 3: Implement** página, diálogo (React Hook Form + Zod) e consultas TanStack Query com invalidação da fila e do mapa após cada ação.
-- [ ] **Step 4: Run** `npm test -- cleaning roomState` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: cleaning queue page`
+- [x] **Step 1: Write the failing tests:** `shows_priority_label_not_only_color`; `awaiting_task_offers_start_and_in_progress_offers_complete`; `completing_calls_the_api_with_the_task_version_and_shows_the_result` ("Limpeza do quarto 101 concluída. Livre às 11:00."); `a_conflict_error_reloads_and_explains`; `priority_dialog_requires_a_justification_and_keeps_the_text_on_failure`; `empty_queue_says_there_is_nothing_to_clean`; `roomState.test` — todo estado tem rótulo, cor e ícone distintos.
+- [x] **Step 2: Run** `npm test -- CleaningQueuePage roomState` — Expected: FAIL.
+- [x] **Step 3: Implement** página, diálogo (React Hook Form + Zod) e consultas TanStack Query com invalidação da fila e do mapa após cada ação.
+- [x] **Step 4: Run** `npm test -- cleaning roomState` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: cleaning queue page`
 
 ---
 
@@ -291,11 +291,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
 - Consumes: funções de `api.ts` (T9), `ROOM_STATE_LABEL`.
 - Produces: `BlocksPage` (`Criar bloqueio`, `Encerrar bloqueio`/`Liberar quarto` só para quem tem `ReleaseRoom`, situação com rótulo+ícone); `MaintenanceOrderPage` mostra a máquina de estados, as reservas afetadas (com link para a reserva, sem perder a ordem aberta), botões `Aplicar indisponibilidade`, `Iniciar manutenção`, `Concluir manutenção` e, após concluir, o aviso "O quarto continua bloqueado até ser liberado".
 
-- [ ] **Step 1: Write the failing tests:** `block_dialog_keeps_values_and_shows_the_conflicting_reservations_on_refusal`; `release_button_hidden_without_permission_but_backend_error_is_explained`; `maintenance_order_lists_affected_reservations_and_blocks_start_while_open`; `complete_shows_that_the_room_is_still_blocked`; `open_order_dialog_validates_dates_and_description`; `rooms_page_edits_the_cleaning_interval_with_limits_0_to_1440`.
-- [ ] **Step 2: Run** `npm test -- blocks maintenance RoomsPage` — Expected: FAIL.
-- [ ] **Step 3: Implement** as páginas e diálogos; datas `DD/MM/AAAA` na tela e `YYYY-MM-DD` na API.
-- [ ] **Step 4: Run** `npm test` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: blocks and maintenance pages`
+- [x] **Step 1: Write the failing tests:** `block_dialog_keeps_values_and_shows_the_conflicting_reservations_on_refusal`; `release_button_hidden_without_permission_but_backend_error_is_explained`; `maintenance_order_lists_affected_reservations_and_blocks_start_while_open`; `complete_shows_that_the_room_is_still_blocked`; `open_order_dialog_validates_dates_and_description`; `rooms_page_edits_the_cleaning_interval_with_limits_0_to_1440`.
+- [x] **Step 2: Run** `npm test -- blocks maintenance RoomsPage` — Expected: FAIL.
+- [x] **Step 3: Implement** as páginas e diálogos; datas `DD/MM/AAAA` na tela e `YYYY-MM-DD` na API.
+- [x] **Step 4: Run** `npm test` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: blocks and maintenance pages`
 
 ---
 
@@ -307,11 +307,11 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
 **Interfaces:**
 - Consumes: `RoomRow.state`/`free_at` (T8), `ROOM_STATE_*` (T10).
 
-- [ ] **Step 1: Write the failing tests:** `each_room_header_shows_the_state_label_and_icon` (um quarto por estado, rótulos exatos de T8); `clean_waiting_interval_shows_the_free_time`; `legend_lists_all_six_states`; `clicking_a_room_awaiting_cleaning_goes_to_the_queue_without_losing_the_map_date` (preserva a agenda, CLAUDE.md).
-- [ ] **Step 2: Run** `npm test -- RoomMapPage` — Expected: FAIL.
-- [ ] **Step 3: Implement** a coluna de estado do quarto e a legenda.
-- [ ] **Step 4: Run** `npm test` e `npm run build` — Expected: PASS / `tsc` + `vite build` ok.
-- [ ] **Step 5: Commit** `feat: room map with operational states`
+- [x] **Step 1: Write the failing tests:** `each_room_header_shows_the_state_label_and_icon` (um quarto por estado, rótulos exatos de T8); `clean_waiting_interval_shows_the_free_time`; `legend_lists_all_six_states`; `clicking_a_room_awaiting_cleaning_goes_to_the_queue_without_losing_the_map_date` (preserva a agenda, CLAUDE.md).
+- [x] **Step 2: Run** `npm test -- RoomMapPage` — Expected: FAIL.
+- [x] **Step 3: Implement** a coluna de estado do quarto e a legenda.
+- [x] **Step 4: Run** `npm test` e `npm run build` — Expected: PASS / `tsc` + `vite build` ok.
+- [x] **Step 5: Commit** `feat: room map with operational states`
 
 ---
 
@@ -321,20 +321,22 @@ docs/usuario/{limpeza,bloqueios-e-manutencao}.md   docs/desenvolvimento/{limpeza
 - Create: `docs/usuario/limpeza.md`, `docs/usuario/bloqueios-e-manutencao.md`, `docs/desenvolvimento/limpeza-e-estado-do-quarto.md`, `docs/desenvolvimento/bloqueios-e-manutencao.md`
 - Modify: `CHANGELOG.md` (`Unreleased`: Added fila de limpeza, estados do quarto, bloqueios e ordens de manutenção; Changed check-in exige quarto limpo), `local/spec.md` (Anexo A.4: M4-10 provisório; D-19 atualizado), `local/plano-completo.md` (marcar Marco 4), `docs/desenvolvimento/hospedagem-e-conta.md` (remover a pendência M3-10), este plano
 
-- [ ] **Step 1:** Escrever a documentação de usuário (objetivo, quando usar, passo a passo, resultado, avisos, erros comuns: "quarto aguardando limpeza", "quarto bloqueado") e de desenvolvimento (regras, estado calculado, transições, auditoria, decisões M4-1 a M4-11, limitações, testes).
-- [ ] **Step 2:** Rodar tudo: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`, `npm test`, `npm run build`. Expected: tudo verde; registrar contagens no Status.
-- [ ] **Step 3:** `graphify update .` e anotar no Status.
-- [ ] **Step 4:** Revisão final da branch por revisor independente; corrigir Críticos/Importantes (TDD); registrar menores adiados.
-- [ ] **Step 5: Commit** `docs: close marco 4`
+- [x] **Step 1:** Escrever a documentação de usuário (objetivo, quando usar, passo a passo, resultado, avisos, erros comuns: "quarto aguardando limpeza", "quarto bloqueado") e de desenvolvimento (regras, estado calculado, transições, auditoria, decisões M4-1 a M4-11, limitações, testes).
+- [x] **Step 2:** Rodar tudo: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`, `npm test`, `npm run build`. Expected: tudo verde; registrar contagens no Status.
+- [x] **Step 3:** `graphify update .` e anotar no Status.
+- [x] **Step 4:** Revisão final da branch por revisor independente; corrigir Críticos/Importantes (TDD); registrar menores adiados.
+- [x] **Step 5: Commit** `docs: close marco 4`
 
 ---
 
 ## Status
 
-**Não iniciado.** Plano escrito em 27/10/2026; aguardando revisão das decisões M4-1 a M4-11 e a escolha do ponto de partida da branch (ver "Pré-requisito").
+**Implementado** na branch `marco-4-limpeza` (a partir de `marco-3-hospedagem`, que ainda não foi integrada em `dev`). T1 a T13 concluídas; falta a revisão final independente (registrada abaixo quando feita). Migração `0010`.
 
-- **Testes:** não executados.
-- **Pendências de verificação:** `npm run tauri dev` com a interface real (responsável).
+- **Testes:** `cargo test` 384 unitários + 4 de integração; `cargo clippy --all-targets -- -D warnings` limpo; `npm test` 296 (42 arquivos); `npx tsc --noEmit` limpo e `npm run build` ok; `graphify update .` executado.
+- **Desvios do plano:** (a) a numeração do Anexo A ficou D-20 a D-23 (prioridade, disponibilidade, permissões, bloqueios) em vez de uma única linha; (b) `AvailabilityResult` ganhou `blocks`, `Room` ganhou `cleaning_interval_minutes` e `RoomRow` ganhou `state`/`state_label`/`free_at`; (c) o intervalo por quarto é editado por `set_room_cleaning_interval` (não por `UpdateRoom`); (d) consultas de estado por quarto, sem lote; (e) `BlockService::release` recusa liberar bloqueio de manutenção enquanto a ordem não está concluída; (f) a data do mapa passou para o parâmetro `?de=` da URL; (g) o Dashboard ganhou o atalho "Quartos aguardando limpeza". Rulings completos: ledger da execução.
+- **Processo:** vários testes foram escritos junto da implementação em funções puras (T2, `roomState.ts`) sem execução RED separada; nas demais tarefas o RED foi observado. `cargo fmt --check` já falhava na base (701 diffs); não foi aplicado.
+- **Pendências de verificação:** `npm run tauri dev` com a interface real não foi exercitado (responsável). Testes de interface do primeiro `findByRole("row")` de algumas páginas ficam lentos com a suíte inteira em paralelo (timeout elevado nos novos).
 
 ## Marcos seguintes
 

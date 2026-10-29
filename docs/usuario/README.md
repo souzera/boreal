@@ -14,4 +14,7 @@ Guias passo a passo para a equipe da pousada. Cada guia explica o objetivo, quan
 - [Hospedagem](hospedagem.md) — check-in, hospedagem sem reserva, check-out e saída tardia.
 - [Conta do hóspede](conta-do-hospede.md) — consumos, ajustes, estornos e pagamentos.
 
-_Os demais guias serão adicionados à medida que os módulos forem entregues (limpeza, financeiro…)._
+- [Limpeza dos quartos](limpeza.md) — fila de limpeza, estados do quarto, prioridade e intervalo.
+- [Bloqueios e manutenção](bloqueios-e-manutencao.md) — bloquear quartos, ordens de manutenção e reservas afetadas.
+
+_Os demais guias serão adicionados à medida que os módulos forem entregues (financeiro…)._
