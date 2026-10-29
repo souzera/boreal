@@ -11,7 +11,7 @@ BOREAL_SEED_ADMIN_PASSWORD='uma-senha-de-dev' \
 
 - `--db` é obrigatório; o seed nunca escolhe o banco sozinho. O aplicativo guarda o dele em `%APPDATA%\br.com.boreal.pms\boreal.db` (Windows).
 - A chave de criptografia vem do cofre de credenciais do sistema (a mesma do aplicativo). **Use o caminho de um banco de desenvolvimento**; não rode contra um banco com dados reais.
-- `BOREAL_SEED_ADMIN_PASSWORD`: senha do administrador `admin` (criado se ainda não houver usuários; se já existir, é a senha atual). `BOREAL_SEED_RECEPCAO_PASSWORD` (opcional) cria o usuário `recepcao` com senha temporária (troca obrigatória no primeiro acesso). Nenhuma senha fica no repositório.
+- `--user <nome>` (padrão `admin`): administrador usado. `BOREAL_SEED_ADMIN_PASSWORD`: senha dele (o usuário é criado se ainda não houver usuários; se já existir, é a senha atual). `BOREAL_SEED_RECEPCAO_PASSWORD` (opcional) cria o usuário `recepcao` com senha temporária (troca obrigatória no primeiro acesso). Nenhuma senha fica no repositório.
 - O seed **recusa** banco que já tenha quartos.
 
 ## O que ele cria
@@ -39,3 +39,7 @@ Passa pelos serviços reais (regras, auditoria e códigos sequenciais ficam cons
 ## Limitações
 
 Só roda uma vez por banco. O financeiro do Marco 5 (devoluções, contas a pagar, fechamento) será acrescentado ao seed quando existir.
+
+## Banco de demonstração à parte
+
+O seed recusa banco com quartos. Para não mexer no banco que você já usa, aponte `--db` para um arquivo novo (a chave do cofre é reaproveitada e o arquivo nasce cifrado), por exemplo `%APPDATA%\br.com.boreal.pms\demo\boreal.db`. O aplicativo só abre `%APPDATA%\br.com.boreal.pms\boreal.db`: para ver a demonstração nele, feche o app, guarde o banco atual e coloque o arquivo da demonstração no lugar.

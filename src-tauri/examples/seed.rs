@@ -6,7 +6,7 @@
 //!
 //! - `--db` é obrigatório: o seed nunca adivinha qual banco usar. O aplicativo grava o dele em
 //!   `%APPDATA%\br.com.boreal.pms\boreal.db` (Windows); a chave vem do cofre de credenciais do sistema.
-//! - `BOREAL_SEED_ADMIN_PASSWORD` é a senha do administrador `admin` (criado se ainda não houver usuários).
+//! - `--user <nome>` (padrão `admin`) é o administrador usado; `BOREAL_SEED_ADMIN_PASSWORD` é a senha dele (o usuário é criado se ainda não houver usuários).
 //! - `BOREAL_SEED_RECEPCAO_PASSWORD` (opcional) cria o usuário `recepcao` com essa senha temporária.
 
 use std::path::PathBuf;
@@ -19,9 +19,11 @@ use boreal_pms_lib::seed;
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     let mut db: Option<PathBuf> = None;
+    let mut user = String::from("admin");
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--db" => db = args.next().map(PathBuf::from),
+            "--user" => user = args.next().unwrap_or(user),
             other => {
                 eprintln!("Argumento desconhecido: {other}");
                 return ExitCode::from(2);
@@ -45,7 +47,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match seed::run(&app, &admin_password, recepcao_password.as_deref()) {
+    match seed::run(&app, &user, &admin_password, recepcao_password.as_deref()) {
         Ok(s) => {
             println!(
                 "Seed concluído: {} quartos, {} hóspedes, {} reservas, {} hospedagens, {} bloqueio(s) manual(is), {} ordens de manutenção.",

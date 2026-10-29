@@ -26,7 +26,7 @@ const GUESTS: [&str; 10] = [
     "Fábio Nunes", "Gabriela Rocha", "Heitor Campos", "Inês Duarte", "João Teixeira",
 ];
 
-pub fn run(app: &AppState, admin_password: &str, recepcao_password: Option<&str>) -> Result<SeedSummary, AppError> {
+pub fn run(app: &AppState, admin_username: &str, admin_password: &str, recepcao_password: Option<&str>) -> Result<SeedSummary, AppError> {
     use crate::models::catalog::{NewCategory, NewRoom, RoomQuery};
     use crate::models::guest::GuestInput;
     use crate::models::item::NewItem;
@@ -42,9 +42,9 @@ pub fn run(app: &AppState, admin_password: &str, recepcao_password: Option<&str>
     use crate::services::user_service::NewUserInput;
 
     if app.auth.needs_bootstrap()? {
-        app.auth.bootstrap_admin("admin", "Administrador", admin_password)?;
+        app.auth.bootstrap_admin(admin_username, "Administrador", admin_password)?;
     }
-    let t = app.auth.login("admin", admin_password)?.token;
+    let t = app.auth.login(admin_username, admin_password)?.token;
 
     let existing = app.catalog.list_rooms(
         &t,
@@ -270,7 +270,7 @@ mod tests {
     fn seed_builds_the_complete_scenario() {
         let (_dir, app) = fresh();
 
-        let summary = run(&app, ADMIN, Some("Recepcao-Demo-1")).unwrap();
+        let summary = run(&app, "admin", ADMIN, Some("Recepcao-Demo-1")).unwrap();
 
         assert_eq!(summary.rooms, 8);
         assert_eq!(summary.guests, 10);
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn seed_leaves_work_in_every_queue() {
         let (_dir, app) = fresh();
-        run(&app, ADMIN, None).unwrap();
+        run(&app, "admin", ADMIN, None).unwrap();
         let token = app.auth.login("admin", ADMIN).unwrap().token;
 
         assert_eq!(app.cleaning.queue(&token).unwrap().len(), 2);
@@ -309,9 +309,9 @@ mod tests {
     #[test]
     fn seed_refuses_a_database_that_already_has_rooms() {
         let (_dir, app) = fresh();
-        run(&app, ADMIN, None).unwrap();
+        run(&app, "admin", ADMIN, None).unwrap();
 
-        let again = run(&app, ADMIN, None);
+        let again = run(&app, "admin", ADMIN, None);
 
         assert!(matches!(again, Err(AppError::Validation(m)) if m.contains("já tem quartos")));
         let token = app.auth.login("admin", ADMIN).unwrap().token;
@@ -327,8 +327,18 @@ mod tests {
         let (_dir, app) = fresh();
         app.auth.bootstrap_admin("admin", "Administrador", ADMIN).unwrap();
 
-        assert_eq!(run(&app, ADMIN, None).unwrap().rooms, 8);
+        assert_eq!(run(&app, "admin", ADMIN, None).unwrap().rooms, 8);
         assert_eq!(SeedSummary::default().rooms, 0);
+    }
+
+    #[test]
+    fn seed_runs_with_a_custom_admin_username() {
+        let (_dir, app) = fresh();
+        app.auth.bootstrap_admin("matheus", "Matheus", "senha-dev-1").unwrap();
+
+        assert_eq!(run(&app, "matheus", "senha-dev-1", None).unwrap().rooms, 8);
+        let token = app.auth.login("matheus", "senha-dev-1").unwrap().token;
+        assert_eq!(app.room_status.list(&token).unwrap().len(), 8);
     }
 
     #[test]
@@ -336,7 +346,7 @@ mod tests {
         let (_dir, app) = fresh();
         app.auth.bootstrap_admin("admin", "Administrador", ADMIN).unwrap();
 
-        assert!(run(&app, "senha-errada-1", None).is_err());
+        assert!(run(&app, "admin", "senha-errada-1", None).is_err());
         let token = app.auth.login("admin", ADMIN).unwrap().token;
         assert!(app.room_status.list(&token).unwrap().is_empty());
     }
