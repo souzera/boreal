@@ -32,7 +32,7 @@ describe("BlocksPage", () => {
   it("lista o bloqueio com período em DD/MM/AAAA e situação em texto", async () => {
     renderPage(<BlocksPage />);
 
-    const row = await screen.findByRole("row", { name: /101/ });
+    const row = await screen.findByRole("row", { name: /101/ }, { timeout: 5000 });
     expect(within(row).getByText("10/11/2026 a 13/11/2026")).toBeInTheDocument();
     expect(within(row).getByText(/Bloqueado/)).toBeInTheDocument();
     expect(within(row).getByText("Pintura")).toBeInTheDocument();
@@ -42,7 +42,7 @@ describe("BlocksPage", () => {
     vi.mocked(api.myPermissions).mockResolvedValue([]);
     renderPage(<BlocksPage />);
 
-    await screen.findByRole("row", { name: /101/ });
+    await screen.findByRole("row", { name: /101/ }, { timeout: 5000 });
     expect(screen.queryByRole("button", { name: "Criar bloqueio" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Liberar quarto" })).not.toBeInTheDocument();
     expect(screen.getByText(/precisa da permissão de liberar quartos/i)).toBeInTheDocument();

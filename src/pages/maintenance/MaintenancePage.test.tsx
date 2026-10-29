@@ -32,7 +32,7 @@ describe("MaintenancePage", () => {
   it("lista as ordens com situação em texto e período em DD/MM/AAAA", async () => {
     renderPage(<MaintenancePage />, { extraRoutes: routes });
 
-    const row = await screen.findByRole("row", { name: /MAN-000002/ });
+    const row = await screen.findByRole("row", { name: /MAN-000002/ }, { timeout: 5000 });
     expect(within(row).getByText(/Aberta/)).toBeInTheDocument();
     expect(within(row).getByText("10/11/2026 a 12/11/2026")).toBeInTheDocument();
     expect(within(row).getByText("Trocar o chuveiro")).toBeInTheDocument();

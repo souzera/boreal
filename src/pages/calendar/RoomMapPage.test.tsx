@@ -30,6 +30,7 @@ function map(from: string, patch: Partial<api.RoomMap> = {}): api.RoomMap {
 }
 
 const routes = [
+  { path: "/limpeza", element: <p>Fila de limpeza</p> },
   { path: "/reservas/:id", element: <p>Detalhe da reserva</p> },
   { path: "/reservas/nova", element: <p>Nova reserva</p> },
 ];
@@ -109,5 +110,54 @@ describe("RoomMapPage", () => {
     renderPage(<RoomMapPage />, { path: "/mapa", extraRoutes: routes });
 
     expect(await screen.findByText("O mapa mostra de 1 a 31 dias por vez.")).toBeInTheDocument();
+  });
+
+  it("cada quarto mostra o estado em rótulo e símbolo, e a legenda lista os seis estados", async () => {
+    vi.mocked(api.roomMap).mockImplementation(async (_t, from) =>
+      map(from, {
+        rooms: [
+          { id: 1, code: "101", category_name: "Standard", active: true, state: "occupied", state_label: "Ocupado", free_at: null },
+          { id: 2, code: "102", category_name: "Standard", active: true, state: "awaiting_cleaning", state_label: "Aguardando limpeza", free_at: null },
+          { id: 3, code: "103", category_name: "Standard", active: true, state: "cleaning", state_label: "Em limpeza", free_at: null },
+          { id: 4, code: "104", category_name: "Standard", active: true, state: "clean_waiting_interval", state_label: "Limpo — aguardando intervalo", free_at: "2099-10-24T14:00" },
+          { id: 5, code: "105", category_name: "Standard", active: true, state: "available", state_label: "Disponível", free_at: null },
+          { id: 6, code: "106", category_name: "Standard", active: true, state: "blocked", state_label: "Em manutenção ou bloqueado", free_at: null },
+        ],
+        cells: [],
+      }),
+    );
+    await open();
+
+    const row104 = within(screen.getByRole("rowheader", { name: /104/ }));
+    expect(row104.getByText(/Limpo — aguardando intervalo/)).toBeInTheDocument();
+    expect(row104.getByText("livre às 14:00")).toBeInTheDocument();
+    expect(within(screen.getByRole("rowheader", { name: /106/ })).getByText(/Em manutenção ou bloqueado/)).toBeInTheDocument();
+    const legend = within(screen.getByRole("list", { name: "Legenda dos estados do quarto" }));
+    expect(legend.getAllByRole("listitem")).toHaveLength(6);
+    expect(legend.getByText(/Aguardando limpeza/)).toBeInTheDocument();
+  });
+
+  it("quarto aguardando limpeza leva à fila de limpeza", async () => {
+    vi.mocked(api.roomMap).mockImplementation(async (_t, from) =>
+      map(from, { rooms: [{ id: 2, code: "102", category_name: "Standard", active: true, state: "awaiting_cleaning", state_label: "Aguardando limpeza", free_at: null }], cells: [] }),
+    );
+    await open();
+
+    await userEvent.click(within(screen.getByRole("rowheader", { name: /102/ })).getByRole("link", { name: /Aguardando limpeza/ }));
+
+    expect(await screen.findByText("Fila de limpeza")).toBeInTheDocument();
+  });
+
+  it("a data do mapa fica no endereço: voltar da fila de limpeza não perde a agenda", async () => {
+    const { router } = await open();
+    await userEvent.click(screen.getByRole("button", { name: "Próximo período" }));
+    await waitFor(() => expect(router.state.location.search).toBe("?de=2099-10-31"));
+  });
+
+  it("abre na data do endereço quando ela vem na URL", async () => {
+    renderPage(<RoomMapPage />, { path: "/mapa", entry: "/mapa?de=2099-11-07", extraRoutes: routes });
+
+    await screen.findByRole("table");
+    expect(api.roomMap).toHaveBeenCalledWith("t", "2099-11-07", 7);
   });
 });
