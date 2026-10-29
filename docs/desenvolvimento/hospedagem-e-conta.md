@@ -25,7 +25,7 @@
 | M3-7 | Saída tardia: `late_checkout_fee_bp` da última diária não estornada, uma vez, quando `minutos de atraso > tolerância`. | Valor provisório. |
 | M3-8 | Tolerância por hospedagem exige `ChangeReservation`. | — |
 | M3-9 | Saldo ≠ 0 (devedor ou crédito) exige `CheckoutWithBalance`. | Devolução do crédito só existe no Marco 5. |
-| M3-10 | Check-in confere o intervalo de limpeza **previsto** (`find_conflicts`), não o estado "limpo" nem a hora real da saída anterior. | O Marco 4 acrescenta. |
+| M3-10 | Check-in confere o intervalo de limpeza **previsto** (`find_conflicts`). **Atualizado no Marco 4:** também recusa quarto com limpeza aberta ou intervalo pós-limpeza não cumprido ([Limpeza](limpeza-e-estado-do-quarto.md)). | Fechado. |
 
 ## Serviços (`StayService`)
 
@@ -54,7 +54,7 @@ Limites: lançamento ou recebimento de R$ 0,01 a R$ 1.000.000,00; preço de item
 
 - Não há devolução (`refunds` só entra no saldo); crédito do hóspede exige a exceção no check-out.
 - O sinal pago antes do check-in aparece como recebimento `prior_deposit`; `record_deposit` continua só para reservas abertas.
-- Ao concluir o check-out antes da data prevista, a reserva fica `completed` com as datas originais; o quarto passa a ser livre para a disponibilidade, sem aguardar o intervalo de limpeza (o Marco 4 cria a tarefa de limpeza).
+- Ao concluir o check-out antes da data prevista, a reserva fica `completed` com as datas originais; o quarto passa a ser livre para a disponibilidade, e o check-out cria a tarefa de limpeza (Marco 4): o quarto só recebe novo check-in depois da limpeza concluída e do intervalo.
 - Ocupante sem nome ou lista sem o titular é recusada.
 
 ## Testes

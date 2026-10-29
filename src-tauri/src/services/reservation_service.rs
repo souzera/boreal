@@ -2,6 +2,7 @@ use chrono::{NaiveDate, NaiveTime};
 use serde_json::json;
 
 use super::rate_service::quote_in;
+use super::room_rules;
 use super::Ctx;
 use crate::audit::{self, AuditEntry};
 use crate::auth::permissions::Permission;
@@ -16,7 +17,7 @@ use crate::models::reservation::{
     ReservationQuery, ReviewItem,
 };
 use crate::repositories::reservation_repo::{self, ChangedFields, NewRow};
-use crate::repositories::{catalog_repo, guest_repo, policy_repo, sequence_repo, settings_repo};
+use crate::repositories::{block_repo, catalog_repo, guest_repo, policy_repo, sequence_repo, settings_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -131,9 +132,10 @@ impl ReservationService {
             )));
         }
 
+        room_rules::ensure_no_blocks(&tx, room.id, check_in, Some(check_out), false)?;
         let existing = reservation_repo::blocking(&tx, room.id, check_in, check_out, self.ctx.local_now())?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
-        let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, settings.cleaning_interval_minutes, None);
+        let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, room_rules::cleaning_minutes(&tx, room.id, &settings)?, None);
         if !clashes.is_empty() {
             let infos: Vec<ConflictInfo> =
                 existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
@@ -260,12 +262,25 @@ impl ReservationService {
             in_time,
             check_out,
             out_time,
-            settings.cleaning_interval_minutes,
+            room_rules::cleaning_minutes(&conn, room_id, &settings)?,
             ignore_reservation_id,
         );
         let conflicts: Vec<ConflictInfo> =
             existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
-        Ok(AvailabilityResult { available: conflicts.is_empty(), conflicts })
+        let blocks = block_repo::overlapping(&conn, room_id, check_in, Some(check_out), false)?;
+        let not_ready = if check_in <= self.ctx.today() {
+            let offset = i64::from(self.ctx.utc.local_offset().local_minus_utc());
+            let minutes = room_rules::cleaning_minutes(&conn, room_id, &settings)?;
+            let code = catalog_repo::find_room(&conn, room_id)?.map(|r| r.code).unwrap_or_default();
+            match room_rules::ensure_room_clean(&conn, room_id, &code, minutes, self.ctx.local_now(), offset) {
+                Err(AppError::Validation(message)) => Some(message),
+                Err(other) => return Err(other),
+                Ok(()) => None,
+            }
+        } else {
+            None
+        };
+        Ok(AvailabilityResult { available: conflicts.is_empty() && blocks.is_empty(), conflicts, blocks, not_ready })
     }
 }
 
@@ -407,9 +422,14 @@ fn plan_change(
     )?;
     let existing = reservation_repo::blocking(conn, new_room.id, check_in, check_out, now)?;
     let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
-    let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, settings.cleaning_interval_minutes, Some(id));
+    let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, room_rules::cleaning_minutes(conn, new_room.id, &settings)?, Some(id));
     let conflicts: Vec<ConflictInfo> =
         existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
+
+    let blocks = block_repo::overlapping(conn, new_room.id, check_in, Some(check_out), false)?;
+    if !blocks.is_empty() {
+        problems.push(room_rules::blocks_message(&blocks));
+    }
 
     Ok(ChangePlan {
         old_room_code: old_room.code.clone(),
@@ -1103,6 +1123,24 @@ mod tests {
     }
 
     #[test]
+    fn room_interval_override_changes_the_same_day_turnover() {
+        let w = world();
+        w.h.reservations.create(&w.admin, booking(&w, "2026-10-25", "2026-10-27")).unwrap(); // sai 12:00
+        w.h.catalog.set_room_cleaning_interval(&w.admin, w.room, Some(180), 1).unwrap();
+
+        // Entrada 14:00 = 120 min depois da saída: cabe no padrão (60), não em 180.
+        assert!(matches!(
+            w.h.reservations.create(&w.admin, booking(&w, "2026-10-27", "2026-10-29")),
+            Err(AppError::Validation(_))
+        ));
+        let free = w.h.reservations.check_availability(&w.admin, w.room, "2026-10-27", "2026-10-29", None).unwrap();
+        assert!(!free.available);
+
+        w.h.catalog.set_room_cleaning_interval(&w.admin, w.room, None, 2).unwrap();
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-27", "2026-10-29")).is_ok());
+    }
+
+    #[test]
     fn missing_tariff_blocks_creation_and_lists_the_dates() {
         let w = world();
         let other_category = w
@@ -1281,6 +1319,90 @@ mod tests {
         assert_eq!(busy.conflicts[0].guest_name, "Ana Souza");
         assert!(free.available && free.conflicts.is_empty());
         assert!(itself.available);
+    }
+
+    // ---- bloqueios (Marco 4) ----
+
+    fn block(w: &World, from: &str, to: Option<&str>) -> i64 {
+        w.h.blocks
+            .create(
+                &w.admin,
+                crate::models::block::NewBlockInput {
+                    room_id: w.room,
+                    start_date: from.into(),
+                    end_date: to.map(String::from),
+                    reason: "Pintura".into(),
+                },
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn reservation_over_a_block_is_refused() {
+        let w = world();
+        block(&w, "2026-10-25", Some("2026-10-28"));
+
+        let result = w.h.reservations.create(&w.admin, booking(&w, "2026-10-24", "2026-10-26"));
+
+        match result {
+            Err(AppError::Validation(m)) => assert!(m.contains("bloqueado") && m.contains("Pintura"), "{m}"),
+            other => panic!("esperava recusa: {other:?}"),
+        }
+        assert_eq!(counts(&w).0, 0);
+    }
+
+    #[test]
+    fn reservation_ending_the_day_the_block_starts_is_allowed() {
+        let w = world();
+        block(&w, "2026-10-25", Some("2026-10-28"));
+
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-23", "2026-10-25")).is_ok());
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-28", "2026-10-29")).is_ok());
+    }
+
+    #[test]
+    fn open_ended_block_blocks_every_future_date() {
+        let w = world();
+        block(&w, "2026-11-01", None);
+
+        let result = w.h.reservations.create(&w.admin, booking(&w, "2027-06-01", "2027-06-03"));
+
+        assert!(matches!(result, Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn released_block_stops_refusing_reservations() {
+        let w = world();
+        let id = block(&w, "2026-10-25", Some("2026-10-28"));
+        w.h.blocks.release(&w.admin, id, "Obra terminou".into(), 1).unwrap();
+
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-25", "2026-10-27")).is_ok());
+    }
+
+    #[test]
+    fn change_into_a_blocked_period_is_unfeasible() {
+        let w = world();
+        let id = reservation(&w, "2026-10-22", "2026-10-24");
+        block(&w, "2026-10-26", Some("2026-10-29"));
+
+        let preview = w.h.reservations.preview_change(&w.admin, id, change(None, Some("2026-10-27"), Some("2026-10-28"))).unwrap();
+
+        assert!(!preview.feasible);
+        assert!(preview.problems.iter().any(|p| p.contains("bloqueado")), "{:?}", preview.problems);
+    }
+
+    #[test]
+    fn check_availability_reports_the_block() {
+        let w = world();
+        block(&w, "2026-10-25", Some("2026-10-28"));
+
+        let busy = w.h.reservations.check_availability(&w.admin, w.room, "2026-10-27", "2026-10-30", None).unwrap();
+        let free = w.h.reservations.check_availability(&w.admin, w.room, "2026-10-28", "2026-10-30", None).unwrap();
+
+        assert!(!busy.available);
+        assert_eq!(busy.blocks.len(), 1);
+        assert_eq!(busy.blocks[0].reason, "Pintura");
+        assert!(free.available && free.blocks.is_empty());
     }
 
     // ---- alteração de datas ou quarto ----

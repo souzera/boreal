@@ -1,4 +1,8 @@
 pub mod app;
+pub mod blocks;
+pub mod cleaning;
+pub mod maintenance;
+pub mod room_status;
 pub mod auth;
 pub mod catalog;
 pub mod guests;

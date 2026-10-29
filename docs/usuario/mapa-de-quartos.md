@@ -17,5 +17,6 @@ Uma grade com os **quartos nas linhas** e os **dias nas colunas**, para ver de r
 ## O que aparece
 
 - Reservas pendentes, confirmadas, em hospedagem e concluídas. **Canceladas e no-show não aparecem**, porque liberam o quarto.
+- Cada quarto mostra o seu **estado** (Ocupado, Aguardando limpeza, Em limpeza, Limpo — aguardando intervalo, Disponível, Em manutenção ou bloqueado) com cor, símbolo e nome; há uma legenda no alto. Um quarto aguardando limpeza leva à fila de **Limpeza**. O período mostrado fica no endereço da tela, então você volta do mesmo ponto.
 - Quartos desativados aparecem esmaecidos, marcados com **(inativo)**, e não oferecem dias livres.
 - No dia da saída, a reserva que sai aparece com "saída" e o dia continua disponível para uma nova chegada.

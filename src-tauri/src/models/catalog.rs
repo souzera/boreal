@@ -37,6 +37,8 @@ pub struct Room {
     pub description: String,
     pub notes: String,
     pub active: bool,
+    /// Intervalo mínimo de limpeza próprio do quarto; ausente usa o padrão das configurações.
+    pub cleaning_interval_minutes: Option<i64>,
     pub version: i64,
 }
 

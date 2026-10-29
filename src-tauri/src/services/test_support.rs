@@ -5,7 +5,11 @@ use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
 use super::auth_service::AuthService;
+use super::block_service::BlockService;
+use super::maintenance_service::MaintenanceService;
+use super::room_status_service::RoomStatusService;
 use super::catalog_service::CatalogService;
+use super::cleaning_service::CleaningService;
 use super::guest_service::GuestService;
 use super::item_service::ItemService;
 use super::rate_service::RateService;
@@ -69,6 +73,10 @@ pub struct Harness {
     pub reservations: ReservationService,
     pub room_map: RoomMapService,
     pub stays: StayService,
+    pub cleaning: CleaningService,
+    pub blocks: BlockService,
+    pub maintenance: MaintenanceService,
+    pub room_status: RoomStatusService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -104,7 +112,11 @@ pub fn harness() -> Harness {
         policy: PolicyService::new(ctx.clone()),
         reservations: ReservationService::new(ctx.clone()),
         room_map: RoomMapService::new(ctx.clone()),
-        stays: StayService::new(ctx),
+        stays: StayService::new(ctx.clone()),
+        cleaning: CleaningService::new(ctx.clone()),
+        blocks: BlockService::new(ctx.clone()),
+        maintenance: MaintenanceService::new(ctx.clone()),
+        room_status: RoomStatusService::new(ctx),
         utc,
         clock,
         db,
@@ -229,4 +241,27 @@ pub fn book(h: &Harness, admin: &str, seed: &Seed, from: &str, to: &str) -> i64 
         )
         .unwrap()
         .id
+}
+
+/// Hospedagem em 21→23/10 com a conta quitada e o check-out feito no horário previsto (23/10 12:00 locais).
+/// O relógio fica em 23/10 15:00Z. Devolve (reserva, hospedagem).
+pub fn checked_out_stay(h: &Harness, admin: &str, seed: &Seed) -> (i64, i64) {
+    use crate::models::stay::{CheckInInput, CheckoutInput, LateFeeChoice, OccupantInput, PaymentInput};
+    let set = |rfc3339: &str| h.utc.set(DateTime::parse_from_rfc3339(rfc3339).unwrap().with_timezone(&Utc));
+    let reservation = book(h, admin, seed, "2026-10-21", "2026-10-23");
+    set("2026-10-21T17:00:00Z");
+    let version = h.reservations.get(admin, reservation).unwrap().reservation.version;
+    let holder = OccupantInput { full_name: "Ana Souza".into(), guest_id: Some(seed.guest_id), document: String::new() };
+    let stay = h
+        .stays
+        .check_in(admin, CheckInInput { reservation_id: reservation, expected_version: version, occupants: vec![holder], exceed_capacity: false })
+        .unwrap();
+    let balance = h.stays.get(admin, stay).unwrap().account.balance_cents;
+    h.stays.record_payment(admin, stay, PaymentInput { amount_cents: balance, method: "cash".into(), note: String::new() }).unwrap();
+    set("2026-10-23T15:00:00Z");
+    let stay_version = h.stays.get(admin, stay).unwrap().stay.version;
+    h.stays
+        .checkout(admin, CheckoutInput { stay_id: stay, expected_version: stay_version, late_fee: LateFeeChoice::NotApplicable, balance_exception: None })
+        .unwrap();
+    (reservation, stay)
 }

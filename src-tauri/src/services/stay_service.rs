@@ -3,6 +3,7 @@ use rusqlite::{Connection, Transaction};
 use serde_json::json;
 
 use super::rate_service::quote_in;
+use super::room_rules;
 use super::reservation_service::{br, conflict_message, parse_date, parse_time, resolve_times};
 use super::Ctx;
 use crate::audit::{self, AuditEntry};
@@ -22,7 +23,7 @@ use crate::models::stay::{
 };
 use crate::repositories::stay_repo::{self, NewCharge};
 use crate::repositories::reservation_repo::NewRow;
-use crate::repositories::{catalog_repo, guest_repo, item_repo, reservation_repo, sequence_repo, settings_repo};
+use crate::repositories::{catalog_repo, cleaning_repo, guest_repo, item_repo, reservation_repo, sequence_repo, settings_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -226,6 +227,9 @@ impl StayService {
                 "O horário de saída previsto desta reserva já passou. Altere as datas da reserva antes de fazer o check-in.",
             ));
         }
+        let offset = i64::from(self.ctx.utc.local_offset().local_minus_utc());
+        room_rules::ensure_room_clean(&tx, room.id, &room.code, room_rules::cleaning_minutes(&tx, room.id, &settings_repo::load(&tx)?)?, now, offset)?;
+        room_rules::ensure_no_blocks(&tx, room.id, booked_start.min(now).date(), Some(check_out), true)?;
         let early = now < booked_start;
         if early {
             require(&actor, Permission::EarlyCheckIn)?;
@@ -242,7 +246,7 @@ impl StayService {
             start.time(),
             check_out,
             out_time,
-            settings.cleaning_interval_minutes,
+            room_rules::cleaning_minutes(&tx, room.id, &settings)?,
             Some(reservation.id),
         );
         if !clashes.is_empty() {
@@ -332,9 +336,12 @@ impl StayService {
             )));
         }
 
+        let offset = i64::from(self.ctx.utc.local_offset().local_minus_utc());
+        room_rules::ensure_room_clean(&tx, room.id, &room.code, room_rules::cleaning_minutes(&tx, room.id, &settings)?, now, offset)?;
+        room_rules::ensure_no_blocks(&tx, room.id, today, Some(check_out), false)?;
         let existing = reservation_repo::blocking(&tx, room.id, today, check_out, now)?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
-        let clashes = find_conflicts(&bookings, today, in_time, check_out, out_time, settings.cleaning_interval_minutes, None);
+        let clashes = find_conflicts(&bookings, today, in_time, check_out, out_time, room_rules::cleaning_minutes(&tx, room.id, &settings)?, None);
         if !clashes.is_empty() {
             let infos: Vec<ConflictInfo> =
                 existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
@@ -666,7 +673,7 @@ impl StayService {
                 .filter(|(start, _)| *start >= expected_out)
                 .min_by_key(|(start, _)| *start);
             if let Some((next_start, info)) = next {
-                risk = late_checkout::departure_risk(expected_out, now, settings.cleaning_interval_minutes, next_start).map(|r| {
+                risk = late_checkout::departure_risk(expected_out, now, room_rules::cleaning_minutes(conn, stay.room_id, settings)?, next_start).map(|r| {
                     DepartureRiskView {
                         next_reservation_id: info.reservation_id,
                         next_code: info.code,
@@ -782,6 +789,8 @@ impl StayService {
             at,
         )?;
         reservation_repo::set_status(&tx, reservation.id, "completed", reservation.version, at)?;
+        // O quarto fica aguardando limpeza desde a hora efetiva da saída (spec §7).
+        cleaning_repo::insert_awaiting(&tx, stay.room_id, stay.id, at, at)?;
 
         let before = json!({ "status": "in_house", "balance_cents": before_balance });
         let after = json!({
@@ -1780,6 +1789,145 @@ mod tests {
         let account = w.h.stays.get(&w.admin, stay).unwrap().account;
         assert_eq!(account.balance_cents, preview.balance_with_late_fee_cents);
         assert_eq!(account.charges.iter().find(|c| c.kind == "late_fee").unwrap().amount_cents, preview.late.fee_cents);
+    }
+
+    // ---- Marco 4: portão "quarto limpo" ----
+
+    /// Hóspede sai às 12:00 de 23/10 com a conta quitada; devolve a tarefa de limpeza e uma reserva seguinte 23→24/10.
+    fn checked_out_with_next(w: &World) -> (i64, i64) {
+        let (_, stay) = stay_with_balance(w);
+        pay(w, stay, 24_000);
+        set_now(w, OUT);
+        w.h.stays.checkout(&w.admin, checkout_input(w, stay, LateFeeChoice::NotApplicable, None)).unwrap();
+        let next = book(&w.h, &w.admin, &w.seed, "2026-10-23", "2026-10-24");
+        let task: i64 = w.h.db.lock().unwrap().query_row("SELECT id FROM cleaning_tasks", [], |r| r.get(0)).unwrap();
+        (next, task)
+    }
+
+    fn clean_message(result: Result<i64, AppError>) -> String {
+        match result {
+            Err(AppError::Validation(msg)) => msg,
+            other => panic!("esperava recusa por limpeza: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_in_is_refused_while_cleaning_is_awaiting() {
+        let w = world();
+        let (next, _) = checked_out_with_next(&w);
+        set_now(&w, "2026-10-23T17:00:00Z");
+
+        let msg = clean_message(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])));
+
+        assert!(msg.contains("aguardando limpeza"), "{msg}");
+        assert_eq!(count(&w, "stays"), 1);
+    }
+
+    #[test]
+    fn check_in_is_refused_while_cleaning_is_in_progress() {
+        let w = world();
+        let (next, task) = checked_out_with_next(&w);
+        w.h.cleaning.start(&w.admin, task, 1).unwrap();
+        set_now(&w, "2026-10-23T17:00:00Z");
+
+        let msg = clean_message(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])));
+
+        assert!(msg.contains("em limpeza"), "{msg}");
+    }
+
+    #[test]
+    fn check_in_waits_for_the_interval_after_cleaning_is_done() {
+        let w = world();
+        let (next, task) = checked_out_with_next(&w);
+        w.h.cleaning.start(&w.admin, task, 1).unwrap();
+        set_now(&w, "2026-10-23T17:00:00Z"); // 14:00 locais
+        w.h.cleaning.complete(&w.admin, task, 2).unwrap();
+
+        set_now(&w, "2026-10-23T17:30:00Z");
+        let msg = clean_message(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])));
+        assert!(msg.contains("15:00") && msg.contains("23/10/2026"), "{msg}");
+        assert_eq!(count(&w, "stays"), 1);
+
+        set_now(&w, "2026-10-23T18:00:00Z"); // 15:00 locais = fim do intervalo
+        assert!(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])).is_ok());
+    }
+
+    #[test]
+    fn availability_reports_a_dirty_room_for_today_without_blocking_future_dates() {
+        let w = world();
+        let (_, task) = checked_out_with_next(&w);
+        set_now(&w, "2026-10-23T17:00:00Z");
+
+        let today = w.h.reservations.check_availability(&w.admin, w.seed.room_id, "2026-10-23", "2026-10-24", None).unwrap();
+        assert!(today.not_ready.as_deref().is_some_and(|m| m.contains("aguardando limpeza")), "{:?}", today.not_ready);
+        let later = w.h.reservations.check_availability(&w.admin, w.seed.room_id, "2026-10-25", "2026-10-26", None).unwrap();
+        assert!(later.not_ready.is_none());
+
+        w.h.cleaning.start(&w.admin, task, 1).unwrap();
+        set_now(&w, "2026-10-23T16:00:00Z");
+        w.h.cleaning.complete(&w.admin, task, 2).unwrap();
+        set_now(&w, "2026-10-23T18:00:00Z");
+        let clean = w.h.reservations.check_availability(&w.admin, w.seed.room_id, "2026-10-23", "2026-10-24", None).unwrap();
+        assert!(clean.not_ready.is_none());
+    }
+
+    #[test]
+    fn walk_in_is_refused_in_a_dirty_room() {
+        let w = world();
+        checked_out_with_next(&w);
+        set_now(&w, "2026-10-23T17:00:00Z");
+
+        let msg = clean_message(w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-24", vec![holder(&w)])));
+
+        assert!(msg.contains("aguardando limpeza"), "{msg}");
+    }
+
+    #[test]
+    fn room_interval_overrides_the_default_for_the_clean_gate() {
+        let w = world();
+        let (next, task) = checked_out_with_next(&w);
+        w.h.catalog.set_room_cleaning_interval(&w.admin, w.seed.room_id, Some(0), 1).unwrap();
+        w.h.cleaning.start(&w.admin, task, 1).unwrap();
+        set_now(&w, "2026-10-23T17:00:00Z");
+        w.h.cleaning.complete(&w.admin, task, 2).unwrap();
+
+        assert!(w.h.stays.check_in(&w.admin, input(&w, next, vec![holder(&w)])).is_ok());
+    }
+
+    fn block_from_sql(w: &World, status: &str, from: &str, to: Option<&str>) {
+        w.h.db
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO room_blocks (room_id, kind, status, start_date, end_date, reason, created_by, created_at, updated_at)
+                 VALUES (?1, 'maintenance', ?2, ?3, ?4, 'Troca do chuveiro', 1, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z')",
+                rusqlite::params![w.seed.room_id, status, from, to],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn check_in_and_walk_in_respect_an_effective_block_starting_today() {
+        let w = world();
+        let reservation = book(&w.h, &w.admin, &w.seed, "2026-10-21", "2026-10-23");
+        block_from_sql(&w, "active", "2026-10-21", Some("2026-10-22"));
+        set_now(&w, "2026-10-21T17:00:00Z");
+
+        let msg = clean_message(w.h.stays.check_in(&w.admin, input(&w, reservation, vec![holder(&w)])));
+        assert!(msg.contains("bloqueado") && msg.contains("Troca do chuveiro"), "{msg}");
+        let msg = clean_message(w.h.stays.walk_in(&w.admin, walk_in_input(&w, "2026-10-22", vec![holder(&w)])));
+        assert!(msg.contains("bloqueado"), "{msg}");
+        assert_eq!(count(&w, "stays"), 0);
+    }
+
+    #[test]
+    fn a_preventive_block_does_not_stop_the_check_in_of_an_existing_reservation() {
+        let w = world();
+        let reservation = book(&w.h, &w.admin, &w.seed, "2026-10-21", "2026-10-23");
+        block_from_sql(&w, "preventive", "2026-10-21", Some("2026-10-23"));
+        set_now(&w, "2026-10-21T17:00:00Z");
+
+        assert!(w.h.stays.check_in(&w.admin, input(&w, reservation, vec![holder(&w)])).is_ok());
     }
 
     // ---- correções da revisão final ----

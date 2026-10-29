@@ -1,10 +1,14 @@
+pub mod block;
 pub mod catalog;
+pub mod cleaning;
 pub mod guest;
 pub mod item;
+pub mod maintenance;
 pub mod page;
 pub mod pousada;
 pub mod rate;
 pub mod reservation;
+pub mod room_status;
 pub mod room_map;
 pub mod settings;
 pub mod stay;

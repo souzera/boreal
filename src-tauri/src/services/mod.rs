@@ -1,12 +1,17 @@
 pub mod auth_service;
+pub mod block_service;
 pub mod catalog_service;
+pub mod cleaning_service;
 pub mod guest_service;
 pub mod item_service;
+pub mod maintenance_service;
 pub mod policy_service;
 pub mod pousada_service;
 pub mod rate_service;
 pub mod reservation_service;
 pub mod room_map_service;
+pub mod room_status_service;
+pub(crate) mod room_rules;
 pub mod settings_service;
 pub mod stay_service;
 pub mod user_service;

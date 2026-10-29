@@ -6,6 +6,10 @@ pub struct RoomRow {
     pub code: String,
     pub category_name: String,
     pub active: bool,
+    /// Estado operacional calculado; ausente para quarto desativado.
+    pub state: Option<String>,
+    pub state_label: Option<String>,
+    pub free_at: Option<String>,
 }
 
 /// Uma reserva ocupando um quarto num dia da grade.

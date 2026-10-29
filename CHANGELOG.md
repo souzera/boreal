@@ -30,9 +30,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - **Check-out** com demonstrativo (diárias, consumos, descontos, recebimentos, devoluções e saldo); com saldo em aberto ou crédito do hóspede só com permissão, justificativa e autorizador registrados — nada é liquidado nem apagado sozinho.
 - **Saída tardia**: tolerância por hospedagem, cobrança prevista provisória (50% da última diária, configurável) que a recepção cobra ou dispensa (com permissão e justificativa), sem criar diária; aviso de **risco para a próxima reserva** quando o atraso encosta na limpeza.
 - Novas permissões concedíveis à recepção: **Fazer check-in antecipado**, **Concluir check-out com saldo pendente** e **Dispensar cobrança de saída tardia**.
+- **Limpeza dos quartos**: ao concluir o check-out, o quarto fica **aguardando limpeza** e entra numa fila ordenada por urgência (pela próxima chegada, com ajuste manual justificado). Iniciar e concluir a limpeza registram quem e quando. O quarto só volta a receber hóspedes depois da limpeza concluída e do intervalo mínimo, que agora pode ser definido por quarto.
+- **Estados do quarto no mapa**: Ocupado, Aguardando limpeza, Em limpeza, Limpo — aguardando intervalo, Disponível e Em manutenção ou bloqueado, sempre com cor, símbolo e nome, e legenda. A data do mapa fica no endereço, então abrir a fila de limpeza e voltar não perde a agenda. O Dashboard mostra quantos quartos aguardam limpeza.
+- **Bloqueios de quarto** por período ou até a liberação manual, que impedem reservas, alterações, check-in e hospedagem sem reserva no período; **liberar o quarto** exige a permissão e uma justificativa.
+- **Ordens de manutenção** (aberta, em andamento, aguardando resolução, concluída) com **reservas afetadas** listadas e bloqueio preventivo até serem resolvidas. Concluir a ordem não libera o quarto: a liberação continua dependendo de quem tem autorização.
 
 ### Changed
 - Reservas passam a ter as situações **Hospedado** e **Concluída**; a lista de reservas identifica hospedagens **sem reserva**.
+- O **check-in** e a hospedagem sem reserva agora exigem o quarto **limpo**: recusam quarto aguardando limpeza, em limpeza ou antes do intervalo mínimo depois da limpeza.
 - A tela de **Configurações** ganhou a cobrança de saída tardia (valor provisório).
 - A senha mínima passou a ter 6 caracteres.
 - Mensagens de erro do banco de dados agora aparecem em linguagem simples, sem texto técnico.

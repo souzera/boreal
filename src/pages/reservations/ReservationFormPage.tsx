@@ -1,3 +1,4 @@
+import { BlockItems } from "@/components/BlockItems";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -222,13 +223,14 @@ export default function ReservationFormPage() {
               <p className="text-sm">Quarto disponível no período.</p>
             ) : (
               <div className="text-sm text-destructive">
-                <p>O quarto não está disponível. Reservas que bloqueiam o período:</p>
+                <p>O quarto não está disponível. O que impede o período:</p>
                 <ul className="list-disc pl-5">
                   {availability.conflicts.map((c) => (
                     <li key={c.reservation_id}>
                       {conflictText(c)} · {formatDate(c.check_in_date)} a {formatDate(c.check_out_date)} · {statusLabel[c.status]}
                     </li>
                   ))}
+                  <BlockItems blocks={availability.blocks} />
                 </ul>
               </div>
             )}

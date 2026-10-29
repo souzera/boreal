@@ -194,6 +194,7 @@ export interface Room {
   description: string;
   notes: string;
   active: boolean;
+  cleaning_interval_minutes: number | null;
   version: number;
 }
 
@@ -492,6 +493,9 @@ export interface ConflictInfo {
 export interface AvailabilityResult {
   available: boolean;
   conflicts: ConflictInfo[];
+  blocks: RoomBlock[];
+  /** Motivo de o quarto não estar pronto para hospedar hoje (limpeza pendente ou intervalo). */
+  not_ready: string | null;
 }
 
 export interface ChangeRequest {
@@ -612,6 +616,9 @@ export interface RoomMapRoom {
   code: string;
   category_name: string;
   active: boolean;
+  state: RoomStateKey | null;
+  state_label: string | null;
+  free_at: string | null;
 }
 
 export interface RoomMapCell {
@@ -826,3 +833,174 @@ export const previewStayCheckout = (token: string, stayId: number) =>
 export const checkoutStay = (token: string, input: CheckoutInput) => call<null>("checkout_stay", { token, input });
 export const setStayLateTolerance = (token: string, stayId: number, minutes: number | null, expectedVersion: number) =>
   call<null>("set_stay_late_tolerance", { token, stayId, minutes, expectedVersion });
+
+// ---- Limpeza, bloqueios e manutenção ----
+
+export type RoomStateKey =
+  | "occupied"
+  | "awaiting_cleaning"
+  | "cleaning"
+  | "clean_waiting_interval"
+  | "available"
+  | "blocked";
+export type CleaningPriority = "urgent" | "high" | "normal" | "low";
+export type CleaningStatus = "awaiting" | "in_progress" | "done";
+
+export interface RoomStatus {
+  room_id: number;
+  code: string;
+  category_name: string;
+  state: RoomStateKey;
+  label_pt: string;
+  free_at: string | null;
+  cleaning_task_id: number | null;
+}
+
+export interface CleaningTask {
+  id: number;
+  room_id: number;
+  room_code: string;
+  stay_id: number | null;
+  status: CleaningStatus;
+  ready_since: string;
+  priority_override: CleaningPriority | null;
+  priority_justification: string | null;
+  started_at: string | null;
+  started_by: number | null;
+  completed_at: string | null;
+  completed_by: number | null;
+  version: number;
+}
+
+export interface CleaningItem {
+  task: CleaningTask;
+  priority: CleaningPriority;
+  suggested_priority: CleaningPriority;
+  next_arrival: string | null;
+}
+
+export const cleaningQueue = (token: string) => call<CleaningItem[]>("cleaning_queue", { token });
+export const startCleaning = (token: string, taskId: number, expectedVersion: number) =>
+  call<null>("start_cleaning", { token, taskId, expectedVersion });
+export const completeCleaning = (token: string, taskId: number, expectedVersion: number) =>
+  call<null>("complete_cleaning", { token, taskId, expectedVersion });
+export const setCleaningPriority = (
+  token: string,
+  taskId: number,
+  priority: CleaningPriority | null,
+  justification: string,
+  expectedVersion: number,
+) => call<null>("set_cleaning_priority", { token, taskId, priority, justification, expectedVersion });
+export const listRoomStatus = (token: string) => call<RoomStatus[]>("list_room_status", { token });
+export const setRoomCleaningInterval = (
+  token: string,
+  roomId: number,
+  minutes: number | null,
+  expectedVersion: number,
+) => call<null>("set_room_cleaning_interval", { token, roomId, minutes, expectedVersion });
+
+export type BlockKind = "manual" | "preventive" | "maintenance";
+export type BlockStatus = "preventive" | "active" | "awaiting_release" | "released";
+
+export interface RoomBlock {
+  id: number;
+  room_id: number;
+  room_code: string;
+  kind: BlockKind;
+  status: BlockStatus;
+  start_date: string;
+  end_date: string | null;
+  reason: string;
+  maintenance_order_id: number | null;
+  released_at: string | null;
+  release_justification: string | null;
+  version: number;
+}
+
+export interface NewBlockInput {
+  room_id: number;
+  start_date: string;
+  end_date: string | null;
+  reason: string;
+}
+
+export const listBlocks = (token: string, includeReleased: boolean) =>
+  call<RoomBlock[]>("list_blocks", { token, includeReleased });
+export const createBlock = (token: string, input: NewBlockInput) => call<number>("create_block", { token, input });
+export const releaseBlock = (token: string, blockId: number, justification: string, expectedVersion: number) =>
+  call<null>("release_block", { token, blockId, justification, expectedVersion });
+
+export type MaintenanceStatus = "open" | "in_progress" | "awaiting_resolution" | "completed";
+
+export interface MaintenanceOrder {
+  id: number;
+  code: string;
+  room_id: number;
+  room_code: string;
+  description: string;
+  priority: CleaningPriority;
+  status: MaintenanceStatus;
+  planned_start: string;
+  planned_end: string | null;
+  actual_start: string | null;
+  actual_end: string | null;
+  responsible: string;
+  notes: string;
+  version: number;
+}
+
+export interface MaintenanceConflict {
+  id: number;
+  order_id: number;
+  reservation_id: number;
+  reservation_code: string;
+  guest_name: string;
+  check_in_date: string;
+  check_out_date: string;
+  reservation_status: ReservationStatus;
+  status: "open" | "resolved";
+  resolution_note: string | null;
+}
+
+export interface NewOrderInput {
+  room_id: number;
+  description: string;
+  priority: CleaningPriority;
+  planned_start: string;
+  planned_end: string | null;
+  responsible: string;
+  notes: string;
+}
+
+export interface OpenedOrder {
+  id: number;
+  code: string;
+  conflicts: ConflictInfo[];
+}
+
+export interface ApplyResult {
+  still_open: MaintenanceConflict[];
+  effective: boolean;
+}
+
+export interface OrderDetail {
+  order: MaintenanceOrder;
+  conflicts: MaintenanceConflict[];
+  block: RoomBlock | null;
+}
+
+export const listMaintenance = (token: string, onlyOpen: boolean) =>
+  call<MaintenanceOrder[]>("list_maintenance", { token, onlyOpen });
+export const getMaintenance = (token: string, id: number) => call<OrderDetail>("get_maintenance", { token, id });
+export const openMaintenance = (token: string, input: NewOrderInput) =>
+  call<OpenedOrder>("open_maintenance", { token, input });
+export const applyMaintenanceUnavailability = (token: string, orderId: number, expectedVersion: number) =>
+  call<ApplyResult>("apply_maintenance_unavailability", { token, orderId, expectedVersion });
+export const resolveMaintenanceConflict = (token: string, conflictId: number, note: string) =>
+  call<null>("resolve_maintenance_conflict", { token, conflictId, note });
+export const startMaintenance = (token: string, orderId: number, expectedVersion: number) =>
+  call<null>("start_maintenance", { token, orderId, expectedVersion });
+export const requestMaintenanceResolution = (token: string, orderId: number, expectedVersion: number) =>
+  call<null>("request_maintenance_resolution", { token, orderId, expectedVersion });
+export const completeMaintenance = (token: string, orderId: number, expectedVersion: number) =>
+  call<null>("complete_maintenance", { token, orderId, expectedVersion });

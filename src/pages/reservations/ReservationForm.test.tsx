@@ -26,7 +26,7 @@ const ana: api.Guest = {
 };
 const room101: api.Room = {
   id: 1, code: "101", category_id: 1, category_name: "Standard", max_capacity: 2, description: "", notes: "",
-  active: true, version: 1,
+  active: true, cleaning_interval_minutes: null, version: 1,
 };
 const settings: api.AppSettings = {
   max_failed_attempts: 5, lockout_minutes: 5, idle_lock_minutes: 10, default_check_in_time: "14:00",
@@ -53,7 +53,7 @@ beforeEach(() => {
   signIn();
   vi.mocked(api.listGuests).mockReset().mockResolvedValue({ items: [ana], total: 1, page: 1, page_size: 8 });
   vi.mocked(api.listRooms).mockResolvedValue({ items: [room101], total: 1, page: 1, page_size: 100 });
-  vi.mocked(api.checkRoomAvailability).mockReset().mockResolvedValue({ available: true, conflicts: [] });
+  vi.mocked(api.checkRoomAvailability).mockReset().mockResolvedValue({ available: true, conflicts: [], blocks: [], not_ready: null });
   vi.mocked(api.quoteStay).mockReset().mockResolvedValue(quote);
   vi.mocked(api.getSettings).mockResolvedValue({ settings, version: 1 });
   vi.mocked(api.createReservation).mockReset().mockResolvedValue({
@@ -112,12 +112,31 @@ describe("ReservationFormPage", () => {
       conflicts: [
         { reservation_id: 4, code: "RES-000004", guest_name: "Bruno Lima", check_in_date: "2099-10-26", check_out_date: "2099-10-29", status: "confirmed" },
       ],
+      blocks: [],
+      not_ready: null,
     });
     open();
     await fill();
 
     expect(await screen.findByText(/RES-000004/)).toBeInTheDocument();
     expect(screen.getByText(/Bruno Lima/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Criar reserva" })).toBeDisabled();
+  });
+
+  it("bloqueio: mostra o motivo e o período em vez de uma lista vazia e impede criar", async () => {
+    vi.mocked(api.checkRoomAvailability).mockResolvedValue({
+      available: false,
+      conflicts: [],
+      blocks: [
+        { id: 4, room_id: 1, room_code: "101", kind: "manual", status: "active", start_date: "2099-10-26", end_date: "2099-10-29", reason: "Pintura", maintenance_order_id: null, released_at: null, release_justification: null, version: 1 },
+      ],
+      not_ready: null,
+    });
+    open();
+    await fill();
+
+    expect(await screen.findByText(/Pintura/)).toBeInTheDocument();
+    expect(screen.getByText(/26\/10\/2099 a 29\/10\/2099/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Criar reserva" })).toBeDisabled();
   });
 

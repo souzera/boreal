@@ -24,7 +24,7 @@
 - **Antes do horário previsto de entrada** o sistema avisa, mesmo que o quarto esteja livre. Só quem tem a permissão **Fazer check-in antecipado** consegue confirmar. O quarto precisa estar livre desde agora.
 - **Mais pessoas que a capacidade do quarto** exige a permissão **Exceder a capacidade do quarto** e a marcação "Autorizar exceder a capacidade".
 - Reservas canceladas, com no-show, já hospedadas ou concluídas não aceitam check-in.
-- O sistema ainda **não confere se o quarto está limpo** nem usa a hora real da saída anterior (isso chega com o módulo de limpeza); ele confere o intervalo mínimo entre as saídas e entradas previstas.
+- O quarto precisa estar **limpo**: com limpeza aguardando ou em andamento, ou antes do intervalo mínimo depois da limpeza concluída, o check-in é recusado. Veja [Limpeza dos quartos](limpeza.md).
 - Se o hóspede anterior ainda está no quarto depois do horário de saída, o quarto **continua ocupado** para novos check-ins, hospedagens sem reserva e reservas que comecem antes de ele sair.
 - Se o horário de saída previsto da reserva já passou, o check-in é recusado: altere as datas da reserva antes.
 
