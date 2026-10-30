@@ -49,6 +49,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 10,
         sql: include_str!("sql/0010_cleaning_maintenance.sql"),
     },
+    Migration {
+        version: 11,
+        sql: include_str!("sql/0011_finance.sql"),
+    },
 ];
 
 /// Versão atual do esquema (0 se nenhuma migração foi aplicada).
@@ -248,7 +252,7 @@ mod tests {
 
         let next: i64 = conn.query_row("SELECT next_value FROM sequences WHERE name='maintenance'", [], |r| r.get(0)).unwrap();
         assert_eq!(next, 1);
-        assert_eq!(super::current_version(&conn).unwrap(), 10);
+        assert_eq!(super::current_version(&conn).unwrap(), 11);
     }
 
     /// Usuário, hóspede, categoria, quarto, reserva e hospedagem mínimos para exercitar as restrições.
@@ -292,11 +296,119 @@ mod tests {
             assert_eq!(n, 1, "tabela {table} ausente");
         }
         let latest: i64 = conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).unwrap();
-        assert_eq!(latest, 10);
+        assert_eq!(latest, 11);
         let fee: String = conn
             .query_row("SELECT value FROM settings WHERE key = 'late_checkout_fee_bp'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(fee, "5000");
+    }
+
+    #[test]
+    fn migration_0011_creates_finance_tables() {
+        let conn = migrated();
+        for table in [
+            "payments", "payment_components", "refunds", "refund_components", "expense_categories", "payables",
+            "payable_payments", "cash_closings", "cash_closing_lines",
+        ] {
+            let n: i64 = conn
+                .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 1, "{table}");
+        }
+        let has_method: i64 = conn
+            .query_row("SELECT count(*) FROM pragma_table_info('payments') WHERE name = 'method'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(has_method, 0, "payments não guarda mais a modalidade");
+        let next: i64 = conn.query_row("SELECT next_value FROM sequences WHERE name='payable'", [], |r| r.get(0)).unwrap();
+        assert_eq!(next, 1);
+        let categories: i64 = conn.query_row("SELECT count(*) FROM expense_categories WHERE active = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(categories, 9);
+        assert_eq!(super::current_version(&conn).unwrap(), 11);
+    }
+
+    #[test]
+    fn migration_0011_preserves_existing_payments_as_components() {
+        let mut conn = memory();
+        run_with(&mut conn, &super::MIGRATIONS[..10]).unwrap();
+        seed_stay(&conn);
+        let t = "'2026-10-22T12:00:00Z'";
+        conn.execute_batch(&format!(
+            "INSERT INTO payments (id, code, reservation_id, stay_id, amount_cents, method, received_at, received_by)
+               VALUES (1, 'PAG-000001', 1, 1, 10000, 'pix', {t}, 1), (2, 'PAG-000002', 1, 1, 12000, 'prior_deposit', {t}, 1);
+             INSERT INTO refunds (id, code, payment_id, stay_id, amount_cents, reason, refunded_at, refunded_by)
+               VALUES (1, 'DEV-000001', 1, 1, 2500, 'ajuste', {t}, 1);
+             INSERT INTO reservations (id, code, room_id, guest_id, check_in_date, check_out_date, expected_check_in_time,
+                 expected_check_out_time, occupants, status, list_total_cents, agreed_total_cents, deposit_expected_cents,
+                 deposit_paid_cents, deposit_due_date, cancellation_fee_cents, created_by, created_at, updated_at)
+               VALUES (2, 'RES-000002', 1, 1, '2026-12-01', '2026-12-03', '14:00', '12:00', 1, 'cancelled', 40000, 40000, 12000,
+                 12000, '2026-11-20', 6000, 1, {t}, {t});"
+        ))
+        .unwrap();
+
+        run_migrations(&mut conn).unwrap();
+
+        let rows = |sql: &str| -> Vec<(i64, String, i64)> {
+            let mut stmt = conn.prepare(sql).unwrap();
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
+            rows.map(Result::unwrap).collect()
+        };
+        assert_eq!(
+            rows("SELECT payment_id, method, amount_cents FROM payment_components ORDER BY payment_id"),
+            vec![(1, "pix".to_string(), 10_000), (2, "unspecified".to_string(), 12_000)]
+        );
+        assert_eq!(
+            rows("SELECT id, kind, amount_cents FROM payments ORDER BY id"),
+            vec![(1, "stay".to_string(), 10_000), (2, "deposit".to_string(), 12_000)]
+        );
+        assert_eq!(
+            rows("SELECT refund_id, method, amount_cents FROM refund_components"),
+            vec![(1, "unspecified".to_string(), 2_500)]
+        );
+        let reservation: i64 = conn.query_row("SELECT reservation_id FROM refunds WHERE id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(reservation, 1);
+        let refund_due: i64 = conn.query_row("SELECT cancellation_refund_cents FROM reservations WHERE id = 2", [], |r| r.get(0)).unwrap();
+        assert_eq!(refund_due, 6_000);
+    }
+
+    #[test]
+    fn payment_components_reject_duplicate_method_and_zero_amount() {
+        let conn = migrated();
+        seed_stay(&conn);
+        conn.execute(
+            "INSERT INTO payments (id, code, reservation_id, stay_id, kind, amount_cents, received_at, received_by)
+             VALUES (1, 'PAG-000001', 1, 1, 'stay', 10000, '2026-10-22T12:00:00Z', 1)",
+            [],
+        )
+        .unwrap();
+        let component = |method: &str, cents: i64| {
+            conn.execute(
+                "INSERT INTO payment_components (payment_id, method, amount_cents) VALUES (1, ?1, ?2)",
+                rusqlite::params![method, cents],
+            )
+        };
+
+        component("pix", 6_000).unwrap();
+        assert!(component("pix", 4_000).is_err(), "modalidade repetida");
+        assert!(component("cash", 0).is_err(), "valor zero");
+        assert!(component("cheque", 100).is_err(), "modalidade desconhecida");
+        component("cash", 4_000).unwrap();
+    }
+
+    #[test]
+    fn cash_closings_reject_second_closing_for_same_date() {
+        let conn = migrated();
+        seed_stay(&conn);
+        let close = |date: &str| {
+            conn.execute(
+                "INSERT INTO cash_closings (closing_date, closed_at, closed_by) VALUES (?1, '2026-10-22T22:00:00Z', 1)",
+                [date],
+            )
+        };
+
+        close("2026-10-22").unwrap();
+
+        assert!(close("2026-10-22").is_err());
+        close("2026-10-23").unwrap();
     }
 
     #[test]
