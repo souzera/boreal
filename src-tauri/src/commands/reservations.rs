@@ -122,17 +122,6 @@ pub fn confirm_reservation(app: State<'_, App>, token: String, id: i64, expected
 }
 
 #[tauri::command]
-pub fn record_reservation_deposit(
-    app: State<'_, App>,
-    token: String,
-    id: i64,
-    amount_cents: i64,
-    expected_version: i64,
-) -> Result<(), AppError> {
-    app.state()?.reservations.record_deposit(&token, id, amount_cents, expected_version)
-}
-
-#[tauri::command]
 pub fn set_reservation_notes(
     app: State<'_, App>,
     token: String,

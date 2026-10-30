@@ -5,6 +5,7 @@ pub mod guest;
 pub mod item;
 pub mod maintenance;
 pub mod page;
+pub mod payment;
 pub mod pousada;
 pub mod rate;
 pub mod reservation;

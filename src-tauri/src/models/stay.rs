@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::payment::ComponentLine;
+
 /// Pessoa hospedada informada no check-in. O titular da reserva deve constar da lista (`guest_id`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct OccupantInput {
@@ -50,16 +52,6 @@ pub struct AdjustmentInput {
     pub description: String,
     pub amount_cents: i64,
     pub justification: String,
-}
-
-/// Recebimento provisório (Marco 3): uma modalidade, sem divisão. O Marco 5 o substitui.
-#[derive(Debug, Clone, Deserialize)]
-pub struct PaymentInput {
-    pub amount_cents: i64,
-    /// `cash`, `pix`, `debit`, `credit` ou `transfer`.
-    pub method: String,
-    #[serde(default)]
-    pub note: String,
 }
 
 /// Atraso da saída em relação ao horário previsto.
@@ -161,9 +153,11 @@ pub struct PaymentLine {
     pub id: i64,
     pub code: String,
     pub amount_cents: i64,
-    pub method: String,
+    pub components: Vec<ComponentLine>,
     pub received_at: String,
     pub received_by_name: String,
+    /// Foi gravado depois de liberado como possível duplicado.
+    pub released_duplicate: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

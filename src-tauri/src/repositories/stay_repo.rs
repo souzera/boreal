@@ -4,6 +4,7 @@ use rusqlite::{named_params, params, Connection, OptionalExtension, Row, Transac
 use crate::domain::account;
 use crate::error::AppError;
 use crate::models::page::like_pattern;
+use super::payment_repo;
 use crate::models::stay::{ChargeLine, Occupant, PaymentLine, RefundLine, Stay, StayAccount};
 
 pub fn stamp(at: DateTime<Utc>) -> String {
@@ -130,26 +131,6 @@ pub fn insert_charge(tx: &Transaction, c: &NewCharge, at: DateTime<Utc>) -> Resu
     Ok(tx.last_insert_rowid())
 }
 
-#[allow(clippy::too_many_arguments)] // espelha as colunas gravadas no recebimento
-pub fn insert_payment(
-    tx: &Transaction,
-    code: &str,
-    reservation_id: i64,
-    stay_id: i64,
-    amount_cents: i64,
-    method: &str,
-    received_by: i64,
-    note: &str,
-    at: DateTime<Utc>,
-) -> Result<i64, AppError> {
-    tx.execute(
-        "INSERT INTO payments (code, reservation_id, stay_id, amount_cents, method, received_at, received_by, note)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![code, reservation_id, stay_id, amount_cents, method, stamp(at), received_by, note],
-    )?;
-    Ok(tx.last_insert_rowid())
-}
-
 pub fn find_charge(conn: &Connection, stay_id: i64, charge_id: i64) -> Result<Option<(String, String, i64)>, AppError> {
     Ok(conn
         .query_row(
@@ -270,7 +251,7 @@ pub fn account(conn: &Connection, stay_id: i64) -> Result<StayAccount, AppError>
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut stmt = conn.prepare(
-        "SELECT p.id, p.code, p.amount_cents, p.method, p.received_at, u.display_name
+        "SELECT p.id, p.code, p.amount_cents, p.received_at, u.display_name, p.duplicate_of_payment_id IS NOT NULL
          FROM payments p JOIN users u ON u.id = p.received_by WHERE p.stay_id = ?1 ORDER BY p.id",
     )?;
     let payments = stmt
@@ -279,12 +260,20 @@ pub fn account(conn: &Connection, stay_id: i64) -> Result<StayAccount, AppError>
                 id: r.get(0)?,
                 code: r.get(1)?,
                 amount_cents: r.get(2)?,
-                method: r.get(3)?,
-                received_at: r.get(4)?,
-                received_by_name: r.get(5)?,
+                components: Vec::new(),
+                received_at: r.get(3)?,
+                received_by_name: r.get(4)?,
+                released_duplicate: r.get::<_, i64>(5)? == 1,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    let payments = payments
+        .into_iter()
+        .map(|mut p| {
+            p.components = payment_repo::components(conn, p.id)?;
+            Ok(p)
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
 
     let mut stmt = conn.prepare(
         "SELECT f.id, f.code, p.code, f.amount_cents, f.reason, f.refunded_at

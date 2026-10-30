@@ -4,7 +4,7 @@ use crate::app::App;
 use crate::error::AppError;
 use crate::models::page::Page;
 use crate::models::stay::{
-    AdjustmentInput, ChargeInput, CheckInInput, CheckoutInput, CheckoutPreview, PaymentInput, StayDetail, StayQuery, StaySummary,
+    AdjustmentInput, ChargeInput, CheckInInput, CheckoutInput, CheckoutPreview, StayDetail, StayQuery, StaySummary,
     WalkInInput,
 };
 
@@ -38,11 +38,6 @@ pub fn reverse_stay_charge(
     replacement: Option<ChargeInput>,
 ) -> Result<(), AppError> {
     app.state()?.stays.reverse_charge(&token, stay_id, charge_id, justification, replacement)
-}
-
-#[tauri::command]
-pub fn record_stay_payment(app: State<'_, App>, token: String, stay_id: i64, input: PaymentInput) -> Result<i64, AppError> {
-    app.state()?.stays.record_payment(&token, stay_id, input)
 }
 
 #[tauri::command]

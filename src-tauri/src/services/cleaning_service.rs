@@ -187,7 +187,7 @@ mod tests {
 
     use crate::auth::permissions::Permission;
     use crate::error::AppError;
-    use crate::models::stay::{CheckInInput, CheckoutInput, LateFeeChoice, OccupantInput, PaymentInput};
+    use crate::models::stay::{CheckInInput, CheckoutInput, LateFeeChoice, OccupantInput};
     use crate::services::test_support::{admin_token, book, harness, recepcao_token, seed, Harness, Seed};
 
     // "Hoje" nos testes é 21/10/2026, 09:00 local (12:00Z; fuso -03:00).
@@ -221,9 +221,7 @@ mod tests {
             .check_in(&w.admin, CheckInInput { reservation_id: reservation, expected_version: version, occupants: vec![holder], exceed_capacity: false })
             .unwrap();
         let balance = w.h.stays.get(&w.admin, stay).unwrap().account.balance_cents;
-        w.h.stays
-            .record_payment(&w.admin, stay, PaymentInput { amount_cents: balance, method: "cash".into(), note: String::new() })
-            .unwrap();
+        crate::services::test_support::pay(&w.h, &w.admin, stay, balance, "cash").unwrap();
         (reservation, stay)
     }
 

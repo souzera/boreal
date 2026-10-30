@@ -7,6 +7,7 @@ use rusqlite::Connection;
 use super::auth_service::AuthService;
 use super::block_service::BlockService;
 use super::maintenance_service::MaintenanceService;
+use super::payment_service::PaymentService;
 use super::room_status_service::RoomStatusService;
 use super::catalog_service::CatalogService;
 use super::cleaning_service::CleaningService;
@@ -77,6 +78,7 @@ pub struct Harness {
     pub blocks: BlockService,
     pub maintenance: MaintenanceService,
     pub room_status: RoomStatusService,
+    pub payments: PaymentService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -116,11 +118,34 @@ pub fn harness() -> Harness {
         cleaning: CleaningService::new(ctx.clone()),
         blocks: BlockService::new(ctx.clone()),
         maintenance: MaintenanceService::new(ctx.clone()),
-        room_status: RoomStatusService::new(ctx),
+        room_status: RoomStatusService::new(ctx.clone()),
+        payments: PaymentService::new(ctx),
         utc,
         clock,
         db,
     }
+}
+
+/// Recebimento em uma modalidade só na conta da hospedagem.
+pub fn pay(h: &Harness, token: &str, stay_id: i64, cents: i64, method: &str) -> Result<crate::models::payment::PaymentReceipt, crate::error::AppError> {
+    use crate::models::payment::{ComponentInput, PaymentInput, PaymentTarget};
+    h.payments.record(
+        token,
+        PaymentTarget::Stay { stay_id },
+        PaymentInput { components: vec![ComponentInput { method: method.into(), amount_cents: cents }], note: String::new(), duplicate_release: None },
+    )
+}
+
+/// Sinal em dinheiro de uma reserva (a versão é a que a tela viu).
+pub fn deposit(h: &Harness, token: &str, reservation_id: i64, cents: i64, expected_version: i64) -> Result<(), crate::error::AppError> {
+    use crate::models::payment::{ComponentInput, PaymentInput, PaymentTarget};
+    h.payments
+        .record(
+            token,
+            PaymentTarget::Reservation { reservation_id, expected_version },
+            PaymentInput { components: vec![ComponentInput { method: "cash".into(), amount_cents: cents }], note: String::new(), duplicate_release: None },
+        )
+        .map(|_| ())
 }
 
 /// Cria o administrador inicial (`admin`) e entra com ele; retorna o token.
@@ -246,7 +271,7 @@ pub fn book(h: &Harness, admin: &str, seed: &Seed, from: &str, to: &str) -> i64 
 /// Hospedagem em 21→23/10 com a conta quitada e o check-out feito no horário previsto (23/10 12:00 locais).
 /// O relógio fica em 23/10 15:00Z. Devolve (reserva, hospedagem).
 pub fn checked_out_stay(h: &Harness, admin: &str, seed: &Seed) -> (i64, i64) {
-    use crate::models::stay::{CheckInInput, CheckoutInput, LateFeeChoice, OccupantInput, PaymentInput};
+    use crate::models::stay::{CheckInInput, CheckoutInput, LateFeeChoice, OccupantInput};
     let set = |rfc3339: &str| h.utc.set(DateTime::parse_from_rfc3339(rfc3339).unwrap().with_timezone(&Utc));
     let reservation = book(h, admin, seed, "2026-10-21", "2026-10-23");
     set("2026-10-21T17:00:00Z");
@@ -257,7 +282,7 @@ pub fn checked_out_stay(h: &Harness, admin: &str, seed: &Seed) -> (i64, i64) {
         .check_in(admin, CheckInInput { reservation_id: reservation, expected_version: version, occupants: vec![holder], exceed_capacity: false })
         .unwrap();
     let balance = h.stays.get(admin, stay).unwrap().account.balance_cents;
-    h.stays.record_payment(admin, stay, PaymentInput { amount_cents: balance, method: "cash".into(), note: String::new() }).unwrap();
+    pay(h, admin, stay, balance, "cash").unwrap();
     set("2026-10-23T15:00:00Z");
     let stay_version = h.stays.get(admin, stay).unwrap().stay.version;
     h.stays

@@ -5,6 +5,7 @@ pub mod cleaning_service;
 pub mod guest_service;
 pub mod item_service;
 pub mod maintenance_service;
+pub mod payment_service;
 pub mod policy_service;
 pub mod pousada_service;
 pub mod rate_service;

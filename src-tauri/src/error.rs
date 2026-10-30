@@ -1,5 +1,7 @@
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 
+use crate::models::payment::DuplicateInfo;
+
 /// Erro único exposto pelo backend. As mensagens são em linguagem simples e
 /// nunca carregam senhas ou dados de autenticação.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -30,6 +32,8 @@ pub enum AppError {
     Forbidden,
     #[error("O registro foi alterado por outra operação. Revise e tente novamente.")]
     Conflict,
+    #[error("Possível recebimento duplicado: já existe o {} com o mesmo valor e as mesmas formas de pagamento no mesmo dia.", .0.code)]
+    DuplicatePayment(Box<DuplicateInfo>),
 }
 
 impl AppError {
@@ -48,6 +52,7 @@ impl AppError {
             AppError::Locked => "locked",
             AppError::Forbidden => "forbidden",
             AppError::Conflict => "conflict",
+            AppError::DuplicatePayment(_) => "duplicate_payment",
         }
     }
 }
@@ -64,11 +69,18 @@ impl Serialize for AppError {
             AppError::AccountLocked { until } => Some(until),
             _ => None,
         };
-        let mut s = serializer.serialize_struct("AppError", if until.is_some() { 3 } else { 2 })?;
+        let duplicate = match self {
+            AppError::DuplicatePayment(info) => Some(info),
+            _ => None,
+        };
+        let mut s = serializer.serialize_struct("AppError", if until.is_some() || duplicate.is_some() { 3 } else { 2 })?;
         s.serialize_field("code", self.code())?;
         s.serialize_field("message", &self.to_string())?;
         if let Some(until) = until {
             s.serialize_field("until", until)?;
+        }
+        if let Some(info) = duplicate {
+            s.serialize_field("details", info)?;
         }
         s.end()
     }

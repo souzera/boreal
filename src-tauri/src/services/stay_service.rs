@@ -19,11 +19,11 @@ use crate::models::reservation::{ConflictInfo, Reservation};
 use crate::models::settings::AppSettings;
 use crate::models::stay::{
     AdjustmentInput, ChargeInput, CheckInInput, CheckoutInput, CheckoutPreview, DepartureRiskView, LateFeeChoice, LateInfo,
-    OccupantInput, PaymentInput, Stay, StayDetail, StayQuery, StaySummary, WalkInInput,
+    OccupantInput, Stay, StayDetail, StayQuery, StaySummary, WalkInInput,
 };
 use crate::repositories::stay_repo::{self, NewCharge};
 use crate::repositories::reservation_repo::NewRow;
-use crate::repositories::{catalog_repo, cleaning_repo, guest_repo, item_repo, reservation_repo, sequence_repo, settings_repo};
+use crate::repositories::{catalog_repo, cleaning_repo, guest_repo, item_repo, payment_repo, reservation_repo, sequence_repo, settings_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -38,7 +38,6 @@ pub(crate) struct CleanOccupant {
 const MAX_OCCUPANTS: usize = 20;
 /// Teto de um lançamento ou recebimento (R$ 1.000.000,00): barra erros de digitação e estouros.
 const MAX_ENTRY_CENTS: i64 = 100_000_000;
-const PAYMENT_METHODS: [&str; 5] = ["cash", "pix", "debit", "credit", "transfer"];
 
 /// `R$ 1.234,56`, para mensagens.
 fn money_br(cents: i64) -> String {
@@ -166,20 +165,7 @@ impl StayService {
                 at,
             )?;
         }
-        if reservation.deposit_paid_cents > 0 {
-            let code = sequence_repo::format_code("PAG", sequence_repo::next(tx, "payment")?);
-            stay_repo::insert_payment(
-                tx,
-                &code,
-                reservation.id,
-                stay_id,
-                reservation.deposit_paid_cents,
-                "prior_deposit",
-                actor.user_id,
-                "Sinal recebido antes do check-in",
-                at,
-            )?;
-        }
+        payment_repo::link_to_stay(tx, reservation.id, stay_id)?;
         Ok(stay_id)
     }
 
@@ -611,33 +597,6 @@ impl StayService {
         Ok(())
     }
 
-    /// Recebimento provisório com uma modalidade (o módulo financeiro do Marco 5 o substitui).
-    pub fn record_payment(&self, token: &str, stay_id: i64, input: PaymentInput) -> Result<i64, AppError> {
-        let actor = self.touch(token)?;
-        if !PAYMENT_METHODS.contains(&input.method.as_str()) {
-            return Err(invalid("Escolha a forma de pagamento."));
-        }
-        if !(1..=MAX_ENTRY_CENTS).contains(&input.amount_cents) {
-            return Err(invalid("Informe um valor maior que zero e de até R$ 1.000.000,00."));
-        }
-        let note = input.note.trim();
-        if note.chars().count() > 200 {
-            return Err(invalid("Observação: no máximo 200 caracteres."));
-        }
-        let mut conn = self.ctx.conn()?;
-        let tx = conn.transaction()?;
-        let stay = Self::open_row(&tx, stay_id)?;
-        let before = stay_repo::balance(&tx, stay_id)?;
-        let at = self.ctx.utc.now_utc();
-        let code = sequence_repo::format_code("PAG", sequence_repo::next(&tx, "payment")?);
-        let id = stay_repo::insert_payment(&tx, &code, stay.reservation_id, stay_id, input.amount_cents, &input.method, actor.user_id, note, at)?;
-        stay_repo::bump(&tx, stay_id, at)?;
-        let detail = json!({ "payment_id": id, "code": code, "method": input.method, "amount_cents": input.amount_cents });
-        self.audit_ledger(&tx, &actor, "record_payment", stay_id, before, detail, None, at)?;
-        tx.commit()?;
-        Ok(id)
-    }
-
     /// Atraso da saída (com a tolerância em vigor) e risco para a próxima reserva do mesmo quarto.
     fn assess_departure(
         conn: &Connection,
@@ -891,10 +850,10 @@ mod tests {
     use crate::auth::permissions::Permission;
     use crate::error::AppError;
     use crate::models::stay::{
-        AdjustmentInput, BalanceException, ChargeInput, CheckInInput, CheckoutInput, LateFeeChoice, OccupantInput, PaymentInput,
+        AdjustmentInput, BalanceException, ChargeInput, CheckInInput, CheckoutInput, LateFeeChoice, OccupantInput,
         StayQuery, WalkInInput,
     };
-    use crate::services::test_support::{admin_token, book, harness, recepcao_token, seed, Harness, Seed};
+    use crate::services::test_support::{admin_token, book, deposit, harness, pay as pay_with, recepcao_token, seed, Harness, Seed};
 
     // "Hoje" nos testes é 21/10/2026, 09:00 local (12:00Z; fuso -03:00).
 
@@ -991,7 +950,7 @@ mod tests {
             )
             .unwrap();
         let v = version(&w, reservation);
-        w.h.reservations.record_deposit(&w.admin, reservation, 12_000, v).unwrap();
+        deposit(&w.h, &w.admin, reservation, 12_000, v).unwrap();
         set_now(&w, "2026-10-21T17:00:00Z");
 
         let stay = w.h.stays.check_in(&w.admin, input(&w, reservation, vec![holder(&w)])).unwrap();
@@ -1000,7 +959,7 @@ mod tests {
         let kinds: Vec<_> = account.charges.iter().map(|c| (c.kind.as_str(), c.amount_cents)).collect();
         assert_eq!(kinds, [("night", 20_000), ("night", 20_000), ("discount", -4_000)]);
         assert_eq!(account.payments.len(), 1);
-        assert_eq!((account.payments[0].method.as_str(), account.payments[0].amount_cents), ("prior_deposit", 12_000));
+        assert_eq!((account.payments[0].components[0].method.as_str(), account.payments[0].amount_cents), ("cash", 12_000));
         assert_eq!(account.balance_cents, 24_000);
     }
 
@@ -1094,7 +1053,7 @@ mod tests {
         let w = world();
         let reservation = book(&w.h, &w.admin, &w.seed, "2026-10-21", "2026-10-23");
         let v = version(&w, reservation);
-        w.h.reservations.record_deposit(&w.admin, reservation, 12_000, v).unwrap();
+        deposit(&w.h, &w.admin, reservation, 12_000, v).unwrap();
         set_now(&w, "2026-10-21T17:00:00Z");
         let request = input(&w, reservation, vec![holder(&w)]);
 
@@ -1288,7 +1247,7 @@ mod tests {
             )
             .unwrap();
         let v = version(w, reservation);
-        w.h.reservations.record_deposit(&w.admin, reservation, 12_000, v).unwrap();
+        deposit(&w.h, &w.admin, reservation, 12_000, v).unwrap();
         set_now(w, "2026-10-21T17:00:00Z");
         let stay = w.h.stays.check_in(&w.admin, input(w, reservation, vec![holder(w)])).unwrap();
         (reservation, stay)
@@ -1417,13 +1376,12 @@ mod tests {
     fn record_payment_reduces_balance_and_validates() {
         let w = world();
         let (_, stay) = stay_with_balance(&w);
-        let pay = |cents: i64, method: &str| PaymentInput { amount_cents: cents, method: method.into(), note: String::new() };
 
-        w.h.stays.record_payment(&w.admin, stay, pay(10_000, "pix")).unwrap();
+        pay_with(&w.h, &w.admin, stay, 10_000, "pix").unwrap();
 
         assert_eq!(balance(&w, stay), 14_000);
-        for bad in [pay(0, "pix"), pay(-5, "pix"), pay(100, "prior_deposit"), pay(100, "cheque"), pay(i64::MAX, "cash")] {
-            assert!(matches!(w.h.stays.record_payment(&w.admin, stay, bad), Err(AppError::Validation(_))));
+        for (cents, method) in [(0, "pix"), (-5, "pix"), (100, "prior_deposit"), (100, "cheque"), (i64::MAX, "cash")] {
+            assert!(matches!(pay_with(&w.h, &w.admin, stay, cents, method), Err(AppError::Validation(_))));
         }
         assert_eq!(balance(&w, stay), 14_000);
         let account = w.h.stays.get(&w.admin, stay).unwrap().account;
@@ -1440,7 +1398,7 @@ mod tests {
 
         assert!(w.h.stays.add_charge(&w.admin, stay, consumption("Café", 500)).is_err());
         assert!(w.h.stays.reverse_charge(&w.admin, stay, original, "Engano".into(), None).is_err());
-        assert!(w.h.stays.record_payment(&w.admin, stay, PaymentInput { amount_cents: 100, method: "cash".into(), note: String::new() }).is_err());
+        assert!(pay_with(&w.h, &w.admin, stay, 100, "cash").is_err());
         assert!(w.h.stays.get(&w.admin, stay).is_ok());
     }
 
@@ -1451,12 +1409,12 @@ mod tests {
         w.h.stays.add_charge(&w.admin, stay, consumption("Água", 3_500)).unwrap();
         let first = last_charge_id(&w);
         w.h.stays.add_charge(&w.admin, stay, consumption("Jantar", 8_000)).unwrap();
-        w.h.stays.record_payment(&w.admin, stay, PaymentInput { amount_cents: 5_000, method: "cash".into(), note: String::new() }).unwrap();
+        pay_with(&w.h, &w.admin, stay, 5_000, "cash").unwrap();
         w.h.stays.reverse_charge(&w.admin, stay, first, "Engano".into(), Some(consumption("Água", 3_000))).unwrap();
         w.h.stays
             .add_adjustment(&w.admin, stay, AdjustmentInput { description: "Cortesia".into(), amount_cents: -500, justification: "Cortesia da casa".into() })
             .unwrap();
-        w.h.stays.record_payment(&w.admin, stay, PaymentInput { amount_cents: 7_000, method: "debit".into(), note: "Maquininha".into() }).unwrap();
+        pay_with(&w.h, &w.admin, stay, 7_000, "debit").unwrap();
         w.h.stays.add_charge(&w.admin, stay, consumption("Lavanderia", 2_500)).unwrap();
         let last = last_charge_id(&w);
         w.h.stays.reverse_charge(&w.admin, stay, last, "Não foi feita".into(), None).unwrap();
@@ -1483,7 +1441,7 @@ mod tests {
         let (_, stay) = stay_with_balance(&w);
         w.h.stays.add_charge(&w.admin, stay, consumption("Água", 3_500)).unwrap();
         let original = last_charge_id(&w);
-        w.h.stays.record_payment(&w.admin, stay, PaymentInput { amount_cents: 1_000, method: "pix".into(), note: String::new() }).unwrap();
+        pay_with(&w.h, &w.admin, stay, 1_000, "pix").unwrap();
         w.h.stays
             .add_adjustment(&w.admin, stay, AdjustmentInput { description: "Cortesia".into(), amount_cents: -100, justification: "Cortesia".into() })
             .unwrap();
@@ -1508,8 +1466,7 @@ mod tests {
     const OUT_PLUS_45: &str = "2026-10-23T15:45:00Z";
 
     fn pay(w: &World, stay: i64, cents: i64) {
-        w.h.stays
-            .record_payment(&w.admin, stay, PaymentInput { amount_cents: cents, method: "cash".into(), note: String::new() })
+        pay_with(&w.h, &w.admin, stay, cents, "cash")
             .unwrap();
     }
 

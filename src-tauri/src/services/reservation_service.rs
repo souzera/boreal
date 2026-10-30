@@ -836,48 +836,6 @@ impl ReservationService {
         Ok(())
     }
 
-    /// Registra um valor de sinal recebido. (Provisório até o módulo de recebimentos, Marco 5.)
-    /// Ao atingir o sinal esperado, a reserva pendente passa a confirmada.
-    pub fn record_deposit(&self, token: &str, id: i64, amount_cents: i64, expected_version: i64) -> Result<(), AppError> {
-        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
-        if amount_cents <= 0 {
-            return Err(invalid("Informe um valor maior que zero."));
-        }
-        let mut conn = self.ctx.conn()?;
-        let tx = conn.transaction()?;
-        let reservation = self.load_open(&tx, id, expected_version, "registro de sinal")?;
-        let paid = money::add(reservation.deposit_paid_cents, amount_cents)?;
-        if paid > reservation.agreed_total_cents {
-            return Err(invalid("O sinal recebido não pode passar do valor total da reserva."));
-        }
-        let new_status = if reservation.status == "pending" && paid >= reservation.deposit_expected_cents {
-            "confirmed"
-        } else {
-            reservation.status.as_str()
-        };
-        let at = self.ctx.utc.now_utc();
-        reservation_repo::update_payment_state(&tx, id, paid, new_status, expected_version, at)?;
-        let before = json!({ "deposit_paid_cents": reservation.deposit_paid_cents, "status": reservation.status });
-        let after = json!({ "deposit_paid_cents": paid, "status": new_status, "received_cents": amount_cents });
-        reservation_repo::insert_change(&tx, id, at, actor.user_id, "deposit", &before.to_string(), &after.to_string(), None, None, None)?;
-        audit::record(
-            &tx,
-            &AuditEntry {
-                at,
-                user_id: Some(actor.user_id),
-                module: "reservations",
-                operation: "record_deposit",
-                entity: "reservation",
-                entity_id: Some(id),
-                before: Some(before),
-                after: Some(after),
-                justification: None,
-            },
-        )?;
-        tx.commit()?;
-        Ok(())
-    }
-
     pub fn set_notes(&self, token: &str, id: i64, notes: &str, expected_version: i64) -> Result<(), AppError> {
         let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
         let notes = notes.trim();
@@ -949,7 +907,7 @@ mod tests {
     use crate::models::rate::NewRateRule;
     use crate::models::reservation::{CancellationOverride, ChangeRequest, DiscountInput, NewReservation, ReservationQuery};
     use crate::services::guest_service::CreateGuestOutcome;
-    use crate::services::test_support::{admin_token, harness, recepcao_token, Harness};
+    use crate::services::test_support::{admin_token, deposit, harness, recepcao_token, Harness};
     use std::time::Duration;
 
     // "Hoje" nos testes é 21/10/2026 (relógio injetado, fuso -03:00).
@@ -1960,11 +1918,11 @@ mod tests {
         let w = world();
         let id = reservation(&w, "2026-10-25", "2026-10-28"); // sinal esperado R$ 90,00
 
-        w.h.reservations.record_deposit(&w.admin, id, 4_000, 1).unwrap();
+        deposit(&w.h, &w.admin, id, 4_000, 1).unwrap();
         let partial = w.h.reservations.get(&w.admin, id).unwrap().reservation;
         assert_eq!((partial.status.as_str(), partial.deposit_paid_cents), ("pending", 4_000));
 
-        w.h.reservations.record_deposit(&w.admin, id, 5_000, 2).unwrap();
+        deposit(&w.h, &w.admin, id, 5_000, 2).unwrap();
         let full = w.h.reservations.get(&w.admin, id).unwrap().reservation;
         assert_eq!((full.status.as_str(), full.deposit_paid_cents), ("confirmed", 9_000));
         assert!(!full.deposit_overdue);
@@ -1975,11 +1933,11 @@ mod tests {
         let w = world();
         let id = reservation(&w, "2026-10-25", "2026-10-28"); // total R$ 300,00
 
-        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 0, 1), Err(AppError::Validation(_))));
-        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, -100, 1), Err(AppError::Validation(_))));
-        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 30_001, 1), Err(AppError::Validation(_))));
-        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 1_000, 9), Err(AppError::Conflict)));
+        assert!(matches!(deposit(&w.h, &w.admin, id, 0, 1), Err(AppError::Validation(_))));
+        assert!(matches!(deposit(&w.h, &w.admin, id, -100, 1), Err(AppError::Validation(_))));
+        assert!(matches!(deposit(&w.h, &w.admin, id, 30_001, 1), Err(AppError::Validation(_))));
+        assert!(matches!(deposit(&w.h, &w.admin, id, 1_000, 9), Err(AppError::Conflict)));
         set_status(&w, id, "cancelled");
-        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 1_000, 1), Err(AppError::Validation(_))));
+        assert!(matches!(deposit(&w.h, &w.admin, id, 1_000, 1), Err(AppError::Validation(_))));
     }
 }

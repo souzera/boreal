@@ -34,8 +34,9 @@ pub fn run(app: &AppState, admin_username: &str, admin_password: &str, recepcao_
     use crate::models::block::NewBlockInput;
     use crate::models::rate::NewRateRule;
     use crate::models::reservation::NewReservation;
+    use crate::models::payment::{ComponentInput, PaymentInput, PaymentTarget};
     use crate::models::stay::{
-        ChargeInput, CheckoutInput, LateFeeChoice, OccupantInput, PaymentInput, WalkInInput,
+        ChargeInput, CheckoutInput, LateFeeChoice, OccupantInput, WalkInInput,
     };
     use crate::models::user::Role;
     use crate::services::guest_service::CreateGuestOutcome;
@@ -156,10 +157,14 @@ pub fn run(app: &AppState, admin_username: &str, admin_password: &str, recepcao_
     };
     let pay_all_and_check_out = |app: &AppState, stay: i64| -> Result<(), AppError> {
         let detail = app.stays.get(&t, stay)?;
-        app.stays.record_payment(
+        app.payments.record(
             &t,
-            stay,
-            PaymentInput { amount_cents: detail.account.balance_cents, method: "pix".into(), note: String::new() },
+            PaymentTarget::Stay { stay_id: stay },
+            PaymentInput {
+                components: vec![ComponentInput { method: "pix".into(), amount_cents: detail.account.balance_cents }],
+                note: String::new(),
+                duplicate_release: None,
+            },
         )?;
         let version = app.stays.get(&t, stay)?.stay.version;
         app.stays.checkout(
@@ -169,7 +174,17 @@ pub fn run(app: &AppState, admin_username: &str, admin_password: &str, recepcao_
     };
     let confirm_with_deposit = |app: &AppState, reservation: i64| -> Result<(), AppError> {
         let detail = app.reservations.get(&t, reservation)?;
-        app.reservations.record_deposit(&t, reservation, detail.reservation.deposit_expected_cents, detail.reservation.version)
+        app.payments
+            .record(
+                &t,
+                PaymentTarget::Reservation { reservation_id: reservation, expected_version: detail.reservation.version },
+                PaymentInput {
+                    components: vec![ComponentInput { method: "pix".into(), amount_cents: detail.reservation.deposit_expected_cents }],
+                    note: String::new(),
+                    duplicate_release: None,
+                },
+            )
+            .map(|_| ())
     };
 
     // 101: hóspede em casa, com consumo e saldo a receber.
