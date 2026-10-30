@@ -190,10 +190,8 @@ impl PayableService {
 
     pub fn list(&self, token: &str, query: PayableQuery) -> Result<Page<PayableView>, AppError> {
         self.payables_actor(token)?;
-        if let Some(status) = query.status.as_deref() {
-            if !["pending", "partial", "paid", "overdue"].contains(&status) {
-                return Err(invalid("Situação inválida."));
-            }
+        if query.status.as_deref().is_some_and(|s| !["pending", "partial", "paid", "overdue"].contains(&s)) {
+            return Err(invalid("Situação inválida."));
         }
         for (value, label) in [(&query.due_from, "Vencimento inicial"), (&query.due_to, "Vencimento final")] {
             if let Some(v) = value {
@@ -522,7 +520,8 @@ mod tests {
     #[test]
     fn invalid_payable_fields_are_refused_without_writing() {
         let w = world();
-        let cases: Vec<Box<dyn Fn(&mut NewPayable)>> = vec![
+        type Change = Box<dyn Fn(&mut NewPayable)>;
+        let cases: Vec<Change> = vec![
             Box::new(|b| b.supplier = "  ".into()),
             Box::new(|b| b.supplier = "x".repeat(121)),
             Box::new(|b| b.description = String::new()),
