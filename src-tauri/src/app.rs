@@ -7,6 +7,7 @@ use crate::migrations::{current_version, last_applied_at, run_migrations};
 use crate::services::auth_service::AuthService;
 use crate::services::catalog_service::CatalogService;
 use crate::services::guest_service::GuestService;
+use crate::services::payable_service::PayableService;
 use crate::services::payment_service::PaymentService;
 use crate::services::refund_service::RefundService;
 use crate::services::item_service::ItemService;
@@ -51,6 +52,7 @@ pub struct AppState {
     pub room_status: RoomStatusService,
     pub payments: PaymentService,
     pub refunds: RefundService,
+    pub payables: PayableService,
     ctx: Ctx,
 }
 
@@ -95,6 +97,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         room_status: RoomStatusService::new(ctx.clone()),
         payments: PaymentService::new(ctx.clone()),
         refunds: RefundService::new(ctx.clone()),
+        payables: PayableService::new(ctx.clone()),
         ctx,
     })
 }

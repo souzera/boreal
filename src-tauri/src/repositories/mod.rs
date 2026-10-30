@@ -4,6 +4,7 @@ pub mod cleaning_repo;
 pub mod guest_repo;
 pub mod item_repo;
 pub mod maintenance_repo;
+pub mod payable_repo;
 pub mod payment_repo;
 pub mod permission_repo;
 #[cfg(test)]
