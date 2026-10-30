@@ -12,3 +12,6 @@ pub mod pricing;
 pub mod room_state;
 pub mod stay;
 pub mod text;
+pub mod closing;
+pub mod payable;
+pub mod payment;
