@@ -1,5 +1,6 @@
 pub mod block_repo;
 pub mod catalog_repo;
+pub mod closing_repo;
 pub mod cleaning_repo;
 pub mod guest_repo;
 pub mod item_repo;

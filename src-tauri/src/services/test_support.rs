@@ -13,6 +13,7 @@ use super::refund_service::RefundService;
 use super::room_status_service::RoomStatusService;
 use super::catalog_service::CatalogService;
 use super::cleaning_service::CleaningService;
+use super::closing_service::ClosingService;
 use super::guest_service::GuestService;
 use super::item_service::ItemService;
 use super::rate_service::RateService;
@@ -83,6 +84,7 @@ pub struct Harness {
     pub payments: PaymentService,
     pub refunds: RefundService,
     pub payables: PayableService,
+    pub closing: ClosingService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -125,7 +127,8 @@ pub fn harness() -> Harness {
         room_status: RoomStatusService::new(ctx.clone()),
         payments: PaymentService::new(ctx.clone()),
         refunds: RefundService::new(ctx.clone()),
-        payables: PayableService::new(ctx),
+        payables: PayableService::new(ctx.clone()),
+        closing: ClosingService::new(ctx),
         utc,
         clock,
         db,
