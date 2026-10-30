@@ -4,7 +4,7 @@ use rusqlite::{named_params, params, Connection, OptionalExtension, Row, Transac
 use crate::domain::account;
 use crate::error::AppError;
 use crate::models::page::like_pattern;
-use super::payment_repo;
+use super::{payment_repo, refund_repo};
 use crate::models::stay::{ChargeLine, Occupant, PaymentLine, RefundLine, Stay, StayAccount};
 
 pub fn stamp(at: DateTime<Utc>) -> String {
@@ -264,6 +264,8 @@ pub fn account(conn: &Connection, stay_id: i64) -> Result<StayAccount, AppError>
                 received_at: r.get(3)?,
                 received_by_name: r.get(4)?,
                 released_duplicate: r.get::<_, i64>(5)? == 1,
+                refunded_cents: 0,
+                refundable_cents: 0,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -271,6 +273,8 @@ pub fn account(conn: &Connection, stay_id: i64) -> Result<StayAccount, AppError>
         .into_iter()
         .map(|mut p| {
             p.components = payment_repo::components(conn, p.id)?;
+            p.refunded_cents = refund_repo::refunded_for_payment(conn, p.id)?;
+            p.refundable_cents = (p.amount_cents - p.refunded_cents).max(0);
             Ok(p)
         })
         .collect::<Result<Vec<_>, AppError>>()?;
@@ -286,11 +290,19 @@ pub fn account(conn: &Connection, stay_id: i64) -> Result<StayAccount, AppError>
                 code: r.get(1)?,
                 payment_code: r.get(2)?,
                 amount_cents: r.get(3)?,
+                components: Vec::new(),
                 reason: r.get(4)?,
                 refunded_at: r.get(5)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    let refunds = refunds
+        .into_iter()
+        .map(|mut f| {
+            f.components = refund_repo::components(conn, f.id)?;
+            Ok(f)
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
 
     let charges_total = sum(conn, "SELECT COALESCE(SUM(amount_cents), 0) FROM charges WHERE stay_id = ?1", stay_id)?;
     let received = sum(conn, "SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE stay_id = ?1", stay_id)?;

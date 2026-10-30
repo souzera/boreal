@@ -11,6 +11,7 @@ pub mod test_db;
 pub mod policy_repo;
 pub mod pousada_repo;
 pub mod rate_repo;
+pub mod refund_repo;
 pub mod reservation_repo;
 pub mod sequence_repo;
 pub mod settings_repo;

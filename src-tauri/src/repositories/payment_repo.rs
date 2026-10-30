@@ -1,11 +1,11 @@
 use std::collections::BTreeSet;
 
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
 use crate::domain::payment::{is_possible_duplicate, Component, Method, PaymentFacts};
 use crate::error::AppError;
-use crate::models::payment::{ComponentLine, DuplicateInfo};
+use crate::models::payment::{ComponentLine, DuplicateInfo, PaymentSummary};
 
 fn stamp(at: DateTime<Utc>) -> String {
     at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
@@ -127,4 +127,50 @@ pub fn released_duplicate(conn: &Connection, payment_id: i64) -> Result<bool, Ap
         [payment_id],
         |r| r.get::<_, i64>(0),
     )? == 1)
+}
+
+pub struct PaymentRow {
+    pub id: i64,
+    pub code: String,
+    pub reservation_id: i64,
+    pub stay_id: Option<i64>,
+    pub amount_cents: i64,
+}
+
+pub fn find(conn: &Connection, id: i64) -> Result<Option<PaymentRow>, AppError> {
+    Ok(conn
+        .query_row(
+            "SELECT id, code, reservation_id, stay_id, amount_cents FROM payments WHERE id = ?1",
+            [id],
+            |r| Ok(PaymentRow { id: r.get(0)?, code: r.get(1)?, reservation_id: r.get(2)?, stay_id: r.get(3)?, amount_cents: r.get(4)? }),
+        )
+        .optional()?)
+}
+
+/// Recebimentos de uma reserva, do mais antigo ao mais novo, com devolvido e devolvível.
+pub fn summaries_for_reservation(conn: &Connection, reservation_id: i64) -> Result<Vec<PaymentSummary>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT p.id, p.code, p.amount_cents, p.received_at, p.stay_id,
+                (SELECT COALESCE(SUM(f.amount_cents), 0) FROM refunds f WHERE f.payment_id = p.id)
+         FROM payments p WHERE p.reservation_id = ?1 ORDER BY p.id",
+    )?;
+    let rows = stmt
+        .query_map([reservation_id], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?, r.get::<_, Option<i64>>(4)?, r.get::<_, i64>(5)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    rows.into_iter()
+        .map(|(id, code, amount_cents, received_at, stay_id, refunded_cents)| {
+            Ok(PaymentSummary {
+                id,
+                code,
+                amount_cents,
+                refunded_cents,
+                refundable_cents: (amount_cents - refunded_cents).max(0),
+                components: components(conn, id)?,
+                received_at,
+                stay_id,
+            })
+        })
+        .collect()
 }

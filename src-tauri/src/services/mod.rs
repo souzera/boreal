@@ -9,6 +9,7 @@ pub mod payment_service;
 pub mod policy_service;
 pub mod pousada_service;
 pub mod rate_service;
+pub mod refund_service;
 pub mod reservation_service;
 pub mod room_map_service;
 pub mod room_status_service;

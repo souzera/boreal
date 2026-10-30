@@ -51,3 +51,16 @@ pub struct ComponentLine {
     pub method: String,
     pub amount_cents: i64,
 }
+
+/// Recebimento de uma reserva (sinal ou conta), com o que já foi devolvido e o que ainda pode ser.
+#[derive(Debug, Clone, Serialize)]
+pub struct PaymentSummary {
+    pub id: i64,
+    pub code: String,
+    pub amount_cents: i64,
+    pub refunded_cents: i64,
+    pub refundable_cents: i64,
+    pub components: Vec<ComponentLine>,
+    pub received_at: String,
+    pub stay_id: Option<i64>,
+}

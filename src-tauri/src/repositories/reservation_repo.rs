@@ -22,7 +22,9 @@ const SELECT: &str = "SELECT r.id, r.code, r.room_id, rm.code, r.guest_id, g.ful
         r.occupants, r.status, r.list_total_cents, r.discount_cents, r.discount_reason, r.agreed_total_cents,
         r.deposit_expected_cents, r.deposit_paid_cents, r.deposit_due_date,
         (r.status = 'pending' AND r.deposit_paid_cents < r.deposit_expected_cents AND r.deposit_due_date < :today),
-        r.notes, r.cancelled_at, r.cancellation_fee_cents, r.version, r.created_at, r.origin
+        r.notes, r.cancelled_at, r.cancellation_fee_cents, r.version, r.created_at, r.origin,
+        CASE WHEN r.status = 'cancelled' THEN MAX(0, r.cancellation_refund_cents
+            - (SELECT COALESCE(SUM(f.amount_cents), 0) FROM refunds f WHERE f.reservation_id = r.id)) ELSE 0 END
      FROM reservations r
      JOIN rooms rm ON rm.id = r.room_id
      JOIN guests g ON g.id = r.guest_id";
@@ -56,6 +58,7 @@ fn map_reservation(r: &Row) -> rusqlite::Result<Reservation> {
         version: r.get(24)?,
         created_at: r.get(25)?,
         origin: r.get(26)?,
+        refund_due_cents: r.get(27)?,
     })
 }
 
@@ -359,14 +362,15 @@ pub fn set_closed(
     id: i64,
     status: &str,
     retained_cents: i64,
+    refund_cents: i64,
     expected_version: i64,
     at: DateTime<Utc>,
 ) -> Result<(), AppError> {
     let changed = tx.execute(
         "UPDATE reservations SET status = ?1, cancelled_at = ?2, cancellation_fee_cents = ?3,
-                version = version + 1, updated_at = ?2
+                cancellation_refund_cents = ?6, version = version + 1, updated_at = ?2
          WHERE id = ?4 AND version = ?5",
-        params![status, stamp(at), retained_cents, id, expected_version],
+        params![status, stamp(at), retained_cents, id, expected_version, refund_cents],
     )?;
     if changed == 0 {
         return Err(AppError::Conflict);

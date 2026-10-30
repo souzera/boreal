@@ -8,6 +8,7 @@ use super::auth_service::AuthService;
 use super::block_service::BlockService;
 use super::maintenance_service::MaintenanceService;
 use super::payment_service::PaymentService;
+use super::refund_service::RefundService;
 use super::room_status_service::RoomStatusService;
 use super::catalog_service::CatalogService;
 use super::cleaning_service::CleaningService;
@@ -79,6 +80,7 @@ pub struct Harness {
     pub maintenance: MaintenanceService,
     pub room_status: RoomStatusService,
     pub payments: PaymentService,
+    pub refunds: RefundService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -119,7 +121,8 @@ pub fn harness() -> Harness {
         blocks: BlockService::new(ctx.clone()),
         maintenance: MaintenanceService::new(ctx.clone()),
         room_status: RoomStatusService::new(ctx.clone()),
-        payments: PaymentService::new(ctx),
+        payments: PaymentService::new(ctx.clone()),
+        refunds: RefundService::new(ctx),
         utc,
         clock,
         db,

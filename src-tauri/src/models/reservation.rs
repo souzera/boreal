@@ -53,6 +53,8 @@ pub struct Reservation {
     pub notes: String,
     pub cancelled_at: Option<String>,
     pub cancellation_fee_cents: Option<i64>,
+    /// Devolução do cancelamento que ainda não foi registrada (zero fora de reservas canceladas).
+    pub refund_due_cents: i64,
     pub version: i64,
     pub created_at: String,
     /// `booking` (reserva) ou `walk_in` (hospedagem sem reserva prévia).
@@ -87,6 +89,8 @@ pub struct ReservationDetail {
     pub history: Vec<ReservationChange>,
     /// Hospedagem aberta a partir desta reserva, se houver.
     pub stay_id: Option<i64>,
+    /// Recebimentos da reserva (sinal e conta), com o que pode ser devolvido.
+    pub payments: Vec<super::payment::PaymentSummary>,
 }
 
 #[derive(Debug, Deserialize)]

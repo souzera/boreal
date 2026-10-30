@@ -158,6 +158,9 @@ pub struct PaymentLine {
     pub received_by_name: String,
     /// Foi gravado depois de liberado como possível duplicado.
     pub released_duplicate: bool,
+    pub refunded_cents: i64,
+    /// Quanto deste recebimento ainda pode ser devolvido.
+    pub refundable_cents: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -166,6 +169,7 @@ pub struct RefundLine {
     pub code: String,
     pub payment_code: String,
     pub amount_cents: i64,
+    pub components: Vec<ComponentLine>,
     pub reason: String,
     pub refunded_at: String,
 }

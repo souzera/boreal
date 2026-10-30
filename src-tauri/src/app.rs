@@ -8,6 +8,7 @@ use crate::services::auth_service::AuthService;
 use crate::services::catalog_service::CatalogService;
 use crate::services::guest_service::GuestService;
 use crate::services::payment_service::PaymentService;
+use crate::services::refund_service::RefundService;
 use crate::services::item_service::ItemService;
 use crate::services::policy_service::PolicyService;
 use crate::services::pousada_service::PousadaService;
@@ -49,6 +50,7 @@ pub struct AppState {
     pub maintenance: MaintenanceService,
     pub room_status: RoomStatusService,
     pub payments: PaymentService,
+    pub refunds: RefundService,
     ctx: Ctx,
 }
 
@@ -92,6 +94,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         maintenance: MaintenanceService::new(ctx.clone()),
         room_status: RoomStatusService::new(ctx.clone()),
         payments: PaymentService::new(ctx.clone()),
+        refunds: RefundService::new(ctx.clone()),
         ctx,
     })
 }

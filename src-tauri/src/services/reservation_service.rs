@@ -17,7 +17,7 @@ use crate::models::reservation::{
     ReservationQuery, ReviewItem,
 };
 use crate::repositories::reservation_repo::{self, ChangedFields, NewRow};
-use crate::repositories::{block_repo, catalog_repo, guest_repo, policy_repo, sequence_repo, settings_repo};
+use crate::repositories::{block_repo, catalog_repo, guest_repo, payment_repo, policy_repo, sequence_repo, settings_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -218,6 +218,7 @@ impl ReservationService {
             nights: reservation_repo::nights(&conn, id)?,
             history: reservation_repo::changes(&conn, id)?,
             stay_id: reservation_repo::stay_id(&conn, id)?,
+            payments: payment_repo::summaries_for_reservation(&conn, id)?,
             reservation,
         })
     }
@@ -626,7 +627,7 @@ impl ReservationService {
         let refund = money::sub(reservation.deposit_paid_cents, retained)?;
 
         let at = self.ctx.utc.now_utc();
-        reservation_repo::set_closed(&tx, id, "cancelled", retained, expected_version, at)?;
+        reservation_repo::set_closed(&tx, id, "cancelled", retained, refund, expected_version, at)?;
         let before = json!({ "status": reservation.status, "deposit_paid_cents": reservation.deposit_paid_cents });
         let after = json!({
             "status": "cancelled", "refund_cents": refund, "retained_cents": retained,
@@ -677,7 +678,7 @@ impl ReservationService {
         }
 
         let at = self.ctx.utc.now_utc();
-        reservation_repo::set_closed(&tx, id, "no_show", reservation.deposit_paid_cents, expected_version, at)?;
+        reservation_repo::set_closed(&tx, id, "no_show", reservation.deposit_paid_cents, 0, expected_version, at)?;
         let before = json!({ "status": reservation.status });
         let after = json!({ "status": "no_show", "retained_cents": reservation.deposit_paid_cents });
         reservation_repo::insert_change(&tx, id, at, actor.user_id, "no_show", &before.to_string(), &after.to_string(), None, None, None)?;
