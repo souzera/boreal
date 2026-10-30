@@ -16,4 +16,6 @@ export const permissionLabel: Record<string, string> = {
   early_check_in: "Fazer check-in antecipado",
   checkout_with_balance: "Concluir check-out com saldo pendente",
   waive_late_fee: "Dispensar cobrança de saída tardia",
+  release_duplicate_payment: "Liberar recebimento duplicado",
+  manage_payables: "Gerenciar contas a pagar",
 };

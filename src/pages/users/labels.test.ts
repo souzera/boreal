@@ -8,4 +8,9 @@ describe("permissionLabel", () => {
     expect(permissionLabel.checkout_with_balance).toBe("Concluir check-out com saldo pendente");
     expect(permissionLabel.waive_late_fee).toBe("Dispensar cobrança de saída tardia");
   });
+
+  it("nomeia as permissões do financeiro", () => {
+    expect(permissionLabel.release_duplicate_payment).toBe("Liberar recebimento duplicado");
+    expect(permissionLabel.manage_payables).toBe("Gerenciar contas a pagar");
+  });
 });

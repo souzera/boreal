@@ -9,7 +9,7 @@ Controle de acesso é aplicado **no backend**; esconder botões na interface é 
 
 ## Permissões (`auth::permissions::Permission`)
 
-`ManageUsers`, `ManageSettings`, `ManageCatalog`, `ViewFinancialReports`, `RestoreBackup` (somente administrador) e as **concedíveis** a usuários da recepção, uma a uma: `ApplyDiscount`, `ExceedCapacity`, `ReverseEntry`, `CancellationException`, `ChangeReservation`, `ReleaseRoom`, `EarlyCheckIn`, `CheckoutWithBalance`, `WaiveLateFee` (`Permission::grantable()`).
+`ManageUsers`, `ManageSettings`, `ManageCatalog`, `ViewFinancialReports`, `RestoreBackup` (somente administrador) e as **concedíveis** a usuários da recepção, uma a uma: `ApplyDiscount`, `ExceedCapacity`, `ReverseEntry`, `CancellationException`, `ChangeReservation`, `ReleaseRoom`, `EarlyCheckIn`, `CheckoutWithBalance`, `WaiveLateFee`, `ReleaseDuplicatePayment`, `ManagePayables` (`Permission::grantable()`).
 
 ## Como funciona
 
@@ -35,6 +35,13 @@ Controle de acesso é aplicado **no backend**; esconder botões na interface é 
 - `CheckoutWithBalance`: `checkout` com saldo diferente de zero (devedor ou crédito).
 - `ChangeReservation`: `set_late_tolerance` (tolerância de saída desta hospedagem).
 - A interface consulta `my_permissions` só para decidir quais botões oferecer; o backend é quem autoriza.
+
+## Onde cada permissão é exigida (Marco 5)
+
+- `ReleaseDuplicatePayment`: recebimento bloqueado como possível duplicado só é gravado com esta permissão e justificativa (`PaymentService::record`).
+- `ManagePayables`: todas as operações de contas a pagar (`PayableService`).
+- `ManageCatalog`: categorias de despesa.
+- Devolução e fechamento de caixa não exigem permissão extra (decisões M5-7 e M5-11); o plano indica onde acrescentar `ReverseEntry` se a pousada quiser.
 
 ## Regras de proteção
 
