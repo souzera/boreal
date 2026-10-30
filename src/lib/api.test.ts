@@ -6,11 +6,23 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
 import {
+  closeCash,
+  closingPendingDates,
+  closingPreview,
   completeCleaning,
   createBlock,
+  getPayable,
+  listExpenseCategories,
+  listPayables,
   listRoomStatus,
   openMaintenance,
+  payablesSummary,
+  payPayable,
+  recordRefund,
+  recordReservationPayment,
+  recordStayPayment,
   releaseBlock,
+  renameExpenseCategory,
   sessionStatus,
   setCleaningPriority,
   setRoomCleaningInterval,
@@ -112,5 +124,72 @@ describe("limpeza, bloqueios e manutenção", () => {
 
     await listRoomStatus("t");
     expect(invoke).toHaveBeenLastCalledWith("list_room_status", { token: "t" });
+  });
+});
+
+describe("financeiro", () => {
+  const split = {
+    components: [
+      { method: "pix" as const, amount_cents: 6000 },
+      { method: "cash" as const, amount_cents: 4000 },
+    ],
+    note: "",
+  };
+
+  it("registra recebimentos com componentes na hospedagem e na reserva", async () => {
+    invoke.mockResolvedValue({ id: 1, code: "PAG-000001", total_cents: 10000 });
+
+    await recordStayPayment("t", 7, split);
+    expect(invoke).toHaveBeenLastCalledWith("record_stay_payment", { token: "t", stayId: 7, input: split });
+
+    await recordReservationPayment("t", 3, 2, split);
+    expect(invoke).toHaveBeenLastCalledWith("record_reservation_payment", {
+      token: "t",
+      reservationId: 3,
+      expectedVersion: 2,
+      input: split,
+    });
+  });
+
+  it("preserva os dados do recebimento parecido no erro de duplicidade", async () => {
+    const details = { code: "PAG-000001", received_at: "2026-10-21T12:00:00Z", total_cents: 10000, methods: ["pix"] };
+    invoke.mockRejectedValue({ code: "duplicate_payment", message: "Possível recebimento duplicado", details });
+
+    await expect(recordStayPayment("t", 7, split)).rejects.toMatchObject({ code: "duplicate_payment", details });
+  });
+
+  it("chama devoluções, contas a pagar e fechamento com os nomes certos", async () => {
+    invoke.mockResolvedValue(null);
+    const refund = { payment_id: 4, components: [{ method: "pix" as const, amount_cents: 500 }], reason: "Engano" };
+    await recordRefund("t", refund);
+    expect(invoke).toHaveBeenLastCalledWith("record_refund", { token: "t", input: refund });
+
+    const query = { status: "overdue" as const, page: 1, page_size: 20 };
+    await listPayables("t", query);
+    expect(invoke).toHaveBeenLastCalledWith("list_payables", { token: "t", query });
+    await getPayable("t", 2);
+    expect(invoke).toHaveBeenLastCalledWith("get_payable", { token: "t", id: 2 });
+    await payPayable("t", 2, { amount_cents: 100, method: "cash", note: "" }, 1);
+    expect(invoke).toHaveBeenLastCalledWith("pay_payable", {
+      token: "t",
+      id: 2,
+      input: { amount_cents: 100, method: "cash", note: "" },
+      expectedVersion: 1,
+    });
+    const summary = { from: "2026-10-01", to: "2026-10-31", basis: "payment" as const };
+    await payablesSummary("t", summary);
+    expect(invoke).toHaveBeenLastCalledWith("payables_summary", { token: "t", query: summary });
+    await listExpenseCategories("t", true);
+    expect(invoke).toHaveBeenLastCalledWith("list_expense_categories", { token: "t", onlyActive: true });
+    await renameExpenseCategory("t", 1, "Luz", 3);
+    expect(invoke).toHaveBeenLastCalledWith("rename_expense_category", { token: "t", id: 1, name: "Luz", expectedVersion: 3 });
+
+    await closingPreview("t", "2026-10-21");
+    expect(invoke).toHaveBeenLastCalledWith("closing_preview", { token: "t", date: "2026-10-21" });
+    const close = { date: "2026-10-21", counted: [{ method: "cash" as const, counted_cents: 100, justification: null }] };
+    await closeCash("t", close);
+    expect(invoke).toHaveBeenLastCalledWith("close_cash", { token: "t", input: close });
+    await closingPendingDates("t");
+    expect(invoke).toHaveBeenLastCalledWith("closing_pending_dates", { token: "t" });
   });
 });

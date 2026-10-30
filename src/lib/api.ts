@@ -8,6 +8,8 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public until?: string,
+    /** Dados extras do erro (por exemplo, o recebimento parecido em `duplicate_payment`). */
+    public details?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -17,8 +19,8 @@ export class ApiError extends Error {
 function toApiError(e: unknown): ApiError {
   if (e instanceof ApiError) return e;
   if (e && typeof e === "object" && "code" in e && "message" in e) {
-    const { code, message, until } = e as { code: string; message: string; until?: string };
-    return new ApiError(code, message, until);
+    const { code, message, until, details } = e as { code: string; message: string; until?: string; details?: unknown };
+    return new ApiError(code, message, until, details);
   }
   return new ApiError("unknown", "Ocorreu um erro inesperado. Tente novamente.");
 }
@@ -416,6 +418,8 @@ export interface Reservation {
   notes: string;
   cancelled_at: string | null;
   cancellation_fee_cents: number | null;
+  /** Devolução do cancelamento ainda não registrada (zero fora de reservas canceladas). */
+  refund_due_cents: number;
   version: number;
   created_at: string;
   /** `booking` (reserva) ou `walk_in` (hospedagem sem reserva prévia). */
@@ -447,6 +451,8 @@ export interface ReservationDetail {
   history: ReservationChange[];
   /** Hospedagem aberta a partir desta reserva, se houver. */
   stay_id: number | null;
+  /** Recebimentos da reserva (sinal e conta), com o que ainda pode ser devolvido. */
+  payments: PaymentSummary[];
 }
 
 export interface ReservationQuery {
@@ -600,8 +606,6 @@ export const applyReservationDiscount = (token: string, id: number, input: Disco
   call<null>("apply_reservation_discount", { token, id, input, expectedVersion });
 export const confirmReservation = (token: string, id: number, expectedVersion: number) =>
   call<null>("confirm_reservation", { token, id, expectedVersion });
-export const recordReservationDeposit = (token: string, id: number, amountCents: number, expectedVersion: number) =>
-  call<null>("record_reservation_deposit", { token, id, amountCents, expectedVersion });
 export const setReservationNotes = (token: string, id: number, notes: string, expectedVersion: number) =>
   call<null>("set_reservation_notes", { token, id, notes, expectedVersion });
 
@@ -645,7 +649,19 @@ export const roomMap = (token: string, from: string, days: number) => call<RoomM
 
 export type StayStatus = "in_house" | "checked_out";
 export type ChargeKind = "night" | "consumption" | "extra" | "discount" | "adjustment" | "late_fee" | "reversal";
-export type PaymentMethod = "cash" | "pix" | "debit" | "credit" | "transfer" | "prior_deposit";
+/** `unspecified` só existe em dados anteriores ao módulo financeiro e nunca é oferecido. */
+export type PaymentMethod = "cash" | "pix" | "debit" | "credit" | "transfer" | "unspecified";
+export type SelectableMethod = Exclude<PaymentMethod, "unspecified">;
+
+export interface ComponentInput {
+  method: SelectableMethod;
+  amount_cents: number;
+}
+
+export interface ComponentLine {
+  method: PaymentMethod;
+  amount_cents: number;
+}
 
 export interface Stay {
   id: number;
@@ -692,9 +708,25 @@ export interface PaymentLine {
   id: number;
   code: string;
   amount_cents: number;
-  method: PaymentMethod;
+  components: ComponentLine[];
   received_at: string;
   received_by_name: string;
+  /** Foi gravado depois de liberado como possível duplicado. */
+  released_duplicate: boolean;
+  refunded_cents: number;
+  /** Quanto deste recebimento ainda pode ser devolvido. */
+  refundable_cents: number;
+}
+
+export interface PaymentSummary {
+  id: number;
+  code: string;
+  amount_cents: number;
+  refunded_cents: number;
+  refundable_cents: number;
+  components: ComponentLine[];
+  received_at: string;
+  stay_id: number | null;
 }
 
 export interface RefundLine {
@@ -702,6 +734,7 @@ export interface RefundLine {
   code: string;
   payment_code: string;
   amount_cents: number;
+  components: ComponentLine[];
   reason: string;
   refunded_at: string;
 }
@@ -780,9 +813,24 @@ export interface AdjustmentInput {
 }
 
 export interface PaymentInput {
-  amount_cents: number;
-  method: Exclude<PaymentMethod, "prior_deposit">;
+  components: ComponentInput[];
   note: string;
+  /** Liberação de um possível duplicado; exige a permissão `release_duplicate_payment`. */
+  duplicate_release?: { justification: string };
+}
+
+export interface PaymentReceipt {
+  id: number;
+  code: string;
+  total_cents: number;
+}
+
+/** O recebimento parecido que bloqueou a gravação (`details` do erro `duplicate_payment`). */
+export interface DuplicateInfo {
+  code: string;
+  received_at: string;
+  total_cents: number;
+  methods: PaymentMethod[];
 }
 
 export interface LateInfo {
@@ -827,7 +875,169 @@ export const reverseStayCharge = (
   replacement: ChargeInput | null,
 ) => call<null>("reverse_stay_charge", { token, stayId, chargeId, justification, replacement });
 export const recordStayPayment = (token: string, stayId: number, input: PaymentInput) =>
-  call<number>("record_stay_payment", { token, stayId, input });
+  call<PaymentReceipt>("record_stay_payment", { token, stayId, input });
+export const recordReservationPayment = (token: string, reservationId: number, expectedVersion: number, input: PaymentInput) =>
+  call<PaymentReceipt>("record_reservation_payment", { token, reservationId, expectedVersion, input });
+
+// ---- Devoluções ----
+
+export interface RefundInput {
+  payment_id: number;
+  components: ComponentInput[];
+  reason: string;
+}
+
+export const recordRefund = (token: string, input: RefundInput) => call<PaymentReceipt>("record_refund", { token, input });
+
+// ---- Contas a pagar ----
+
+export type PayableStatus = "pending" | "partial" | "paid" | "overdue";
+
+export interface ExpenseCategory {
+  id: number;
+  name: string;
+  active: boolean;
+  version: number;
+}
+
+export interface NewPayable {
+  supplier: string;
+  description: string;
+  amount_cents: number;
+  competence_date: string;
+  due_date: string;
+  category_id: number;
+  notes: string;
+  /** Pagamento à vista: a conta já nasce paga com esta modalidade. */
+  paid_now?: { method: SelectableMethod } | null;
+}
+
+export interface PayInput {
+  amount_cents: number;
+  method: SelectableMethod;
+  note: string;
+}
+
+export interface PayableQuery {
+  status?: PayableStatus;
+  category_id?: number;
+  due_from?: string;
+  due_to?: string;
+  page: number;
+  page_size: number;
+}
+
+export interface PayableView {
+  id: number;
+  code: string;
+  supplier: string;
+  description: string;
+  amount_cents: number;
+  paid_cents: number;
+  balance_cents: number;
+  status: PayableStatus;
+  status_label: string;
+  competence_date: string;
+  due_date: string;
+  category_id: number;
+  category_name: string;
+  notes: string;
+  version: number;
+  created_at: string;
+}
+
+export interface PayablePaymentLine {
+  id: number;
+  amount_cents: number;
+  method: SelectableMethod;
+  paid_at: string;
+  paid_by_name: string;
+  note: string;
+}
+
+export interface PayableDetail {
+  payable: PayableView;
+  payments: PayablePaymentLine[];
+}
+
+export interface SummaryQuery {
+  from: string;
+  to: string;
+  basis: "competence" | "payment";
+  category_id?: number;
+}
+
+export interface CategoryTotal {
+  category_id: number;
+  category_name: string;
+  total_cents: number;
+}
+
+export const listPayables = (token: string, query: PayableQuery) => call<Page<PayableView>>("list_payables", { token, query });
+export const getPayable = (token: string, id: number) => call<PayableDetail>("get_payable", { token, id });
+export const createPayable = (token: string, input: NewPayable) => call<number>("create_payable", { token, input });
+export const payPayable = (token: string, id: number, input: PayInput, expectedVersion: number) =>
+  call<number>("pay_payable", { token, id, input, expectedVersion });
+export const payablesSummary = (token: string, query: SummaryQuery) => call<CategoryTotal[]>("payables_summary", { token, query });
+export const listExpenseCategories = (token: string, onlyActive: boolean) =>
+  call<ExpenseCategory[]>("list_expense_categories", { token, onlyActive });
+export const createExpenseCategory = (token: string, name: string) => call<number>("create_expense_category", { token, name });
+export const renameExpenseCategory = (token: string, id: number, name: string, expectedVersion: number) =>
+  call<null>("rename_expense_category", { token, id, name, expectedVersion });
+export const setExpenseCategoryActive = (token: string, id: number, active: boolean, expectedVersion: number) =>
+  call<null>("set_expense_category_active", { token, id, active, expectedVersion });
+
+// ---- Fechamento de caixa ----
+
+export interface ExpectedLineView {
+  method: PaymentMethod;
+  label: string;
+  received_cents: number;
+  refunded_cents: number;
+  expected_cents: number;
+}
+
+export interface ClosingLineView {
+  method: PaymentMethod;
+  label: string;
+  expected_cents: number;
+  counted_cents: number;
+  difference_cents: number;
+  justification: string | null;
+}
+
+export interface ClosingView {
+  id: number;
+  closing_date: string;
+  closed_at: string;
+  closed_by_name: string;
+  lines: ClosingLineView[];
+}
+
+export interface ClosingPreview {
+  date: string;
+  closed: ClosingView | null;
+  expected: ExpectedLineView[];
+  /** Pagamentos a fornecedores no dia: informativo, não entra no esperado. */
+  supplier_payments_cents: number;
+  /** Com o dia fechado: quanto mudou por movimentos feitos depois do fechamento. */
+  after_closing_cents: number | null;
+}
+
+export interface CountedInput {
+  method: PaymentMethod;
+  counted_cents: number;
+  justification: string | null;
+}
+
+export interface CloseInput {
+  date: string;
+  counted: CountedInput[];
+}
+
+export const closingPreview = (token: string, date: string) => call<ClosingPreview>("closing_preview", { token, date });
+export const closeCash = (token: string, input: CloseInput) => call<ClosingView>("close_cash", { token, input });
+export const closingPendingDates = (token: string) => call<string[]>("closing_pending_dates", { token });
 export const previewStayCheckout = (token: string, stayId: number) =>
   call<CheckoutPreview>("preview_stay_checkout", { token, stayId });
 export const checkoutStay = (token: string, input: CheckoutInput) => call<null>("checkout_stay", { token, input });
