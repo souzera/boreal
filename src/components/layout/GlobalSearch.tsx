@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, type Ref } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Input } from "@/components/ui/input";
 
-/** Campo de busca geral do cabeçalho: leva a `/busca?q=...`. */
-export default function GlobalSearch() {
+/** Campo de busca geral do cabeçalho: leva a `/busca?q=...`. Recebe `inputRef` para o atalho Ctrl+K. */
+export default function GlobalSearch({ inputRef }: { inputRef?: Ref<HTMLInputElement> }) {
   const navigate = useNavigate();
   const [text, setText] = useState("");
 
@@ -20,6 +20,7 @@ export default function GlobalSearch() {
       }}
     >
       <Input
+        ref={inputRef}
         type="search"
         aria-label="Busca geral"
         placeholder="Buscar hóspede, telefone, CPF ou código"

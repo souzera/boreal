@@ -54,6 +54,23 @@ describe("AppShell", () => {
     expect(screen.getByText("Administrador")).toBeInTheDocument();
   });
 
+  it("o cabeçalho traz a busca e as ações rápidas", () => {
+    renderShell();
+
+    expect(screen.getByRole("search")).toBeInTheDocument();
+    const toolbar = screen.getByRole("toolbar", { name: "Ações rápidas" });
+    expect(toolbar).toHaveTextContent("Nova reserva");
+    expect(toolbar).toHaveTextContent("Receber pagamento");
+  });
+
+  it("Buscar leva o foco ao campo de busca", async () => {
+    renderShell();
+
+    await userEvent.click(screen.getByRole("button", { name: /Buscar/ }));
+
+    expect(screen.getByLabelText("Busca geral")).toHaveFocus();
+  });
+
   it("com sessão bloqueada oculta o conteúdo e pede a senha", () => {
     useSessionStore.getState().lock();
     renderShell();
