@@ -24,7 +24,7 @@ export default function Dashboard() {
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
+      <h1 className="text-[26px] font-[650] leading-tight">Recepção</h1>
       <p className="text-sm text-muted-foreground">Hoje, {formatDate(todayIso())}</p>
       {pendingClosings.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">

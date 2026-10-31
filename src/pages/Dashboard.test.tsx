@@ -29,6 +29,13 @@ beforeEach(() => {
 });
 
 describe("Dashboard", () => {
+  it("a tela inicial se chama Recepção", async () => {
+    vi.mocked(api.cleaningQueue).mockReset().mockResolvedValue([]);
+    renderPage(<Dashboard />);
+
+    expect(await screen.findByRole("heading", { name: "Recepção" })).toBeInTheDocument();
+  });
+
   it("mostra quantos quartos aguardam limpeza, com atalho para a fila", async () => {
     vi.mocked(api.cleaningQueue).mockReset().mockResolvedValue([task(1), task(2)]);
     renderPage(<Dashboard />);
