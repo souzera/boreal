@@ -10,6 +10,7 @@ import { statusIcon, statusLabel } from "@/lib/reservation";
 import { ROOM_STATE_ORDER, ROOM_STATE_LABEL, ROOM_STATE_STYLE } from "@/lib/roomState";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/stores/session";
+import Icon from "@/components/Icon";
 
 const DAYS = 7;
 
@@ -49,7 +50,7 @@ export default function RoomMapPage() {
       <ul aria-label="Legenda dos estados do quarto" className="mb-3 flex flex-wrap gap-2 text-xs">
         {ROOM_STATE_ORDER.map((state) => (
           <li key={state} className={`rounded border px-2 py-0.5 ${ROOM_STATE_STYLE[state].className}`}>
-            <span aria-hidden="true">{ROOM_STATE_STYLE[state].icon} </span>
+            <Icon name={ROOM_STATE_STYLE[state].icon} size="xs" className="mr-1 align-middle" />
             {ROOM_STATE_LABEL[state]}
           </li>
         ))}
@@ -114,7 +115,7 @@ export default function RoomMapPage() {
                               className="rounded border bg-muted/50 px-2 py-1 text-left hover:bg-muted"
                               onClick={() => navigate(`/reservas/${c.reservation_id}`)}
                             >
-                              <span aria-hidden="true">{statusIcon[c.status]} </span>
+                              <Icon name={statusIcon[c.status]} size="xs" className="mr-1 align-middle" />
                               {`${c.guest_name} · ${statusLabel[c.status]}${c.is_check_in ? " · chegada" : ""}${c.is_check_out ? " · saída" : ""}`}
                             </button>
                           ))}

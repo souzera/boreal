@@ -11,6 +11,7 @@ import { listStays, type StayStatus } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
 import { stayStatusIcon, stayStatusLabel } from "@/lib/stay";
 import { useSessionStore } from "@/stores/session";
+import Icon from "@/components/Icon";
 
 const PAGE_SIZE = 50;
 
@@ -72,7 +73,7 @@ export default function StaysPage() {
                   {stay.code}
                 </Link>
                 <span className="block text-xs text-muted-foreground">
-                  <span aria-hidden="true">{stayStatusIcon[stay.status]} </span>
+                  <Icon name={stayStatusIcon[stay.status]} size="xs" className="mr-1 align-middle" />
                   {stayStatusLabel[stay.status]}
                 </span>
               </TableCell>
@@ -82,8 +83,8 @@ export default function StaysPage() {
               <TableCell>{formatMoney(balance_cents)}</TableCell>
               <TableCell>
                 <span className="grid gap-1 text-xs font-medium text-destructive">
-                  {minutes_late > 0 && <span>{`⚠ Saída atrasada há ${minutes_late} min`}</span>}
-                  {risk && <span>{`⚠ Risco para a próxima reserva ${risk.next_code} (≈ ${risk.overrun_minutes} min)`}</span>}
+                  {minutes_late > 0 && <span><Icon name="warning" size="xs" className="mr-1 align-middle" />{`Saída atrasada há ${minutes_late} min`}</span>}
+                  {risk && <span><Icon name="warning" size="xs" className="mr-1 align-middle" />{`Risco para a próxima reserva ${risk.next_code} (≈ ${risk.overrun_minutes} min)`}</span>}
                 </span>
               </TableCell>
             </TableRow>

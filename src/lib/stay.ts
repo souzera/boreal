@@ -8,8 +8,8 @@ export const stayStatusLabel: Record<StayStatus, string> = {
 
 /** Ícone curto junto do texto: a situação nunca depende só de cor. */
 export const stayStatusIcon: Record<StayStatus, string> = {
-  in_house: "●",
-  checked_out: "■",
+  in_house: "bed",
+  checked_out: "task_alt",
 };
 
 export const chargeKindLabel: Record<ChargeKind, string> = {

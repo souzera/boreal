@@ -10,10 +10,10 @@ export const blockStatusLabel: Record<BlockStatus, string> = {
 };
 
 export const blockStatusIcon: Record<BlockStatus, string> = {
-  preventive: "◐",
-  active: "✖",
-  awaiting_release: "⏸",
-  released: "✓",
+  preventive: "shield",
+  active: "block",
+  awaiting_release: "pause_circle",
+  released: "lock_open",
 };
 
 export const maintenanceStatusLabel: Record<MaintenanceStatus, string> = {
@@ -24,10 +24,10 @@ export const maintenanceStatusLabel: Record<MaintenanceStatus, string> = {
 };
 
 export const maintenanceStatusIcon: Record<MaintenanceStatus, string> = {
-  open: "○",
-  in_progress: "◑",
-  awaiting_resolution: "⏸",
-  completed: "✓",
+  open: "radio_button_unchecked",
+  in_progress: "autorenew",
+  awaiting_resolution: "pause_circle",
+  completed: "task_alt",
 };
 
 export const orderPriorityLabel: Record<CleaningPriority, string> = {

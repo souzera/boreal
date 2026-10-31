@@ -10,6 +10,7 @@ import { closeCash, closingPendingDates, closingPreview, type ApiError, type Exp
 import { formatDate, formatInstant, formatMoney, parseMoney, toLocalIsoDate } from "@/lib/format";
 import { useSessionStore } from "@/stores/session";
 import ClosingDialog from "./ClosingDialog";
+import Icon from "@/components/Icon";
 
 /** Valor conferido em reais; aceita sinal de menos porque o esperado do dia pode ser negativo (mais devoluções que recebimentos). */
 function parseCounted(text: string): number | null {
@@ -22,9 +23,21 @@ function parseCounted(text: string): number | null {
 }
 
 /** Situação da diferença em palavras e ícone: nunca só cor. */
-function differenceText(cents: number): string {
-  if (cents === 0) return "✓ Sem diferença";
-  return cents < 0 ? `⚠ Falta ${formatMoney(-cents)}` : `⚠ Sobra ${formatMoney(cents)}`;
+function Difference({ cents }: { cents: number }) {
+  if (cents === 0) {
+    return (
+      <>
+        <Icon name="check_circle" size="xs" className="mr-1 align-middle" />
+        Sem diferença
+      </>
+    );
+  }
+  return (
+    <>
+      <Icon name="warning" size="xs" className="mr-1 align-middle" />
+      {cents < 0 ? `Falta ${formatMoney(-cents)}` : `Sobra ${formatMoney(cents)}`}
+    </>
+  );
 }
 
 export default function ClosingPage() {
@@ -123,7 +136,10 @@ export default function ClosingPage() {
         </label>
         {(pending.data ?? []).length > 0 && (
           <p className="text-sm">
-            <span className="font-medium">⚠ Dias sem fechamento: </span>
+            <span className="font-medium">
+              <Icon name="warning" size="xs" className="mr-1 align-middle" />
+              Dias sem fechamento:{" "}
+            </span>
             {(pending.data ?? []).map((d, i) => (
               <span key={d}>
                 {i > 0 && ", "}
@@ -157,7 +173,9 @@ export default function ClosingPage() {
                   <TableCell>{l.label}</TableCell>
                   <TableCell>{formatMoney(l.expected_cents)}</TableCell>
                   <TableCell>{formatMoney(l.counted_cents)}</TableCell>
-                  <TableCell>{differenceText(l.difference_cents)}</TableCell>
+                  <TableCell>
+                    <Difference cents={l.difference_cents} />
+                  </TableCell>
                   <TableCell>{l.justification}</TableCell>
                 </TableRow>
               ))}
@@ -202,7 +220,11 @@ export default function ClosingPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        {diff !== null && <p className="text-sm">{differenceText(diff)}</p>}
+                        {diff !== null && (
+                          <p className="text-sm">
+                            <Difference cents={diff} />
+                          </p>
+                        )}
                         {diff !== null && diff !== 0 && (
                           <Input
                             aria-label={`Justificativa de ${line.label}`}

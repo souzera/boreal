@@ -19,6 +19,7 @@ import {
 import { blockStatusIcon, blockStatusLabel, maintenanceStatusIcon, maintenanceStatusLabel, orderPriorityLabel, periodText } from "@/lib/blocks";
 import { formatInstant } from "@/lib/format";
 import { useSessionStore } from "@/stores/session";
+import Icon from "@/components/Icon";
 
 function Line({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -124,7 +125,7 @@ export default function MaintenanceOrderPage() {
       )}
       <dl className="mb-6 grid max-w-xl gap-1 text-sm">
         <Line label="Situação">
-          <span aria-hidden="true">{maintenanceStatusIcon[order.status]} </span>
+          <Icon name={maintenanceStatusIcon[order.status]} size="xs" className="mr-1 align-middle" />
           {maintenanceStatusLabel[order.status]}
         </Line>
         <Line label="Prioridade">{orderPriorityLabel[order.priority]}</Line>
@@ -135,7 +136,7 @@ export default function MaintenanceOrderPage() {
         {order.notes && <Line label="Observações">{order.notes}</Line>}
         {block && (
           <Line label="Quarto">
-            <span aria-hidden="true">{blockStatusIcon[block.status]} </span>
+            <Icon name={blockStatusIcon[block.status]} size="xs" className="mr-1 align-middle" />
             {blockStatusLabel[block.status]}
           </Line>
         )}
@@ -165,7 +166,16 @@ export default function MaintenanceOrderPage() {
                   <TableCell>{c.guest_name}</TableCell>
                   <TableCell>{periodText(c.check_in_date, c.check_out_date)}</TableCell>
                   <TableCell>
-                    {c.status === "open" ? "✖ A resolver" : `✓ Resolvida${c.resolution_note ? `: ${c.resolution_note}` : ""}`}
+                    {c.status === "open" ? (
+                      <>
+                        <Icon name="cancel" size="xs" className="mr-1 align-middle" />A resolver
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="task_alt" size="xs" className="mr-1 align-middle" />
+                        {`Resolvida${c.resolution_note ? `: ${c.resolution_note}` : ""}`}
+                      </>
+                    )}
                   </TableCell>
                   <TableCell>
                     {c.status === "open" &&

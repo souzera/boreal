@@ -26,6 +26,7 @@ import PaymentDialog from "../payments/PaymentDialog";
 import RefundDialog from "../payments/RefundDialog";
 import CheckInDialog from "../stays/CheckInDialog";
 import DiscountDialog from "./DiscountDialog";
+import Icon from "@/components/Icon";
 
 type Dialogs = "change" | "cancel" | "discount" | "payment" | "no_show" | "check_in" | null;
 
@@ -113,7 +114,12 @@ export default function ReservationPage() {
     <section className="grid gap-6">
       <PageHeader
         title={`Reserva ${r.code}`}
-        description={`${statusIcon[r.status]} ${statusLabel[r.status]}`}
+        description={
+          <>
+            <Icon name={statusIcon[r.status]} size="xs" className="mr-1 align-middle" />
+            {statusLabel[r.status]}
+          </>
+        }
         action={
           <div className="flex gap-2">
             {stayId !== null && (
@@ -139,7 +145,7 @@ export default function ReservationPage() {
       )}
       {r.refund_due_cents > 0 && (
         <p role="status" className="w-fit rounded border border-amber-500/60 px-2 py-1 text-sm font-medium">
-          <span aria-hidden="true">↩ </span>
+          <Icon name="undo" size="xs" className="mr-1 align-middle" />
           {`Devolução a fazer: ${formatMoney(r.refund_due_cents)}`}
         </p>
       )}

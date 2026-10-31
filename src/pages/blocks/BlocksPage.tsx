@@ -11,6 +11,7 @@ import { blockStatusIcon, blockStatusLabel, periodText } from "@/lib/blocks";
 import { useSessionStore } from "@/stores/session";
 import BlockDialog from "./BlockDialog";
 import ReleaseDialog from "./ReleaseDialog";
+import Icon from "@/components/Icon";
 
 /** Bloqueios de quarto: por período ou até a liberação manual. */
 export default function BlocksPage() {
@@ -76,7 +77,7 @@ export default function BlocksPage() {
               <TableCell>{periodText(b.start_date, b.end_date)}</TableCell>
               <TableCell>{b.reason}</TableCell>
               <TableCell>
-                <span aria-hidden="true">{blockStatusIcon[b.status]} </span>
+                <Icon name={blockStatusIcon[b.status]} size="xs" className="mr-1 align-middle" />
                 {blockStatusLabel[b.status]}
               </TableCell>
               <TableCell>

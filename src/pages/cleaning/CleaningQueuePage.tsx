@@ -16,6 +16,7 @@ import { formatTime } from "@/lib/format";
 import { formatLocalDateTime, PRIORITY_ICON, PRIORITY_LABEL } from "@/lib/roomState";
 import { useSessionStore } from "@/stores/session";
 import PriorityDialog from "./PriorityDialog";
+import Icon from "@/components/Icon";
 
 const statusLabel = { awaiting: "Aguardando limpeza", in_progress: "Em limpeza", done: "Concluída" } as const;
 
@@ -108,7 +109,7 @@ export default function CleaningQueuePage() {
             <TableRow key={item.task.id}>
               <TableCell className="font-medium">{item.task.room_code}</TableCell>
               <TableCell>
-                <span aria-hidden="true">{PRIORITY_ICON[item.priority]} </span>
+                <Icon name={PRIORITY_ICON[item.priority]} size="xs" className="mr-1 align-middle" />
                 {PRIORITY_LABEL[item.priority]}
                 {item.task.priority_override && <span className="text-xs text-muted-foreground"> (ajustada)</span>}
               </TableCell>

@@ -73,11 +73,11 @@ describe("PayablesPage", () => {
     open();
 
     expect(await screen.findByText("CAP-000001")).toBeInTheDocument();
-    const cells = screen.getAllByRole("cell").map((c) => c.textContent);
-    expect(cells).toContain("⚠ Vencida");
-    expect(cells).toContain("○ Pendente");
-    expect(cells).toContain("◐ Parcial");
-    expect(cells).toContain("● Paga");
+    const cell = (label: string) => screen.getAllByRole("cell").find((c) => c.textContent?.endsWith(label)) as HTMLElement;
+    expect(cell("Vencida").querySelector('[data-icon="warning"]')).not.toBeNull();
+    expect(cell("Pendente").querySelector('[data-icon="radio_button_unchecked"]')).not.toBeNull();
+    expect(cell("Parcial").querySelector('[data-icon="timelapse"]')).not.toBeNull();
+    expect(cell("Paga").querySelector('[data-icon="check_circle"]')).not.toBeNull();
   });
 
   it("conta paga não oferece pagamento; as demais oferecem", async () => {

@@ -9,6 +9,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { checkoutStay, previewStayCheckout, type ApiError, type ChargeKind, type CheckoutPreview, type LateFeeChoice } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import { useSessionStore } from "@/stores/session";
+import Icon from "@/components/Icon";
 
 interface Props {
   open: boolean;
@@ -137,7 +138,7 @@ export default function CheckoutDialog({ open, stayId, onClose, onDone }: Props)
           {late.applies && (
             <fieldset className="grid gap-2 rounded-lg border border-destructive/40 p-3 text-sm">
               <legend className="px-1 font-medium">Saída tardia</legend>
-              <p>{`⚠ Saída ${late.minutes_late} min depois do previsto; cobrança prevista ${formatMoney(late.fee_cents)}.`}</p>
+              <p><Icon name="warning" size="xs" className="mr-1 align-middle" />{`Saída ${late.minutes_late} min depois do previsto; cobrança prevista ${formatMoney(late.fee_cents)}.`}</p>
               <p className="text-muted-foreground">Nenhuma diária é criada automaticamente.</p>
               <label className="flex items-center gap-2">
                 <input type="radio" name="late-choice" checked={choice === "charge"} onChange={() => setChoice("charge")} />
@@ -186,7 +187,7 @@ export default function CheckoutDialog({ open, stayId, onClose, onDone }: Props)
 
           {risk && (
             <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-sm">
-              {`⚠ Esta saída pode atrasar a chegada da reserva ${risk.next_code} (≈ ${risk.overrun_minutes} min).`}
+              <Icon name="warning" size="xs" className="mr-1 align-middle" />{`Esta saída pode atrasar a chegada da reserva ${risk.next_code} (≈ ${risk.overrun_minutes} min).`}
             </p>
           )}
           {message && (

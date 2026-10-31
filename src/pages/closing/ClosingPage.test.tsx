@@ -79,7 +79,7 @@ describe("ClosingPage", () => {
     await fillCounts({ Dinheiro: "95,00" });
 
     const cash = screen.getByText("Dinheiro", { selector: "td" }).closest("tr") as HTMLElement;
-    expect(within(cash).getByText(/Falta R\$ 5,00/)).toHaveTextContent("⚠");
+    expect(within(cash).getByText(/Falta R\$ 5,00/).querySelector('[data-icon="warning"]')).not.toBeNull();
     await fillCounts({ Dinheiro: "105,00" });
     expect(within(cash).getByText(/Sobra R\$ 5,00/)).toBeInTheDocument();
     await fillCounts({ Dinheiro: "100,00" });

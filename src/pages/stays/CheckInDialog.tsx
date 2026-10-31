@@ -9,6 +9,7 @@ import { formatMoney } from "@/lib/format";
 import { useGuardedClose } from "@/hooks/useGuardedClose";
 import { useSessionStore } from "@/stores/session";
 import { hasBlankName, OccupantsEditor, toOccupantInputs, type Companion } from "./OccupantsEditor";
+import Icon from "@/components/Icon";
 
 interface Props {
   open: boolean;
@@ -94,13 +95,13 @@ export default function CheckInDialog({ open, reservation, onClose, onDone, onCo
             <OccupantsEditor holderName={reservation.guest_name} companions={companions} onChange={setCompanions} />
             {early && (
               <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-sm">
-                {"⚠ Check-in antes do horário previsto — exige autorização."}
+                <Icon name="warning" size="xs" className="mr-1 align-middle" />{"Check-in antes do horário previsto — exige autorização."}
                 {needsEarlyPermission && " Peça a quem pode autorizar o check-in antecipado."}
               </p>
             )}
             {overCapacity && room && (
               <div role="alert" className="grid gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-sm">
-                <p>{`⚠ O quarto ${room.code} comporta ${room.max_capacity} pessoa(s).`}</p>
+                <p><Icon name="warning" size="xs" className="mr-1 align-middle" />{`O quarto ${room.code} comporta ${room.max_capacity} pessoa(s).`}</p>
                 {can("exceed_capacity") ? (
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={exceed} onChange={(e) => setExceed(e.target.checked)} />

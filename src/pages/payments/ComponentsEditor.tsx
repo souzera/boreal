@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatMoney } from "@/lib/format";
 import { emptyRow, methodLabel, selectableMethods, sumRows, type SplitRow } from "@/lib/payment";
+import Icon from "@/components/Icon";
 
 interface Props {
   /** Total informado, em centavos, ou `null` se ainda inválido. */
@@ -76,7 +77,17 @@ export default function ComponentsEditor({ totalCents, rows, onChange, error }: 
       {split && remaining !== null && totalCents !== null && (
         <p role="status" className="text-sm font-medium">
           {`Soma ${formatMoney(sum)} de ${formatMoney(totalCents)} · `}
-          {remaining === 0 ? "✓ Confere" : remaining > 0 ? `⚠ Falta ${formatMoney(remaining)}` : `⚠ Sobra ${formatMoney(-remaining)}`}
+          {remaining === 0 ? (
+            <>
+              <Icon name="check_circle" size="xs" className="mr-1 align-middle" />
+              Confere
+            </>
+          ) : (
+            <>
+              <Icon name="warning" size="xs" className="mr-1 align-middle" />
+              {remaining > 0 ? `Falta ${formatMoney(remaining)}` : `Sobra ${formatMoney(-remaining)}`}
+            </>
+          )}
         </p>
       )}
       {rows.length < selectableMethods.length && (

@@ -9,6 +9,7 @@ import { listMaintenance } from "@/lib/api";
 import { maintenanceStatusIcon, maintenanceStatusLabel, orderPriorityLabel, periodText } from "@/lib/blocks";
 import { useSessionStore } from "@/stores/session";
 import OrderDialog from "./OrderDialog";
+import Icon from "@/components/Icon";
 
 /** Ordens de manutenção: abertas por padrão, com opção de ver as concluídas. */
 export default function MaintenancePage() {
@@ -60,7 +61,7 @@ export default function MaintenancePage() {
               <TableCell>{orderPriorityLabel[o.priority]}</TableCell>
               <TableCell>{periodText(o.planned_start, o.planned_end)}</TableCell>
               <TableCell>
-                <span aria-hidden="true">{maintenanceStatusIcon[o.status]} </span>
+                <Icon name={maintenanceStatusIcon[o.status]} size="xs" className="mr-1 align-middle" />
                 {maintenanceStatusLabel[o.status]}
               </TableCell>
             </TableRow>

@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import type { DuplicateInfo } from "@/lib/api";
 import { formatInstant, formatMoney } from "@/lib/format";
 import { methodLabel } from "@/lib/payment";
+import Icon from "@/components/Icon";
 
 interface Props {
   info: DuplicateInfo;
@@ -22,7 +23,7 @@ export default function DuplicateDialog({ info, canRelease, justification, error
   return (
     <div className="grid gap-3">
       <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
-        {`⚠ Possível recebimento duplicado: já existe o ${info.code}, de ${formatMoney(info.total_cents)} em ${methods}, registrado em ${formatInstant(info.received_at)}. Confira antes de registrar de novo.`}
+        <Icon name="warning" size="xs" className="mr-1 align-middle" />{`Possível recebimento duplicado: já existe o ${info.code}, de ${formatMoney(info.total_cents)} em ${methods}, registrado em ${formatInstant(info.received_at)}. Confira antes de registrar de novo.`}
       </p>
       {canRelease ? (
         <FormField id="dup-justification" label="Justificativa para liberar" required error={error ?? undefined}>

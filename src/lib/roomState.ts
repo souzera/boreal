@@ -10,14 +10,32 @@ export const ROOM_STATE_LABEL: Record<RoomStateKey, string> = {
   blocked: "Em manutenção ou bloqueado",
 };
 
-/** Cada estado combina cor, símbolo e rótulo: a cor nunca é o único sinal. */
+/** Cada estado combina cor (tokens do tema), ícone e rótulo: a cor nunca é o único sinal. */
 export const ROOM_STATE_STYLE: Record<RoomStateKey, { icon: string; className: string }> = {
-  occupied: { icon: "●", className: "bg-blue-100 text-blue-900 border-blue-300" },
-  awaiting_cleaning: { icon: "◐", className: "bg-amber-100 text-amber-900 border-amber-300" },
-  cleaning: { icon: "◑", className: "bg-violet-100 text-violet-900 border-violet-300" },
-  clean_waiting_interval: { icon: "◔", className: "bg-cyan-100 text-cyan-900 border-cyan-300" },
-  available: { icon: "✓", className: "bg-green-100 text-green-900 border-green-300" },
-  blocked: { icon: "✖", className: "bg-red-100 text-red-900 border-red-300" },
+  occupied: {
+    icon: "bed",
+    className: "bg-state-occupied-bg text-state-occupied-fg border-state-occupied-border",
+  },
+  awaiting_cleaning: {
+    icon: "cleaning_services",
+    className: "bg-state-awaiting-cleaning-bg text-state-awaiting-cleaning-fg border-state-awaiting-cleaning-border",
+  },
+  cleaning: {
+    icon: "autorenew",
+    className: "bg-state-cleaning-bg text-state-cleaning-fg border-state-cleaning-border",
+  },
+  clean_waiting_interval: {
+    icon: "hourglass_top",
+    className: "bg-state-clean-waiting-interval-bg text-state-clean-waiting-interval-fg border-state-clean-waiting-interval-border",
+  },
+  available: {
+    icon: "check_circle",
+    className: "bg-state-available-bg text-state-available-fg border-state-available-border",
+  },
+  blocked: {
+    icon: "block",
+    className: "bg-state-blocked-bg text-state-blocked-fg border-state-blocked-border",
+  },
 };
 
 export const ROOM_STATE_ORDER: RoomStateKey[] = [
@@ -37,10 +55,10 @@ export const PRIORITY_LABEL: Record<CleaningPriority, string> = {
 };
 
 export const PRIORITY_ICON: Record<CleaningPriority, string> = {
-  urgent: "▲▲",
-  high: "▲",
-  normal: "●",
-  low: "▽",
+  urgent: "keyboard_double_arrow_up",
+  high: "keyboard_arrow_up",
+  normal: "remove",
+  low: "keyboard_arrow_down",
 };
 
 /** `AAAA-MM-DDTHH:MM` (horário local) em `DD/MM/AAAA HH:MM`. */

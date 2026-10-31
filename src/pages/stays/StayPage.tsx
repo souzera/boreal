@@ -17,6 +17,7 @@ import CheckoutDialog from "./CheckoutDialog";
 import PaymentDialog from "../payments/PaymentDialog";
 import RefundDialog from "../payments/RefundDialog";
 import ReverseDialog from "./ReverseDialog";
+import Icon from "@/components/Icon";
 
 export type StayDialog = "charge" | "payment" | "checkout" | { reverse: number } | null;
 
@@ -85,7 +86,12 @@ export default function StayPage() {
     <section className="grid gap-6">
       <PageHeader
         title={`Hospedagem ${stay.code}`}
-        description={`${stayStatusIcon[stay.status]} ${stayStatusLabel[stay.status]}`}
+        description={
+          <>
+            <Icon name={stayStatusIcon[stay.status]} size="xs" className="mr-1 align-middle" />
+            {stayStatusLabel[stay.status]}
+          </>
+        }
         action={
           <div className="flex gap-2">
             <Button render={<Link to={`/reservas/${stay.reservation_id}`} />} variant="outline">

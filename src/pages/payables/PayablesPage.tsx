@@ -18,11 +18,17 @@ import { useSessionStore } from "@/stores/session";
 import CategoriesPanel from "./CategoriesPanel";
 import PayableDialog from "./PayableDialog";
 import PayPayableDialog from "./PayPayableDialog";
+import Icon from "@/components/Icon";
 
 const PAGE_SIZE = 20;
 
 /** Ícone junto do rótulo: a situação nunca depende só de cor. */
-const statusIcon: Record<PayableStatus, string> = { pending: "○", partial: "◐", paid: "●", overdue: "⚠" };
+const statusIcon: Record<PayableStatus, string> = {
+  pending: "radio_button_unchecked",
+  partial: "timelapse",
+  paid: "check_circle",
+  overdue: "warning",
+};
 
 const statusOptions: { value: PayableStatus; label: string }[] = [
   { value: "pending", label: "Pendente" },
@@ -105,7 +111,7 @@ export default function PayablesPage() {
       header: "Situação",
       render: (p) => (
         <span className={p.status === "overdue" ? "font-medium text-destructive" : undefined}>
-          <span aria-hidden="true">{statusIcon[p.status]} </span>
+          <Icon name={statusIcon[p.status]} size="xs" className="mr-1 align-middle" />
           {p.status_label}
         </span>
       ),

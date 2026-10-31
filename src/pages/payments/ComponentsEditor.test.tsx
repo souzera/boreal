@@ -31,7 +31,7 @@ describe("ComponentsEditor", () => {
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("Soma R$ 80,00 de R$ 100,00");
     expect(status).toHaveTextContent("Falta R$ 20,00");
-    expect(status).toHaveTextContent("⚠");
+    expect(status.querySelector('[data-icon="warning"]')).not.toBeNull();
   });
 
   it("mostra Sobra e Confere", async () => {
