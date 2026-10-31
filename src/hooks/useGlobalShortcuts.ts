@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 /** Atalhos globais mostrados nos botões do cabeçalho (a ação também existe visualmente). */
 export const SHORTCUTS = {
@@ -38,12 +38,14 @@ interface Options {
  */
 export function useGlobalShortcuts({ onSearch, onNavigate, enabled = true }: Options): void {
   const handlers = useRef({ onSearch, onNavigate });
-  handlers.current = { onSearch, onNavigate };
+  useLayoutEffect(() => {
+    handlers.current = { onSearch, onNavigate };
+  });
 
   useEffect(() => {
     if (!enabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat || event.metaKey || document.querySelector('[role="dialog"]')) return;
+      if (event.repeat || event.metaKey || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       if (event.ctrlKey && !event.altKey && !event.shiftKey && (event.code === "KeyK" || event.key.toLowerCase() === "k")) {
         event.preventDefault();
         handlers.current.onSearch();

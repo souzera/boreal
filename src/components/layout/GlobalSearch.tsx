@@ -11,7 +11,7 @@ export default function GlobalSearch({ inputRef }: { inputRef?: Ref<HTMLInputEle
   return (
     <form
       role="search"
-      className="w-full max-w-sm"
+      className="min-w-48 max-w-sm flex-1"
       onSubmit={(e) => {
         e.preventDefault();
         const query = text.trim();

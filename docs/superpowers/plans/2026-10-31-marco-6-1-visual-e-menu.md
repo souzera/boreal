@@ -80,7 +80,7 @@ docs/usuario/*, docs/desenvolvimento/design-system.md
 **Interfaces:**
 - Produces: `contrastRatio(foreground: string, background: string): number` (hex `#RRGGBB`, fórmula WCAG 2.x). Tokens CSS em `:root`: `--background --foreground --card --card-foreground --popover --popover-foreground --primary --primary-foreground --primary-hover --primary-subtle --primary-selected --secondary --secondary-foreground --muted --muted-foreground --accent --accent-foreground --border --input --ring --destructive`, semânticas `--success|--info|--warning|--danger` e `--*-foreground`/`--*-subtle` (fundo sutil + texto), estados `--state-occupied|awaiting-cleaning|cleaning|clean-waiting-interval|available|blocked` cada um com `-bg`, `-fg`, `-border`, raios `--radius` (8 px) e `--radius-card` (12 px), sombras `--shadow-card`, `--shadow-overlay`, e `--font-sans` com Onest. Classes Tailwind via `@theme inline`: `bg-state-occupied-bg`, `text-state-occupied-fg`, `border-state-occupied-border` (e as demais).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - `contrast.test.ts`: `contrastRatio("#000000","#FFFFFF")` ≈ 21; `contrastRatio("#777777","#FFFFFF")` ≈ 4,48 (toBeCloseTo 2 casas); simétrico; aceita minúsculas e `#abc` de 3 dígitos.
   - `theme.test.ts` (lê `src/index.css` com `node:fs`; extrai `--nome: #hex` do bloco `:root`):
     - `defines every required token` (lista acima);
@@ -90,10 +90,10 @@ docs/usuario/*, docs/desenvolvimento/design-system.md
     - `radii and shadows exist`: `--radius` = `0.5rem`, `--radius-card` = `0.75rem`, `--shadow-card` e `--shadow-overlay` presentes;
     - `font is Onest and nothing is loaded from the network`: `index.css` importa `@fontsource-variable/onest`, `--font-sans` começa por `'Onest Variable'`, e nem `index.css` nem `index.html` contêm `http://` ou `https://` de fontes/ícones (`fonts.googleapis`, `fonts.gstatic`, `cdn`);
     - `numbers align`: `index.css` define `font-variant-numeric: tabular-nums` para `td, th`.
-- [ ] **Step 2: Run** `npx vitest run src/lib/contrast.test.ts src/theme.test.ts` — Expected: FAIL (arquivos/tokens inexistentes).
-- [ ] **Step 3: Implement** `contrast.ts`; `npm install --legacy-peer-deps @fontsource-variable/onest material-symbols` e `npm uninstall @fontsource-variable/geist`; reescrever o `:root` de `index.css` com os tokens (valores das Decisões V1–V3 e Global Constraints; `--ring: #0D9488`; `--destructive` = `--danger`), `@import "@fontsource-variable/onest"`, `--font-sans: 'Onest Variable', system-ui, sans-serif`, mapear os tokens no `@theme inline` (inclui `--color-state-*`), definir `--radius: 0.5rem`, `--radius-card`, sombras, e `td, th { font-variant-numeric: tabular-nums }`. Se algum par ficar abaixo de 4,5, escurecer o texto (não clarear o fundo).
-- [ ] **Step 4: Run** os mesmos testes e depois `npx vitest run` — Expected: PASS; o restante da suíte continua verde (nada de componente mudou ainda).
-- [ ] **Step 5: Commit** `feat: Boreal theme tokens, Onest font and contrast contract`
+- [x] **Step 2: Run** `npx vitest run src/lib/contrast.test.ts src/theme.test.ts` — Expected: FAIL (arquivos/tokens inexistentes).
+- [x] **Step 3: Implement** `contrast.ts`; `npm install --legacy-peer-deps @fontsource-variable/onest material-symbols` e `npm uninstall @fontsource-variable/geist`; reescrever o `:root` de `index.css` com os tokens (valores das Decisões V1–V3 e Global Constraints; `--ring: #0D9488`; `--destructive` = `--danger`), `@import "@fontsource-variable/onest"`, `--font-sans: 'Onest Variable', system-ui, sans-serif`, mapear os tokens no `@theme inline` (inclui `--color-state-*`), definir `--radius: 0.5rem`, `--radius-card`, sombras, e `td, th { font-variant-numeric: tabular-nums }`. Se algum par ficar abaixo de 4,5, escurecer o texto (não clarear o fundo).
+- [x] **Step 4: Run** os mesmos testes e depois `npx vitest run` — Expected: PASS; o restante da suíte continua verde (nada de componente mudou ainda).
+- [x] **Step 5: Commit** `feat: Boreal theme tokens, Onest font and contrast contract`
 
 ---
 
@@ -106,11 +106,11 @@ docs/usuario/*, docs/desenvolvimento/design-system.md
 **Interfaces:**
 - Produces: `type IconSize = "xs" | "sm" | "md" | "lg"` (14, 16, 20, 22 px) e `Icon({ name, size = "sm", className }: { name: string; size?: IconSize; className?: string })` renderiza `<span class="material-symbols-rounded" aria-hidden="true" data-icon={name} style={{ fontSize }}>{name}</span>` (o texto é o nome da ligadura). Também `export const iconSizePx: Record<IconSize, number>`.
 
-- [ ] **Step 1: Write the failing test** `Icon.test.tsx`: `renders the symbol name as a hidden ligature` (`aria-hidden="true"`, `data-icon="warning"`, classe `material-symbols-rounded`); `size maps to pixels` (`xs` 14, `sm` 16 padrão, `md` 20, `lg` 22 em `style.fontSize`); `merges className`; `index.css imports the packaged material-symbols stylesheet and sets FILL 1` (lê o CSS como em `theme.test.ts`).
-- [ ] **Step 2: Run** `npx vitest run src/components/Icon.test.tsx` — Expected: FAIL.
-- [ ] **Step 3: Implement** `Icon.tsx` e a importação/regra no CSS.
-- [ ] **Step 4: Run** o teste — Expected: PASS; `npx tsc --noEmit` limpo.
-- [ ] **Step 5: Commit** `feat: shared Icon component with packaged Material Symbols`
+- [x] **Step 1: Write the failing test** `Icon.test.tsx`: `renders the symbol name as a hidden ligature` (`aria-hidden="true"`, `data-icon="warning"`, classe `material-symbols-rounded`); `size maps to pixels` (`xs` 14, `sm` 16 padrão, `md` 20, `lg` 22 em `style.fontSize`); `merges className`; `index.css imports the packaged material-symbols stylesheet and sets FILL 1` (lê o CSS como em `theme.test.ts`).
+- [x] **Step 2: Run** `npx vitest run src/components/Icon.test.tsx` — Expected: FAIL.
+- [x] **Step 3: Implement** `Icon.tsx` e a importação/regra no CSS.
+- [x] **Step 4: Run** o teste — Expected: PASS; `npx tsc --noEmit` limpo.
+- [x] **Step 5: Commit** `feat: shared Icon component with packaged Material Symbols`
 
 ---
 
@@ -124,15 +124,15 @@ docs/usuario/*, docs/desenvolvimento/design-system.md
 - Consumes: `Icon` (T2), tokens `--state-*` (T1).
 - Produces: nos mapas de `lib/*`, o valor de ícone passa de glifo a **nome de símbolo** (`ROOM_STATE_STYLE[state].icon`, `PRIORITY_ICON`, `statusIcon` de reservas, `stayStatusIcon`, ícones de bloqueio/manutenção, `statusIcon` de contas a pagar). `ROOM_STATE_STYLE[state].className` passa a usar as classes de token (`bg-state-<estado>-bg text-state-<estado>-fg border-state-<estado>-border`). Nomes: ocupado `bed`, aguardando limpeza `cleaning_services`, em limpeza `autorenew`, limpo aguardando intervalo `hourglass_top`, disponível `check_circle`, bloqueado `block`; atenção/alerta `warning`; confere `check_circle`; devolução `undo`; prioridade `keyboard_double_arrow_up`/`keyboard_arrow_up`/`remove`/`keyboard_arrow_down`; reservas pendente `schedule`, confirmada `verified`, hospedada `bed`, concluída `task_alt`, cancelada `cancel`, no-show `person_off`; bloqueio preventivo `shield`, ativo `block`, aguardando liberação `pause_circle`, liberado `lock_open`; ordem aberta `radio_button_unchecked`, em andamento `autorenew`, aguardando resolução `pause_circle`, concluída `task_alt`; conta a pagar pendente `radio_button_unchecked`, parcial `timelapse`, paga `check_circle`, vencida `warning`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - `statusIcons.test.ts`: `every room state has an icon, a label and token classes` (para cada `RoomStateKey`: `icon` não vazio sem caracteres de glifo, rótulo definido, `className` contém `bg-state-` e `text-state-`); o mesmo para status de reserva, hospedagem, bloqueio, ordem de manutenção, prioridade.
   - `RoomStateBadge.test.tsx`: `shows icon and label` (`[data-icon="cleaning_services"]` e texto "Aguardando limpeza"); `shows when a cleaned room becomes free` ("livre às 11:00"); `renders as a link when given a destination`.
   - `no old text markers remain`: teste que percorre `src/**/*.{ts,tsx}` (exceto `*.test.*`) e falha se achar `[●◐◑◔○■✓✔✖⚠▲▽↩⏸]` fora de comentários.
   - Ajustar, nos testes de tela existentes, as asserções de glifo (`toHaveTextContent("⚠")`, `"⚠ Vencida"` etc.) para a presença de `[data-icon="warning"]` + o texto do rótulo.
-- [ ] **Step 2: Run** `npx vitest run src/lib/statusIcons.test.ts src/components/RoomStateBadge.test.tsx` — Expected: FAIL (glifos ainda no código).
-- [ ] **Step 3: Implement** a troca nos `lib/*`, em `RoomStateBadge` e em cada tela listada: onde havia `<span aria-hidden>{glifo} </span>` ou o glifo dentro de um texto, usar `<Icon name=… size="xs|sm" />` seguido do rótulo; mensagens de texto simples (por exemplo `⚠ Saída 45 min depois do previsto…`) mantêm o texto e ganham o `<Icon name="warning" />` antes.
-- [ ] **Step 4: Run** `npx vitest run` (suíte inteira), `npx tsc --noEmit` — Expected: PASS; o teste de "sobras" verde.
-- [ ] **Step 5: Commit** `feat: status marks use Material Symbols and room states use theme tokens`
+- [x] **Step 2: Run** `npx vitest run src/lib/statusIcons.test.ts src/components/RoomStateBadge.test.tsx` — Expected: FAIL (glifos ainda no código).
+- [x] **Step 3: Implement** a troca nos `lib/*`, em `RoomStateBadge` e em cada tela listada: onde havia `<span aria-hidden>{glifo} </span>` ou o glifo dentro de um texto, usar `<Icon name=… size="xs|sm" />` seguido do rótulo; mensagens de texto simples (por exemplo `⚠ Saída 45 min depois do previsto…`) mantêm o texto e ganham o `<Icon name="warning" />` antes.
+- [x] **Step 4: Run** `npx vitest run` (suíte inteira), `npx tsc --noEmit` — Expected: PASS; o teste de "sobras" verde.
+- [x] **Step 5: Commit** `feat: status marks use Material Symbols and room states use theme tokens`
 
 ---
 
@@ -147,13 +147,13 @@ docs/usuario/*, docs/desenvolvimento/design-system.md
 - Consumes: `Icon` (T2), `usePermissions().can`, `useSessionStore` (papel).
 - Produces: `type NavLeaf = { label: string; to?: string; icon: string; soon?: boolean; admin?: boolean; permission?: string }`, `type NavGroup = { label: string; icon: string; items: NavLeaf[] }`, `export const NAV: (NavLeaf | NavGroup)[]` na ordem das Decisões (V5) e `visibleNav(nav, { role, can }): (NavLeaf | NavGroup)[]` (puro; remove itens `admin` para recepção e `permission` sem a permissão; grupo sem itens some).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - `NavItems.test.ts`: `every link points to a real route` (cada `to` casa com algum `path` de `appRoutes`, tratando `:param` e prefixos); `no duplicate destinations`; `admin sees Configurações and Usuários, reception does not` (`visibleNav`); `payables only with the permission`; `Relatórios and Alertas are soon and have no destination`; `Tarifas and Itens e serviços stay visible to reception`.
   - `Sidebar.test.tsx` (ajustes e novos): grupos aparecem com rótulo (`Reservas`, `Quartos`, `Financeiro`, `Configurações` como cabeçalho, não link); `the active link is marked with aria-current and has a visible indicator`; itens "Em breve" têm `aria-disabled` e `title="Em breve"`; `recepção não vê o link Configurações` (agora por `queryByRole("link", { name: "Configurações" })`); Mapa de quartos, Limpeza, Bloqueios, Manutenção e Cadastro de quartos dentro do grupo Quartos; cada item com `[data-icon]`.
-- [ ] **Step 2: Run** `npx vitest run src/components/layout` — Expected: FAIL.
-- [ ] **Step 3: Implement** `NavItems.ts` (dados + `visibleNav`) e reescrever `Sidebar.tsx` renderizando a partir de `visibleNav`; cabeçalho do produto "Boreal PMS"; sidebar branca com borda e `shadow` discreto; ícones de 20 px; ativo = fundo `primary-selected`, texto `primary`, `aria-current="page"` e barra lateral de 3 px (indicador que não depende só de cor); rótulos de grupo em 12 px/500 `muted-foreground`.
-- [ ] **Step 4: Run** `npx vitest run src/components/layout` e a suíte inteira — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: grouped sidebar menu with icons and route-integrity test`
+- [x] **Step 2: Run** `npx vitest run src/components/layout` — Expected: FAIL.
+- [x] **Step 3: Implement** `NavItems.ts` (dados + `visibleNav`) e reescrever `Sidebar.tsx` renderizando a partir de `visibleNav`; cabeçalho do produto "Boreal PMS"; sidebar branca com borda e `shadow` discreto; ícones de 20 px; ativo = fundo `primary-selected`, texto `primary`, `aria-current="page"` e barra lateral de 3 px (indicador que não depende só de cor); rótulos de grupo em 12 px/500 `muted-foreground`.
+- [x] **Step 4: Run** `npx vitest run src/components/layout` e a suíte inteira — Expected: PASS.
+- [x] **Step 5: Commit** `feat: grouped sidebar menu with icons and route-integrity test`
 
 ---
 
@@ -168,14 +168,14 @@ docs/usuario/*, docs/desenvolvimento/design-system.md
 - Produces: `export const SHORTCUTS = { search: "Ctrl+K", newReservation: "Alt+N", checkIn: "Alt+C", receivePayment: "Alt+R", checkOut: "Alt+S" }`; `useGlobalShortcuts({ onSearch, onNavigate }: { onSearch: () => void; onNavigate: (to: string) => void }): void` registra um `keydown` no `window`; `GlobalSearch` passa a aceitar `ref` (ou `focusSignal`) para ser focado; `GlobalActions` renderiza cinco botões com ícone, texto e a dica do atalho (`title` e `aria-keyshortcuts`).
 - Destinos (V6): `/reservas/nova`, `/reservas`, `/hospedagens`, `/hospedagens`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - `useGlobalShortcuts.test.tsx`: `Ctrl+K calls onSearch even when an input has focus`; `Alt+N navigates to /reservas/nova` (e `Alt+C` → `/reservas`, `Alt+R` e `Alt+S` → `/hospedagens`); `ignores shortcuts while a dialog is open` (existe `[role="dialog"]` no documento); `ignores key repeat`; `ignores unrelated keys and Alt+N with extra modifiers`.
   - `GlobalActions.test.tsx`: `shows the five actions with icon and label`; `each action navigates`; `Buscar focuses the search field`; `shortcut hint is exposed` (`aria-keyshortcuts`).
   - `AppShell.test.tsx`: com sessão **bloqueada** as ações e o atalho não navegam nem aparecem utilizáveis (o conteúdo continua oculto como hoje); com sessão ativa o cabeçalho mostra as ações, a busca e o usuário.
-- [ ] **Step 2: Run** `npx vitest run src/hooks/useGlobalShortcuts.test.tsx src/components/layout` — Expected: FAIL.
-- [ ] **Step 3: Implement** o hook, `GlobalActions` e a integração em `AppShell` (cabeçalho em superfície branca com borda inferior; ações à direita da busca; "Sair" e o nome do usuário no canto); quando `LockGate` bloqueia, o hook não é registrado.
-- [ ] **Step 4: Run** a suíte inteira — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: global actions and keyboard shortcuts in the top bar`
+- [x] **Step 2: Run** `npx vitest run src/hooks/useGlobalShortcuts.test.tsx src/components/layout` — Expected: FAIL.
+- [x] **Step 3: Implement** o hook, `GlobalActions` e a integração em `AppShell` (cabeçalho em superfície branca com borda inferior; ações à direita da busca; "Sair" e o nome do usuário no canto); quando `LockGate` bloqueia, o hook não é registrado.
+- [x] **Step 4: Run** a suíte inteira — Expected: PASS.
+- [x] **Step 5: Commit** `feat: global actions and keyboard shortcuts in the top bar`
 
 ---
 
@@ -189,11 +189,11 @@ docs/usuario/*, docs/desenvolvimento/design-system.md
 - Consumes: tokens de raio/sombra (T1).
 - Produces: botões e inputs com raio de 8 px, cards e diálogos com raio de 12 px e `shadow-card`/`shadow-overlay`, badges com 6 px; `PageHeader` com título 26 px/650; foco visível (`focus-visible:ring-*` com `--ring`); a página inicial exibe o título "Recepção" (conteúdo inalterado).
 
-- [ ] **Step 1: Write the failing tests** `geometry.test.tsx`: renderiza `Button`, `Input`, `Card`, `Dialog` aberto e `Badge` e confere as classes de raio/sombra esperadas (`rounded-lg` mapeado a 8 px pelo `--radius`, `rounded-xl` do card/diálogo mapeado a 12 px — verificar também em `index.css` que `--radius-xl` = `0.75rem`), `focus-visible:ring` presente em botão e input, e que o `PageHeader` usa `text-[26px]`/`font-semibold`; `Dashboard.test.tsx`: o título é "Recepção".
-- [ ] **Step 2: Run** `npx vitest run src/components/ui src/pages/Dashboard.test.tsx` — Expected: FAIL.
-- [ ] **Step 3: Implement** os ajustes (preferir tokens em `index.css` a valores soltos nos componentes; sombras só em cards, diálogos e menus).
-- [ ] **Step 4: Run** a suíte inteira, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: Boreal geometry, elevation and page header typography`
+- [x] **Step 1: Write the failing tests** `geometry.test.tsx`: renderiza `Button`, `Input`, `Card`, `Dialog` aberto e `Badge` e confere as classes de raio/sombra esperadas (`rounded-lg` mapeado a 8 px pelo `--radius`, `rounded-xl` do card/diálogo mapeado a 12 px — verificar também em `index.css` que `--radius-xl` = `0.75rem`), `focus-visible:ring` presente em botão e input, e que o `PageHeader` usa `text-[26px]`/`font-semibold`; `Dashboard.test.tsx`: o título é "Recepção".
+- [x] **Step 2: Run** `npx vitest run src/components/ui src/pages/Dashboard.test.tsx` — Expected: FAIL.
+- [x] **Step 3: Implement** os ajustes (preferir tokens em `index.css` a valores soltos nos componentes; sombras só em cards, diálogos e menus).
+- [x] **Step 4: Run** a suíte inteira, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: Boreal geometry, elevation and page header typography`
 
 ---
 
@@ -203,17 +203,39 @@ docs/usuario/*, docs/desenvolvimento/design-system.md
 - Create: `docs/desenvolvimento/design-system.md`
 - Modify: `CHANGELOG.md`, `docs/usuario/README.md`, `docs/usuario/roteiro-de-treinamento.md` (menu do Módulo 0, nomes dos itens e atalhos), guias de `docs/usuario/*` que citam o menu antigo, `docs/desenvolvimento/README.md`, `local/plano-completo.md` (marcar 6.1), este plano
 
-- [ ] **Step 1: Docs:** `design-system.md` (tokens e como mudá-los, paleta dos estados e a relação com as semânticas, `Icon` e a lista de nomes usados, fonte empacotada, teste de contraste, como acrescentar item de menu em `NavItems.ts`, atalhos); `CHANGELOG.md` (`Changed`: novo visual, menu agrupado, ações no topo e atalhos, ícones e fonte empacotados; "Recepção" como nome da tela inicial); guias de usuário com o menu novo e a tabela de atalhos; roteiro (Módulo 0) com o menu e os atalhos.
-- [ ] **Step 2: Verificação completa:** `npx vitest run`, `npx tsc --noEmit`, `npm run build`, e `cargo test`/`clippy` só para confirmar que nada do backend mudou; registrar contagens no Status.
-- [ ] **Step 3:** `graphify update .`; anotar no Status.
-- [ ] **Step 4:** Revisão final da branch por revisor independente (modelo mais capaz), em especial o contraste, o menu por papel, os atalhos e as sobras de glifos; corrigir Críticos/Importantes (TDD); registrar menores adiados; atualizar Status, desvios e pendências.
-- [ ] **Step 5: Commit** `docs: close marco 6.1`
+- [x] **Step 1: Docs:** `design-system.md` (tokens e como mudá-los, paleta dos estados e a relação com as semânticas, `Icon` e a lista de nomes usados, fonte empacotada, teste de contraste, como acrescentar item de menu em `NavItems.ts`, atalhos); `CHANGELOG.md` (`Changed`: novo visual, menu agrupado, ações no topo e atalhos, ícones e fonte empacotados; "Recepção" como nome da tela inicial); guias de usuário com o menu novo e a tabela de atalhos; roteiro (Módulo 0) com o menu e os atalhos.
+- [x] **Step 2: Verificação completa:** `npx vitest run`, `npx tsc --noEmit`, `npm run build`, e `cargo test`/`clippy` só para confirmar que nada do backend mudou; registrar contagens no Status.
+- [x] **Step 3:** `graphify update .`; anotar no Status.
+- [x] **Step 4:** Revisão final da branch por revisor independente (modelo mais capaz), em especial o contraste, o menu por papel, os atalhos e as sobras de glifos; corrigir Críticos/Importantes (TDD); registrar menores adiados; atualizar Status, desvios e pendências.
+- [x] **Step 5: Commit** `docs: close marco 6.1`
 
 ---
 
 ## Status
 
-**Não iniciado.** Plano escrito em 31/10/2026; execução nesta sessão logo em seguida, por pedido.
+**Implementado e revisado** na branch `marco-6-1-visual` (a partir de `marco-5-financeiro`). T1 a T7 concluídas; revisão final independente feita (abaixo). Sem migração e sem mudança no backend.
+
+- **Testes (última execução completa):** `npx vitest run` 425 testes em 57 arquivos, `npx tsc --noEmit` limpo e `npm run build` ok; `git diff marco-5-financeiro..HEAD -- src-tauri` vazio (backend intocado); `graphify update .` executado.
+- **Pendências de verificação (manuais, responsável):** `npm run tauri dev` com a interface real, em especial: (a) se o WebView2 deixa `Alt+letra` chegar ao JavaScript sem apitar nem abrir menu do sistema; (b) se a barra de busca do WebView (`Ctrl+F`) casa o nome das ligaduras dos ícones; (c) largura do cabeçalho em 1024 e 1280 px; (d) se os tons dos estados dos quartos e a escala tipográfica agradam em tela real (o brief pede essa validação).
+
+## Desvios e decisões da execução
+
+- `--muted-foreground` ficou `#5B6B82`, e não o `#64748B` do brief (4,43:1 sobre o fundo; precisa de 4,5:1). A importação do Material Symbols e a regra `FILL 1` entraram na T1 (o teste de tema as exige).
+- `NavGroup` não tem ícone próprio (só os itens). Os itens "Em breve" são `span` com `aria-disabled`.
+- `PageHeader.description` virou `ReactNode` (renderizado em `div`) para aceitar ícone.
+- O foco passou de `ring-3 ring-ring/50` (1,8:1) para um anel sólido de 2 px (`ring-ring`, ≥ 3:1) nos componentes de base; o hover do botão primário usa o token `primary-hover` (AA) em vez de `primary/80`.
+- Slip de TDD: os testes de `Sidebar`/`AppShell` da T4 e da T5 foram escritos junto com a mudança; o RED observado foi o de módulo inexistente.
+
+## Revisão final
+
+Revisor independente (modelo mais capaz). Nenhum Crítico. Corrigidos em uma passada, cada um com teste que falhou antes:
+
+- **Importante** — hover do botão primário falhava AA (`primary/80` ≈ 3,8:1) e o token `primary-hover` não era usado: agora `hover:bg-primary-hover` em botão e badge.
+- **Importante** — foco quase invisível no botão primário (≈ 1,5:1): anel sólido de 2 px em botão, campo, seleção, texto, caixa de marcação e badge.
+- **Importante** — cabeçalho quebrava em 3 linhas em janelas de 1024–1280 px: a busca agora encolhe (`flex-1 min-w-48`) e, abaixo de `xl`, as ações mostram só o ícone (o nome fica para leitores de tela).
+- **Menores corrigidos (baratos):** caixa fixa de `1em` no `Icon` (evita o salto de layout enquanto a fonte de ícones carrega); botões pequenos e compactos com raio de 8 px; `alertdialog` também bloqueia os atalhos; repetir o atalho na própria tela não empilha histórico; a referência dos atalhos é atualizada em `useLayoutEffect`; testes de sub-rotas ativas no menu, de atalhos com diálogo real aberto e de `Ctrl+K` dentro de diálogo.
+
+**Menores adiados:** a fonte de ícones inteira pesa 5,4 MB (subconjunto de ~40 nomes é possível depois); falta um teste de `Alt+tecla` com uma página suja sob `UnsavedChangesGuard`; as larguras do cabeçalho foram estimadas, não medidas; os pontos manuais acima.
 
 ## Marcos seguintes
 

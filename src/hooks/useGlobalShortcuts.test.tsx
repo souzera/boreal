@@ -6,12 +6,13 @@ import { SHORTCUTS, useGlobalShortcuts } from "./useGlobalShortcuts";
 const onSearch = vi.fn();
 const onNavigate = vi.fn();
 
-function Harness({ enabled = true, withDialog = false }: { enabled?: boolean; withDialog?: boolean }) {
+function Harness({ enabled = true, withDialog = false, withAlert = false }: { enabled?: boolean; withDialog?: boolean; withAlert?: boolean }) {
   useGlobalShortcuts({ onSearch, onNavigate, enabled });
   return (
     <div>
       <input aria-label="campo" />
       {withDialog && <div role="dialog" />}
+      {withAlert && <div role="alertdialog" />}
     </div>
   );
 }
@@ -86,6 +87,32 @@ describe("useGlobalShortcuts", () => {
 
     expect(onNavigate).not.toHaveBeenCalled();
     expect(onSearch).not.toHaveBeenCalled();
+  });
+
+  it("também não dispara sobre uma confirmação (alertdialog)", () => {
+    render(<Harness withAlert />);
+
+    press({ key: "n", code: "KeyN", altKey: true });
+    press({ key: "k", code: "KeyK", ctrlKey: true });
+
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(onSearch).not.toHaveBeenCalled();
+  });
+
+  it("usa sempre as funções mais recentes, sem religar o ouvinte", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    function Swap({ fn }: { fn: (to: string) => void }) {
+      useGlobalShortcuts({ onSearch, onNavigate: fn });
+      return null;
+    }
+    const { rerender } = render(<Swap fn={first} />);
+    rerender(<Swap fn={second} />);
+
+    press({ key: "n", code: "KeyN", altKey: true });
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith("/reservas/nova");
   });
 
   it("não dispara quando desligado (sessão bloqueada)", () => {

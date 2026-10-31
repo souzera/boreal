@@ -27,6 +27,12 @@ describe("Icon", () => {
     expect((container.firstChild as HTMLElement).style.fontSize).toBe("22px");
   });
 
+  it("ocupa uma caixa fixa de 1em, para o texto da ligadura não alargar a tela antes da fonte carregar", () => {
+    const { container } = render(<Icon name="keyboard_double_arrow_up" />);
+
+    expect(container.firstChild).toHaveClass("w-[1em]", "h-[1em]", "overflow-hidden");
+  });
+
   it("junta classes extras", () => {
     const { container } = render(<Icon name="bed" className="text-primary" />);
     expect(container.firstChild).toHaveClass("material-symbols-rounded", "text-primary");

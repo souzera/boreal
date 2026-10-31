@@ -4,6 +4,7 @@ import { vi } from "vitest";
 
 import { renderPage, signIn } from "@/test/render";
 import { useSessionStore } from "@/stores/session";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import GlobalActions from "./GlobalActions";
 
 const onSearch = vi.fn();
@@ -54,6 +55,46 @@ describe("GlobalActions", () => {
     expect(screen.getByRole("button", { name: /Nova reserva/ })).toHaveAttribute("aria-keyshortcuts", "Alt+N");
     expect(screen.getByRole("button", { name: /Buscar/ })).toHaveAttribute("aria-keyshortcuts", "Control+K");
     expect(screen.getByRole("button", { name: /Nova reserva/ })).toHaveAttribute("title", "Nova reserva (Alt+N)");
+  });
+
+  it("repetir o atalho na própria tela não empilha entradas no histórico", () => {
+    const { router } = open();
+
+    fireEvent.keyDown(window, { key: "n", code: "KeyN", altKey: true });
+    const key = router.state.location.key;
+    fireEvent.keyDown(window, { key: "n", code: "KeyN", altKey: true });
+
+    expect(router.state.location.pathname).toBe("/reservas/nova");
+    expect(router.state.location.key).toBe(key);
+  });
+
+  it("com um diálogo de verdade aberto, nem os atalhos nem Ctrl+K fazem nada", async () => {
+    const { router } = renderPage(
+      <>
+        <GlobalActions onSearch={onSearch} />
+        <Dialog open>
+          <DialogContent>
+            <DialogTitle>Confirmar</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      </>,
+      { path: "*", entry: "/mapa" },
+    );
+    await screen.findByRole("dialog");
+
+    fireEvent.keyDown(window, { key: "n", code: "KeyN", altKey: true });
+    fireEvent.keyDown(window, { key: "k", code: "KeyK", ctrlKey: true });
+
+    expect(router.state.location.pathname).toBe("/mapa");
+    expect(onSearch).not.toHaveBeenCalled();
+  });
+
+  it("em janelas estreitas só o ícone aparece, mas o nome da ação continua para leitores de tela", () => {
+    open();
+
+    const label = screen.getByRole("button", { name: /Receber pagamento/ }).querySelector("span:not([data-icon])");
+    expect(label).toHaveTextContent("Receber pagamento");
+    expect(label?.className).toContain("max-xl:sr-only");
   });
 
   it("o atalho funciona na tela e some com a sessão bloqueada", () => {

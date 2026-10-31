@@ -33,6 +33,44 @@ describe("geometria e elevação do Boreal", () => {
     }
   });
 
+  it("o botão principal escurece ao passar o mouse com o token do tema (contraste AA), não com transparência", () => {
+    render(<Button>Confirmar</Button>);
+
+    const cls = screen.getByRole("button", { name: "Confirmar" }).className;
+    expect(cls).toContain("hover:bg-primary-hover");
+    expect(cls).not.toContain("bg-primary/80");
+  });
+
+  it("o foco usa o anel sólido do tema (3:1), sem a meia-transparência que some sobre o teal", () => {
+    render(
+      <>
+        <Button>Salvar</Button>
+        <Input aria-label="campo" />
+      </>,
+    );
+
+    for (const el of [screen.getByRole("button", { name: "Salvar" }), screen.getByLabelText("campo")]) {
+      expect(el.className, el.tagName).toContain("focus-visible:ring-ring");
+      expect(el.className, el.tagName).not.toContain("ring-ring/50");
+    }
+  });
+
+  it("botões pequenos e compactos também têm raio de 8 px", () => {
+    render(
+      <>
+        <Button size="sm">Pequeno</Button>
+        <Button size="xs">Mínimo</Button>
+        <Button size="icon-sm" aria-label="ícone" />
+      </>,
+    );
+
+    for (const name of ["Pequeno", "Mínimo", "ícone"]) {
+      const cls = screen.getByRole("button", { name }).className;
+      expect(cls, name).toContain("rounded-lg");
+      expect(cls, name).not.toContain("rounded-[min(");
+    }
+  });
+
   it("card tem raio de 12 px, borda e sombra suave (sem anel pesado)", () => {
     const { container } = render(<Card>conteúdo</Card>);
 

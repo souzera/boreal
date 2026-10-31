@@ -69,6 +69,21 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Recepção" })).not.toHaveAttribute("aria-current");
   });
 
+  it("o item continua destacado nas sub-rotas, e a Recepção só na raiz", () => {
+    signIn(recepcaoUser);
+    renderSidebar("/reservas/nova");
+
+    expect(screen.getByRole("link", { name: "Reservas" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Recepção" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("Cadastro de quartos fica destacado em /quartos/categorias", () => {
+    signIn(recepcaoUser);
+    renderSidebar("/quartos/categorias");
+
+    expect(screen.getByRole("link", { name: "Cadastro de quartos" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("todo item tem ícone", () => {
     signIn(adminUser);
     renderSidebar();

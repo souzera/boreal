@@ -21,7 +21,7 @@ export default function Icon({ name, size = "sm", className }: Props) {
     <span
       aria-hidden="true"
       data-icon={name}
-      className={cn("material-symbols-rounded inline-block shrink-0 select-none leading-none", className)}
+      className={cn("material-symbols-rounded inline-block h-[1em] w-[1em] shrink-0 select-none overflow-hidden leading-none", className)}
       style={{ fontSize: iconSizePx[size] }}
     >
       {name}
