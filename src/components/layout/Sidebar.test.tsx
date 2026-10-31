@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { vi } from "vitest";
 
 import * as api from "@/lib/api";
@@ -10,8 +10,8 @@ vi.mock("@/lib/api", async () => {
   return { ...actual, myPermissions: vi.fn() };
 });
 
-function renderSidebar() {
-  renderPage(<Sidebar />);
+function renderSidebar(entry = "/") {
+  renderPage(<Sidebar />, { path: "*", entry });
 }
 
 beforeEach(() => {
@@ -24,21 +24,34 @@ describe("Sidebar", () => {
     renderSidebar();
 
     expect(screen.getByRole("link", { name: "Configurações" })).toHaveAttribute("href", "/configuracoes");
+    expect(screen.getByRole("link", { name: "Usuários" })).toHaveAttribute("href", "/usuarios");
   });
 
-  it("mostra Limpeza como link para a fila de limpeza", () => {
+  it("agrupa os itens com rótulo de grupo (que não é link)", () => {
     signIn(recepcaoUser);
     renderSidebar();
 
-    expect(screen.getByRole("link", { name: "Limpeza" })).toHaveAttribute("href", "/limpeza");
+    for (const group of ["Reservas", "Quartos", "Financeiro"]) {
+      expect(screen.getByText(group, { selector: "p" })).toBeInTheDocument();
+    }
+    const quartos = screen.getByRole("group", { name: "Quartos" });
+    for (const [label, href] of [
+      ["Mapa de quartos", "/mapa"],
+      ["Limpeza", "/limpeza"],
+      ["Bloqueios", "/bloqueios"],
+      ["Manutenção", "/manutencao"],
+      ["Cadastro de quartos", "/quartos"],
+    ]) {
+      expect(within(quartos).getByRole("link", { name: label })).toHaveAttribute("href", href);
+    }
   });
 
-  it("mostra Bloqueios e Manutenção como links", () => {
+  it("a tela inicial se chama Recepção", () => {
     signIn(recepcaoUser);
     renderSidebar();
 
-    expect(screen.getByRole("link", { name: "Bloqueios" })).toHaveAttribute("href", "/bloqueios");
-    expect(screen.getByRole("link", { name: "Manutenção" })).toHaveAttribute("href", "/manutencao");
+    expect(screen.getByRole("link", { name: "Recepção" })).toHaveAttribute("href", "/");
+    expect(screen.queryByRole("link", { name: "Dashboard" })).toBeNull();
   });
 
   it("mostra Fechamento de caixa para toda a equipe", () => {
@@ -46,6 +59,33 @@ describe("Sidebar", () => {
     renderSidebar();
 
     expect(screen.getByRole("link", { name: "Fechamento de caixa" })).toHaveAttribute("href", "/fechamento");
+  });
+
+  it("o item da tela atual é marcado com aria-current", () => {
+    signIn(recepcaoUser);
+    renderSidebar("/limpeza");
+
+    expect(screen.getByRole("link", { name: "Limpeza" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Recepção" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("todo item tem ícone", () => {
+    signIn(adminUser);
+    renderSidebar();
+
+    for (const link of screen.getAllByRole("link")) expect(link.querySelector("[data-icon]")).not.toBeNull();
+  });
+
+  it("Relatórios e Alertas aparecem desabilitados, com 'Em breve'", () => {
+    signIn(recepcaoUser);
+    renderSidebar();
+
+    for (const label of ["Relatórios", "Alertas"]) {
+      const item = screen.getByText(label, { selector: "span" }).closest("[aria-disabled]") as HTMLElement;
+      expect(item).toHaveAttribute("aria-disabled", "true");
+      expect(item).toHaveAttribute("title", "Em breve");
+      expect(screen.queryByRole("link", { name: label })).toBeNull();
+    }
   });
 
   it("Contas a pagar aparece para quem tem a permissão", async () => {
@@ -64,11 +104,13 @@ describe("Sidebar", () => {
     expect(screen.queryByRole("link", { name: "Contas a pagar" })).toBeNull();
   });
 
-  it("recepção não vê Configurações", () => {
+  it("recepção não vê Configurações nem Usuários, mas continua vendo Tarifas e Itens e serviços", () => {
     signIn(recepcaoUser);
     renderSidebar();
 
-    expect(screen.queryByText("Configurações")).toBeNull();
-    expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Configurações" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Usuários" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Tarifas" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Itens e serviços" })).toBeInTheDocument();
   });
 });
