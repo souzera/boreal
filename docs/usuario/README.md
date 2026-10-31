@@ -14,7 +14,12 @@ Guias passo a passo para a equipe da pousada. Cada guia explica o objetivo, quan
 - [Hospedagem](hospedagem.md) — check-in, hospedagem sem reserva, check-out e saída tardia.
 - [Conta do hóspede](conta-do-hospede.md) — consumos, ajustes, estornos e pagamentos.
 
+- [Roteiro de treinamento](roteiro-de-treinamento.md) — roteiro de apresentação para treinar a equipe, atualizado a cada módulo entregue.
 - [Limpeza dos quartos](limpeza.md) — fila de limpeza, estados do quarto, prioridade e intervalo.
 - [Bloqueios e manutenção](bloqueios-e-manutencao.md) — bloquear quartos, ordens de manutenção e reservas afetadas.
 
-_Os demais guias serão adicionados à medida que os módulos forem entregues (financeiro…)._
+- [Pagamentos e devoluções](pagamentos-e-devolucoes.md) — receber (inclusive dividido em formas de pagamento), duplicidade e devolver.
+- [Contas a pagar](contas-a-pagar.md) — despesas da pousada, vencimentos, pagamentos parciais e categorias.
+- [Fechamento de caixa](fechamento-de-caixa.md) — conferência diária por forma de pagamento.
+
+_Os demais guias serão adicionados à medida que os módulos forem entregues (alertas, relatórios…)._

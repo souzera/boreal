@@ -11,6 +11,8 @@ Regras de negócio, decisões técnicas, permissões, auditoria e efeitos no ban
 - [Saída tardia e check-out (Marco 3)](saida-tardia.md) — regra provisória D-15, decisão da recepção e risco para a próxima reserva.
 - [Limpeza e estado do quarto (Marco 4)](limpeza-e-estado-do-quarto.md) — estado calculado, fila, prioridade e portão "quarto limpo".
 - [Bloqueios e manutenção (Marco 4)](bloqueios-e-manutencao.md) — bloqueios na disponibilidade, ordens e conflitos.
+- [Financeiro (Marco 5)](financeiro.md) — recebimentos divididos, duplicidade, devoluções, contas a pagar e categorias.
+- [Fechamento de caixa (Marco 5)](fechamento-de-caixa.md) — esperado por modalidade, conferência e regras.
 - [Seed de desenvolvimento](seed.md) — dados fictícios para desenvolver e demonstrar (feature `dev-seed`).
 - [Permissões](permissoes.md) — perfis, permissões extras por usuário e como acrescentar uma nova.
 - [Sequências](sequencias.md) — códigos visíveis sem reuso.

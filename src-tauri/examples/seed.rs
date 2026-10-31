@@ -50,8 +50,8 @@ fn main() -> ExitCode {
     match seed::run(&app, &user, &admin_password, recepcao_password.as_deref()) {
         Ok(s) => {
             println!(
-                "Seed concluído: {} quartos, {} hóspedes, {} reservas, {} hospedagens, {} bloqueio(s) manual(is), {} ordens de manutenção.",
-                s.rooms, s.guests, s.reservations, s.stays, s.blocks, s.maintenance_orders
+                "Seed concluído: {} quartos, {} hóspedes, {} reservas, {} hospedagens, {} bloqueio(s) manual(is), {} ordens de manutenção, {} contas a pagar.",
+                s.rooms, s.guests, s.reservations, s.stays, s.blocks, s.maintenance_orders, s.payables
             );
             ExitCode::SUCCESS
         }

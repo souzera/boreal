@@ -42,13 +42,9 @@ Exige a permissão **Estornar lançamentos**.
 
 ## Registrar um pagamento
 
-> Este registro é **provisório**: aceita uma forma de pagamento por vez. O módulo financeiro completo (pagamento dividido, devoluções, fechamento de caixa) vem depois.
+Clique em **Registrar pagamento**, informe o valor e a forma (ou divida entre várias formas) e confirme. O passo a passo completo, o aviso de **recebimento duplicado** e as **devoluções** estão em [Pagamentos e devoluções](pagamentos-e-devolucoes.md).
 
-1. Clique em **Registrar pagamento**.
-2. Informe o **valor recebido** e a **forma de pagamento** (dinheiro, Pix, débito, crédito ou transferência). A observação é opcional.
-3. Confira o resumo ("Registrar pagamento de R$ 100,00 em Pix?") e clique em **Confirmar pagamento**.
-
-**Atenção:** depois de salvo, o pagamento não pode ser corrigido nesta tela. Confira o valor antes de confirmar.
+**Atenção:** depois de salvo, o pagamento não pode ser corrigido nesta tela. Se algo foi digitado errado, registre uma devolução e lance o pagamento certo.
 
 ## Quando a hospedagem está encerrada
 

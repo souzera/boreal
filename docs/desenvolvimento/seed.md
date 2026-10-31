@@ -23,22 +23,22 @@ Passa pelos serviços reais (regras, auditoria e códigos sequenciais ficam cons
 | Quartos e tarifas | Categorias Standard (R$ 180,00) e Luxo (R$ 280,00); quartos 101–104 e 201–204 |
 | Itens | Água mineral, Refrigerante, Lavanderia, Café da manhã extra |
 | Hóspedes | 10 nomes e telefones inventados (sem CPF) |
-| 101 | Hospedado, com consumos e saldo a receber |
+| 101 | Hospedado, com consumos, um recebimento **dividido** (Pix + dinheiro) com devolução parcial e saldo a receber |
 | 102 | Saiu hoje, **aguardando limpeza**; reserva confirmada chegando amanhã (prioridade sobe) |
 | 103 | Saiu hoje, **em limpeza** |
 | 104 | Limpeza concluída, **aguardando o intervalo** |
-| 201 | Bloqueio manual futuro (pintura) |
+| 201 | Bloqueio manual futuro (pintura) e uma reserva **cancelada** com sinal pago (mostra "Devolução a fazer") |
 | 202 | Reserva confirmada afetada por uma ordem de manutenção (bloqueio preventivo + conflito a resolver) |
 | 203 | Ordem de manutenção em andamento hoje (quarto **bloqueado**) |
 | 204 | Reserva pendente e reserva confirmada com sinal |
 
 ## Testes
 
-`cargo test --features dev-seed --lib seed`: cenário completo (estado de cada quarto), filas preenchidas, recusa de banco não vazio, banco com administrador já criado e senha errada sem alterar nada. O exemplo em si usa o cofre real e não é executado nos testes.
+`cargo test --features dev-seed --lib seed`: cenário completo (estado de cada quarto), filas preenchidas, cenário financeiro (recebimento dividido, devolução, devolução a fazer e contas a pagar), recusa de banco não vazio, banco com administrador já criado e senha errada sem alterar nada. O exemplo em si usa o cofre real e não é executado nos testes.
 
 ## Limitações
 
-Só roda uma vez por banco. O financeiro do Marco 5 (devoluções, contas a pagar, fechamento) será acrescentado ao seed quando existir.
+Só roda uma vez por banco. O seed cria também três **contas a pagar** (pendente, parcial e vencida). Ele **não** cria fechamento de caixa: o relógio é o do computador e todo movimento nasce hoje, então o fechamento é demonstrado ao vivo (Módulo 11 do roteiro de treinamento).
 
 ## Banco de demonstração à parte
 

@@ -40,14 +40,14 @@ Se os preços ou a disponibilidade mudarem enquanto você olhava a prévia, o si
 
 Exige a permissão **Aplicar desconto**. Escolha **valor em reais** ou **percentual**, informe a justificativa e clique em **Aplicar**. O desconto é calculado sobre o valor de tabela e **substitui** o desconto anterior. O sinal esperado é recalculado.
 
-## Registrar sinal recebido
+## Registrar o pagamento do sinal
 
-Clique em **Registrar sinal recebido** e informe o valor. Quando o total recebido alcança o sinal esperado, a reserva passa a **Confirmada**. (Neste momento o registro é manual; os recebimentos completos chegam com o módulo financeiro.) O sistema pede uma confirmação mostrando o valor, porque neste momento o registro não pode ser corrigido. Também é possível **Confirmar reserva** manualmente.
+Clique em **Registrar pagamento** e informe o valor e a forma de pagamento (o sinal também pode ser dividido entre formas). Quando o total recebido alcança o sinal esperado, a reserva passa a **Confirmada**. Os recebimentos aparecem na lista **Recebimentos** da reserva. O passo a passo está em [Pagamentos e devoluções](pagamentos-e-devolucoes.md). Também é possível **Confirmar reserva** manualmente.
 
 ## Cancelar
 
 1. Clique em **Cancelar reserva**.
-2. O sistema mostra quantos dias faltam, o **sinal já pago**, a **devolução** e a **retenção** calculadas pela política. Nada acontece até você clicar em **Confirmar cancelamento**.
+2. O sistema mostra quantos dias faltam, o **sinal já pago**, a **devolução** e a **retenção** calculadas pela política. Nada acontece até você clicar em **Confirmar cancelamento**. Depois de cancelar, a reserva mostra **Devolução a fazer** e você registra a devolução quando o dinheiro for devolvido (veja [Pagamentos e devoluções](pagamentos-e-devolucoes.md)).
 3. Com a permissão **Exceção de cancelamento**, marque **Aplicar exceção à política**, informe o valor retido (de zero até o sinal pago) e a justificativa.
 
 A política padrão (provisória, ajustável em **Configurações**): 7 dias ou mais antes → devolve 100% do sinal; de 3 a 6 dias → 50%; menos que isso → nada.

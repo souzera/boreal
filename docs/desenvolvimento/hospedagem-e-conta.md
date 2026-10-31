@@ -6,7 +6,7 @@
 - `stays`: uma por reserva (`reservation_id UNIQUE`), `code` = código da reserva, `status` (`in_house` | `checked_out`), horários efetivos em UTC, `early_check_in`, `exceeded_capacity`, `late_tolerance_minutes` (NULL = padrão), campos do check-out (atraso, cobrança calculada e decisão, dispensa, saldo em aberto com justificativa e autorizador) e `version`.
 - `stay_occupants`: titular (`is_holder`) e acompanhantes (nome, documento, `guest_id` opcional).
 - `charges`: livro da conta. `amount_cents <> 0`; `kind` ∈ `night`, `consumption`, `extra`, `discount`, `adjustment`, `late_fee`, `reversal`. `reverses_charge_id UNIQUE` impede dois estornos do mesmo lançamento; índice parcial `(stay_id, night_date) WHERE kind = 'night'` impede diária duplicada.
-- `payments` e `refunds`: **esquema mínimo antecipado**. `payments.method` inclui `prior_deposit` (sinal da reserva transposto no check-in). O Marco 5 move a forma de pagamento para `payment_components`.
+- `payments` e `refunds`: **esquema mínimo antecipado** no Marco 3. **Atualizado no Marco 5:** a forma de pagamento está em `payment_components`, o sinal vira recebimento real vinculado à hospedagem no check-in (sem `prior_deposit`); ver [financeiro.md](financeiro.md).
 - `catalog_items`: itens e serviços (sem estoque); nunca apagados, só desativados; `name_key` garante nome único sem acento/caixa.
 - `settings.late_checkout_fee_bp`: provisório (D-15).
 
@@ -18,13 +18,13 @@
 |---|---|---|
 | M3-1 | Walk-in cria também uma linha de `reservations` (`origin = walk_in`, `checked_in`, código `AVU-`, prefixo próprio para não colidir com o código de hóspede `HOS-`). Disponibilidade, mapa e conflitos seguem lendo só `reservations`. | O walk-in aparece na lista de reservas. |
 | M3-2 | Migração `0009` (o roteiro dizia `0004`). | — |
-| M3-3 | Recebimento provisório com uma forma de pagamento. | O Marco 5 o substitui. |
+| M3-3 | ~~Recebimento provisório com uma forma de pagamento.~~ | **Substituído no Marco 5** por `PaymentService` (recebimento dividido, duplicidade). |
 | M3-4 | Sinal pago e desconto da reserva viram `payments`/`charges` no check-in. | — |
 | M3-5 | Check-in aceita reserva pendente ou confirmada, inclusive em dia posterior ao previsto. | Pendente sem sinal pode hospedar. |
 | M3-6 | O "autorizador" do check-out com saldo é o próprio usuário com `CheckoutWithBalance`. | Dupla aprovação seria um fluxo novo. |
 | M3-7 | Saída tardia: `late_checkout_fee_bp` da última diária não estornada, uma vez, quando `minutos de atraso > tolerância`. | Valor provisório. |
 | M3-8 | Tolerância por hospedagem exige `ChangeReservation`. | — |
-| M3-9 | Saldo ≠ 0 (devedor ou crédito) exige `CheckoutWithBalance`. | Devolução do crédito só existe no Marco 5. |
+| M3-9 | Saldo ≠ 0 (devedor ou crédito) exige `CheckoutWithBalance`. | A devolução do crédito passou a existir no Marco 5 (`RefundService`), inclusive em hospedagem encerrada. |
 | M3-10 | Check-in confere o intervalo de limpeza **previsto** (`find_conflicts`). **Atualizado no Marco 4:** também recusa quarto com limpeza aberta ou intervalo pós-limpeza não cumprido ([Limpeza](limpeza-e-estado-do-quarto.md)). | Fechado. |
 
 ## Serviços (`StayService`)

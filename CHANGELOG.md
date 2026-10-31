@@ -21,12 +21,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - **Reservas**: lista com filtros, nova reserva com disponibilidade e preço de cada noite ao vivo, e tela da reserva com histórico. O quarto fica bloqueado desde a reserva pendente e o preço combinado de cada noite não muda quando a tabela muda.
 - **Alterar datas ou quarto** com prévia (preço anterior, novo e diferença) e justificativa; nada é gravado antes da confirmação, e uma prévia desatualizada é recusada.
 - **Cancelamento** com devolução e retenção calculadas pela política (provisória e configurável), exceção com permissão e justificativa, **no-show manual** e aviso de **sinal vencido** (nada é cancelado automaticamente).
-- **Desconto** com permissão e justificativa, e registro manual do **sinal recebido** (provisório até o módulo financeiro).
+- **Desconto** com permissão e justificativa.
 - **Mapa de quartos**: grade quarto × dia, com chegada, saída e situação em texto.
 - Configurações do sinal e da política de cancelamento, com os valores marcados como provisórios.
 - **Hospedagem**: **check-in** da reserva com ocupantes, saldo inicial e avisos de check-in antecipado e de excesso de capacidade (cada um com sua permissão); **hospedagem sem reserva** com disponibilidade e preço conferidos antes de iniciar; lista de **Hospedagens** com saldo e avisos.
 - **Conta do hóspede** em livro de lançamentos que nunca se edita: diárias, desconto e sinal vindos da reserva, **consumos e despesas extras** (avulsos ou do catálogo de **Itens e serviços**), **ajustes** com justificativa e **estorno com relançamento** que preserva o lançamento original e impede cobrança duplicada.
-- **Registro de pagamento provisório** na conta (uma forma de pagamento por vez), até o módulo financeiro.
 - **Check-out** com demonstrativo (diárias, consumos, descontos, recebimentos, devoluções e saldo); com saldo em aberto ou crédito do hóspede só com permissão, justificativa e autorizador registrados — nada é liquidado nem apagado sozinho.
 - **Saída tardia**: tolerância por hospedagem, cobrança prevista provisória (50% da última diária, configurável) que a recepção cobra ou dispensa (com permissão e justificativa), sem criar diária; aviso de **risco para a próxima reserva** quando o atraso encosta na limpeza.
 - Novas permissões concedíveis à recepção: **Fazer check-in antecipado**, **Concluir check-out com saldo pendente** e **Dispensar cobrança de saída tardia**.
@@ -34,6 +33,12 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - **Estados do quarto no mapa**: Ocupado, Aguardando limpeza, Em limpeza, Limpo — aguardando intervalo, Disponível e Em manutenção ou bloqueado, sempre com cor, símbolo e nome, e legenda. A data do mapa fica no endereço, então abrir a fila de limpeza e voltar não perde a agenda. O Dashboard mostra quantos quartos aguardam limpeza.
 - **Bloqueios de quarto** por período ou até a liberação manual, que impedem reservas, alterações, check-in e hospedagem sem reserva no período; **liberar o quarto** exige a permissão e uma justificativa.
 - **Ordens de manutenção** (aberta, em andamento, aguardando resolução, concluída) com **reservas afetadas** listadas e bloqueio preventivo até serem resolvidas. Concluir a ordem não libera o quarto: a liberação continua dependendo de quem tem autorização.
+- **Recebimentos divididos**: o sinal e os pagamentos da conta aceitam várias formas de pagamento (dinheiro, Pix, débito, crédito e transferência), com a soma conferida na tela e no sistema; cada recebimento tem número próprio (`PAG-…`).
+- **Bloqueio de recebimento duplicado**: mesmo valor, formas e dia na mesma reserva ou hospedagem não é gravado até alguém com permissão liberar, com justificativa registrada.
+- **Devoluções** ligadas ao recebimento original, parciais ou totais, com motivo, divididas por forma de pagamento e com número próprio (`DEV-…`); a reserva cancelada mostra **Devolução a fazer**.
+- **Contas a pagar** com fornecedor, vencimento e categoria, pagamentos parciais, despesas pagas à vista, situação (pendente, parcial, paga e vencida) e totais por competência ou por data de pagamento; categorias de despesa editáveis e desativáveis.
+- **Fechamento de caixa** diário por forma de pagamento (débito e crédito separados), com diferença justificada, sem alterar recebimentos e sem bloquear o dia seguinte; o Dashboard avisa dos dias sem fechamento.
+- Permissões **Liberar recebimento duplicado** e **Gerenciar contas a pagar**, concedíveis à recepção.
 
 ### Changed
 - Reservas passam a ter as situações **Hospedado** e **Concluída**; a lista de reservas identifica hospedagens **sem reserva**.
@@ -42,6 +47,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - A senha mínima passou a ter 6 caracteres.
 - Mensagens de erro do banco de dados agora aparecem em linguagem simples, sem texto técnico.
 - Ao bloquear a sessão por inatividade, a tela aberta é preservada e volta como estava após desbloquear.
+- O sinal da reserva passa a ser um recebimento de verdade e acompanha a hospedagem no check-in (antes era só um valor na reserva); o botão **Registrar sinal recebido** virou **Registrar pagamento**.
+- O cancelamento continua calculando a devolução pela política, mas a devolução em si passa a ser registrada à parte quando o dinheiro volta.
 
 ### Fixed
 - Ao reiniciar com a chave de criptografia incorreta, o sistema agora explica o problema em vez de mostrar erro técnico.
@@ -65,3 +72,4 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Política de segurança de conteúdo (CSP) ativada na interface.
 - Logotipo enviado é conferido pelo conteúdo do arquivo (PNG/JPEG) e limitado a 512 KB.
 - CPF aparece mascarado nos registros de auditoria; e-mail, endereço e telefone não são gravados neles.
+- Liberação de recebimento duplicado e todas as operações de contas a pagar exigem permissão verificada no sistema, com auditoria na mesma operação.

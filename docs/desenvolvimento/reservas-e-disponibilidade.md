@@ -30,7 +30,7 @@ Sinal vencido **não muda o estado**: é só um indicador calculado (`deposit_ov
 
 ## Interino
 
-`record_deposit` grava `deposit_paid_cents` e confirma ao atingir o esperado. É provisório até o módulo de recebimentos (Marco 5), que deve substituí-lo.
+O sinal é registrado por `PaymentService::record` (alvo `Reservation`): grava um recebimento real com componentes, atualiza `deposit_paid_cents` e confirma ao atingir o esperado (substituiu o `record_deposit` provisório no Marco 5). O cancelamento grava `cancellation_refund_cents` e a reserva expõe `refund_due_cents`; ver [financeiro.md](financeiro.md).
 
 ## Mapa de quartos (`room_map_service`)
 

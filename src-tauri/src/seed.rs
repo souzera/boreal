@@ -15,6 +15,7 @@ pub struct SeedSummary {
     pub stays: usize,
     pub blocks: usize,
     pub maintenance_orders: usize,
+    pub payables: usize,
 }
 
 fn date(offset_days: i64) -> String {
@@ -34,7 +35,9 @@ pub fn run(app: &AppState, admin_username: &str, admin_password: &str, recepcao_
     use crate::models::block::NewBlockInput;
     use crate::models::rate::NewRateRule;
     use crate::models::reservation::NewReservation;
+    use crate::models::payable::{NewPayable, PayInput};
     use crate::models::payment::{ComponentInput, PaymentInput, PaymentTarget};
+    use crate::models::refund::RefundInput;
     use crate::models::stay::{
         ChargeInput, CheckoutInput, LateFeeChoice, OccupantInput, WalkInInput,
     };
@@ -191,6 +194,23 @@ pub fn run(app: &AppState, admin_username: &str, admin_password: &str, recepcao_
     let stay = walk_in(app, "101", 0, 3)?;
     app.stays.add_charge(&t, stay, ChargeInput { kind: "consumption".into(), description: String::new(), amount_cents: 0, item_id: Some(water) })?;
     app.stays.add_charge(&t, stay, ChargeInput { kind: "consumption".into(), description: String::new(), amount_cents: 0, item_id: Some(water) })?;
+    // Recebimento dividido (Pix + dinheiro) com uma devolução parcial; a conta segue com saldo a receber.
+    let split = app.payments.record(
+        &t,
+        PaymentTarget::Stay { stay_id: stay },
+        PaymentInput {
+            components: vec![
+                ComponentInput { method: "pix".into(), amount_cents: 6_000 },
+                ComponentInput { method: "cash".into(), amount_cents: 4_000 },
+            ],
+            note: String::new(),
+            duplicate_release: None,
+        },
+    )?;
+    app.refunds.record(
+        &t,
+        RefundInput { payment_id: split.id, components: vec![ComponentInput { method: "cash".into(), amount_cents: 1_000 }], reason: "Cobrança em dobro".into() },
+    )?;
     summary.stays += 1;
 
     // 102, 103 e 104: saíram hoje, cada um num ponto diferente da limpeza.
@@ -218,6 +238,38 @@ pub fn run(app: &AppState, admin_username: &str, admin_password: &str, recepcao_
     let confirmed = book(app, "204", 6, 7, 9)?;
     confirm_with_deposit(app, confirmed)?;
     summary.reservations += 2;
+
+    // 201: reserva confirmada e depois cancelada com antecedência: sobra uma devolução a fazer.
+    let cancelled = book(app, "201", 6, 15, 17)?;
+    confirm_with_deposit(app, cancelled)?;
+    let version = app.reservations.get(&t, cancelled)?.reservation.version;
+    app.reservations.cancel(&t, cancelled, version, None)?;
+    summary.reservations += 1;
+
+    // Contas a pagar: uma pendente, uma parcial e uma vencida.
+    let category = |name: &str| -> Result<i64, AppError> {
+        app.payables
+            .list_categories(&t, true)?
+            .into_iter()
+            .find(|c| c.name == name)
+            .map(|c| c.id)
+            .ok_or_else(|| AppError::Validation(format!("categoria de demonstração ausente: {name}")))
+    };
+    let bill = |supplier: &str, description: &str, cents: i64, competence: i64, due: i64, category_id: i64| NewPayable {
+        supplier: supplier.into(),
+        description: description.into(),
+        amount_cents: cents,
+        competence_date: date(competence),
+        due_date: date(due),
+        category_id,
+        notes: String::new(),
+        paid_now: None,
+    };
+    app.payables.create(&t, bill("Companhia de Energia", "Conta do mês", 48_000, 0, 10, category("Energia")?))?;
+    let partial = app.payables.create(&t, bill("Padaria Sol", "Pães e frios do mês", 15_000, -5, 5, category("Alimentos e bebidas")?))?;
+    app.payables.pay(&t, partial, PayInput { amount_cents: 6_000, method: "pix".into(), note: String::new() }, 1)?;
+    app.payables.create(&t, bill("Eletricista Silva", "Reparo na fiação", 32_000, -20, -3, category("Manutenção")?))?;
+    summary.payables += 3;
 
     // 201: bloqueio manual no futuro.
     app.blocks.create(&t, NewBlockInput { room_id: rooms["201"], start_date: date(10), end_date: Some(date(13)), reason: "Pintura do corredor".into() })?;
@@ -289,8 +341,8 @@ mod tests {
 
         assert_eq!(summary.rooms, 8);
         assert_eq!(summary.guests, 10);
-        assert_eq!((summary.stays, summary.reservations), (4, 4), "{summary:?}");
-        assert_eq!((summary.blocks, summary.maintenance_orders), (1, 2));
+        assert_eq!((summary.stays, summary.reservations), (4, 5), "{summary:?}");
+        assert_eq!((summary.blocks, summary.maintenance_orders, summary.payables), (1, 2, 3));
         let got: std::collections::HashMap<_, _> = states(&app).into_iter().collect();
         for (room, state) in [
             ("101", "occupied"),
@@ -319,6 +371,35 @@ mod tests {
         let with_conflict = orders.iter().filter(|o| !app.maintenance.get(&token, o.id).unwrap().conflicts.is_empty()).count();
         assert_eq!(with_conflict, 1);
         assert_eq!(app.stays.list(&token, crate::models::stay::StayQuery { status: Some("in_house".into()), text: None, page: 1, page_size: 20 }).unwrap().total, 1);
+    }
+
+    #[test]
+    fn seed_creates_the_finance_scenario() {
+        let (_dir, app) = fresh();
+        run(&app, "admin", ADMIN, None).unwrap();
+        let token = app.auth.login("admin", ADMIN).unwrap().token;
+
+        let page = |status: &str| {
+            app.payables
+                .list(&token, crate::models::payable::PayableQuery { status: Some(status.into()), category_id: None, due_from: None, due_to: None, page: 1, page_size: 50 })
+                .unwrap()
+                .total
+        };
+        assert_eq!((page("pending"), page("partial"), page("overdue")), (1, 1, 1));
+
+        let in_house = app.stays.list(&token, crate::models::stay::StayQuery { status: Some("in_house".into()), text: None, page: 1, page_size: 20 }).unwrap();
+        let detail = app.stays.get(&token, in_house.items[0].stay.id).unwrap();
+        let split = detail.account.payments.iter().find(|p| p.components.len() == 2).expect("recebimento dividido");
+        assert_eq!(split.amount_cents, 10_000);
+        assert_eq!(detail.account.refunds.len(), 1, "devolução parcial no recebimento dividido");
+        assert!(detail.account.balance_cents > 0, "a conta continua com saldo a receber");
+
+        let reservations = app.reservations.list(&token, crate::models::reservation::ReservationQuery {
+            text: None, status: Some(vec!["cancelled".into()]), room_id: None, from: None, to: None, page: 1, page_size: 20, sort: None, direction: None,
+        }).unwrap();
+        assert_eq!(reservations.total, 1);
+        assert!(reservations.items[0].refund_due_cents > 0, "cancelada com devolução a fazer");
+        assert!(app.closing.pending_dates(&token).unwrap().is_empty(), "o seed só tem movimento de hoje");
     }
 
     #[test]
