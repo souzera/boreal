@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
-import { cleaningQueue } from "@/lib/api";
+import { cleaningQueue, closingPendingDates } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useSessionStore } from "@/stores/session";
 
@@ -16,10 +16,25 @@ export default function Dashboard() {
   const token = useSessionStore((s) => s.token) ?? "";
   const { data: queue } = useQuery({ queryKey: ["cleaning-queue"], queryFn: () => cleaningQueue(token), enabled: !!token });
 
+  const { data: pendingClosings = [] } = useQuery({
+    queryKey: ["closing-pending"],
+    queryFn: () => closingPendingDates(token),
+    enabled: !!token,
+  });
+
   return (
     <section>
       <h1 className="text-2xl font-semibold">Dashboard</h1>
       <p className="text-sm text-muted-foreground">Hoje, {formatDate(todayIso())}</p>
+      {pendingClosings.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {pendingClosings.map((d) => (
+            <Link key={d} to={`/fechamento/${d}`} className="rounded-lg border border-amber-500/60 px-3 py-2 text-sm font-medium underline-offset-2 hover:underline">
+              {`Fechamento pendente: ${formatDate(d)}`}
+            </Link>
+          ))}
+        </div>
+      )}
       {queue &&
         (queue.length > 0 ? (
           <Link to="/limpeza" className="mt-4 inline-block rounded-lg border px-3 py-2 text-sm font-medium underline-offset-2 hover:underline">
