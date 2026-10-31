@@ -7,13 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePermissions } from "@/hooks/usePermissions";
-import { getStay, setStayLateTolerance, type ApiError } from "@/lib/api";
+import { getStay, setStayLateTolerance, type ApiError, type PaymentLine } from "@/lib/api";
 import { formatDate, formatInstant, formatMoney } from "@/lib/format";
-import { balanceLabel, chargeKindLabel, paymentMethodLabel, stayStatusIcon, stayStatusLabel } from "@/lib/stay";
+import { describeComponents } from "@/lib/payment";
+import { balanceLabel, chargeKindLabel, stayStatusIcon, stayStatusLabel } from "@/lib/stay";
 import { useSessionStore } from "@/stores/session";
 import ChargeDialog from "./ChargeDialog";
 import CheckoutDialog from "./CheckoutDialog";
-import PaymentDialog from "./PaymentDialog";
+import PaymentDialog from "../payments/PaymentDialog";
+import RefundDialog from "../payments/RefundDialog";
 import ReverseDialog from "./ReverseDialog";
 
 export type StayDialog = "charge" | "payment" | "checkout" | { reverse: number } | null;
@@ -36,6 +38,7 @@ export default function StayPage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string | null>((location.state as { notice?: string } | null)?.notice ?? null);
   const [dialog, setDialog] = useState<StayDialog>(null);
+  const [refunding, setRefunding] = useState<PaymentLine | null>(null);
   const [tolerance, setTolerance] = useState<string | null>(null);
   const [toleranceError, setToleranceError] = useState<string | null>(null);
   const { data, isError } = useQuery({ queryKey: ["stay", stayId], queryFn: () => getStay(token, stayId) });
@@ -213,15 +216,23 @@ export default function StayPage() {
         ) : (
           <ul className="grid gap-1 text-sm">
             {account.payments.map((p) => (
-              <li key={p.id}>
-                <span className="font-medium">{p.code}</span>
-                {` · ${paymentMethodLabel[p.method]} · ${formatMoney(p.amount_cents)} · ${formatInstant(p.received_at)} · ${p.received_by_name}`}
+              <li key={p.id} className="flex flex-wrap items-center gap-2">
+                <span>
+                  <span className="font-medium">{p.code}</span>
+                  {` · ${formatMoney(p.amount_cents)} (${describeComponents(p.components)}) · ${formatInstant(p.received_at)} · ${p.received_by_name}`}
+                  {p.released_duplicate && " · liberado como possível duplicado"}
+                </span>
+                {p.refundable_cents > 0 && (
+                  <Button size="sm" variant="outline" onClick={() => setRefunding(p)}>
+                    Registrar devolução
+                  </Button>
+                )}
               </li>
             ))}
             {account.refunds.map((f) => (
               <li key={f.id}>
                 <span className="font-medium">{f.code}</span>
-                {` · devolução de ${f.payment_code} · ${formatMoney(f.amount_cents)} · ${f.reason}`}
+                {` · devolução de ${f.payment_code} · ${formatMoney(f.amount_cents)} (${describeComponents(f.components)}) · ${f.reason}`}
               </li>
             ))}
           </ul>
@@ -229,7 +240,24 @@ export default function StayPage() {
       </section>
 
       <ChargeDialog open={dialog === "charge"} stayId={stay.id} onClose={() => setDialog(null)} onDone={done} />
-      <PaymentDialog open={dialog === "payment"} stayId={stay.id} balanceCents={account.balance_cents} onClose={() => setDialog(null)} onDone={done} />
+      <PaymentDialog
+        open={dialog === "payment"}
+        target={{ kind: "stay", stayId: stay.id }}
+        hint={balanceLabel(account.balance_cents)}
+        onClose={() => setDialog(null)}
+        onDone={done}
+      />
+      {refunding && (
+        <RefundDialog
+          open
+          payment={refunding}
+          onClose={() => setRefunding(null)}
+          onDone={(message) => {
+            setRefunding(null);
+            done(message);
+          }}
+        />
+      )}
       <CheckoutDialog open={dialog === "checkout"} stayId={stay.id} onClose={() => setDialog(null)} onDone={done} />
       <ReverseDialog open={reversing !== null} stayId={stay.id} charge={reversing} onClose={() => setDialog(null)} onDone={done} />
     </section>

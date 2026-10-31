@@ -14,17 +14,20 @@ import {
   markReservationNoShow,
   setReservationNotes,
   type ApiError,
+  type PaymentSummary,
 } from "@/lib/api";
+import { describeComponents } from "@/lib/payment";
 import { formatDate, formatMoney, formatTime, toLocalIsoDate } from "@/lib/format";
 import { isOpen, ruleLabel, statusIcon, statusLabel } from "@/lib/reservation";
 import { useSessionStore } from "@/stores/session";
 import CancelDialog from "./CancelDialog";
 import ChangeDialog from "./ChangeDialog";
-import DepositDialog from "./DepositDialog";
+import PaymentDialog from "../payments/PaymentDialog";
+import RefundDialog from "../payments/RefundDialog";
 import CheckInDialog from "../stays/CheckInDialog";
 import DiscountDialog from "./DiscountDialog";
 
-type Dialogs = "change" | "cancel" | "discount" | "deposit" | "no_show" | "check_in" | null;
+type Dialogs = "change" | "cancel" | "discount" | "payment" | "no_show" | "check_in" | null;
 
 const kindLabel: Record<string, string> = {
   change: "Alteração de datas ou quarto",
@@ -54,6 +57,7 @@ export default function ReservationPage() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
   const [dialog, setDialog] = useState<Dialogs>(null);
+  const [refunding, setRefunding] = useState<PaymentSummary | null>(null);
   const [notice, setNotice] = useState<string | null>((location.state as { notice?: string } | null)?.notice ?? null);
   const [error, setError] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState(false);
@@ -86,7 +90,7 @@ export default function ReservationPage() {
   }
   if (!data) return null;
 
-  const { reservation: r, nights, history, stay_id: stayId } = data;
+  const { reservation: r, nights, history, stay_id: stayId, payments } = data;
   const open = isOpen(r.status);
   const today = toLocalIsoDate(new Date());
   // A tolerância de chegada é aplicada pelo sistema ao marcar; a tela oferece a ação a partir do dia da chegada.
@@ -133,6 +137,12 @@ export default function ReservationPage() {
           {error}
         </p>
       )}
+      {r.refund_due_cents > 0 && (
+        <p role="status" className="w-fit rounded border border-amber-500/60 px-2 py-1 text-sm font-medium">
+          <span aria-hidden="true">↩ </span>
+          {`Devolução a fazer: ${formatMoney(r.refund_due_cents)}`}
+        </p>
+      )}
       {r.deposit_overdue && (
         <p className="w-fit rounded border border-destructive/40 px-2 py-1 text-sm font-medium text-destructive">Sinal vencido</p>
       )}
@@ -174,8 +184,8 @@ export default function ReservationPage() {
           </Button>
         )}
         {open && (
-          <Button variant="outline" onClick={() => setDialog("deposit")}>
-            Registrar sinal recebido
+          <Button variant="outline" onClick={() => setDialog("payment")}>
+            Registrar pagamento
           </Button>
         )}
         {open && arrivalPassed && (
@@ -210,6 +220,30 @@ export default function ReservationPage() {
             ))}
           </TableBody>
         </Table>
+      </section>
+
+      <section aria-label="Recebimentos">
+        <h2 className="mb-2 text-base font-semibold">Recebimentos</h2>
+        {payments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum recebimento registrado.</p>
+        ) : (
+          <ul className="grid gap-1 text-sm">
+            {payments.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center gap-2">
+                <span>
+                  <span className="font-medium">{p.code}</span>
+                  {` · ${formatMoney(p.amount_cents)} (${describeComponents(p.components)}) · ${formatDate(p.received_at.slice(0, 10))}`}
+                  {p.refunded_cents > 0 && ` · devolvido ${formatMoney(p.refunded_cents)}`}
+                </span>
+                {p.refundable_cents > 0 && (
+                  <Button size="sm" variant="outline" onClick={() => setRefunding(p)}>
+                    Registrar devolução
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section aria-label="Observações">
@@ -299,7 +333,25 @@ export default function ReservationPage() {
           navigate(`/hospedagens/${stayId}`, { state: { notice: "Check-in confirmado e salvo neste computador." } });
         }}
       />
-      <DepositDialog open={dialog === "deposit"} reservation={r} onClose={() => setDialog(null)} onDone={done} onConflict={refresh} />
+      <PaymentDialog
+        open={dialog === "payment"}
+        target={{ kind: "reservation", reservationId: r.id, version: r.version }}
+        hint={`Sinal esperado: ${formatMoney(r.deposit_expected_cents)}. Já registrado: ${formatMoney(r.deposit_paid_cents)}. Ao atingir o valor esperado, a reserva passa a confirmada.`}
+        onClose={() => setDialog(null)}
+        onDone={done}
+        onConflict={refresh}
+      />
+      {refunding && (
+        <RefundDialog
+          open
+          payment={refunding}
+          onClose={() => setRefunding(null)}
+          onDone={(message) => {
+            setRefunding(null);
+            done(message);
+          }}
+        />
+      )}
       <ConfirmDialog
         open={dialog === "no_show"}
         title="Marcar como no-show?"

@@ -5,28 +5,28 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useGuardedClose } from "@/hooks/useGuardedClose";
-import { recordStayPayment, type ApiError, type PaymentInput } from "@/lib/api";
+import { payPayable, type ApiError, type PayableView, type SelectableMethod } from "@/lib/api";
 import { formatMoney, parseMoney } from "@/lib/format";
-import { balanceLabel, paymentMethodLabel, selectableMethods } from "@/lib/stay";
+import { methodLabel, selectableMethods } from "@/lib/payment";
 import { useSessionStore } from "@/stores/session";
 
 interface Props {
   open: boolean;
-  stayId: number;
-  balanceCents: number;
+  payable: PayableView;
   onClose: () => void;
   onDone: (message: string) => void;
+  onConflict: () => void;
 }
 
-/** Recebimento provisório (uma forma de pagamento): será substituído pelo módulo financeiro. */
-export default function PaymentDialog({ open, stayId, balanceCents, onClose, onDone }: Props) {
+/** Pagamento parcial ou total de uma conta a pagar (spec §10.2). */
+export default function PayPayableDialog({ open, payable, onClose, onDone, onConflict }: Props) {
   const token = useSessionStore((s) => s.token) ?? "";
   const [value, setValue] = useState("");
-  const [method, setMethod] = useState<PaymentInput["method"] | "">("");
+  const [method, setMethod] = useState<SelectableMethod | "">("");
   const [note, setNote] = useState("");
-  const [errors, setErrors] = useState<Partial<Record<"value" | "method", string>>>({});
+  const [errors, setErrors] = useState<{ value?: string; method?: string }>({});
+  const [confirming, setConfirming] = useState<{ cents: number; method: SelectableMethod } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<{ cents: number; method: PaymentInput["method"] } | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -35,32 +35,34 @@ export default function PaymentDialog({ open, stayId, balanceCents, onClose, onD
     setMethod("");
     setNote("");
     setErrors({});
-    setMessage(null);
     setConfirming(null);
+    setMessage(null);
   }, [open]);
 
   const { requestClose, confirm } = useGuardedClose(value !== "" || note !== "", onClose);
 
   const review = () => {
     setMessage(null);
-    const next: typeof errors = {};
     const cents = parseMoney(value);
+    const next: typeof errors = {};
     if (cents === null || cents <= 0) next.value = "Informe um valor maior que zero, por exemplo R$ 100,00.";
+    else if (cents > payable.balance_cents) next.value = `O valor não pode passar do saldo da conta (${formatMoney(payable.balance_cents)}).`;
     if (method === "") next.method = "Escolha a forma de pagamento.";
     setErrors(next);
-    if (Object.keys(next).length > 0 || cents === null || method === "") return;
-    setConfirming({ cents, method });
+    if (Object.keys(next).length === 0 && cents !== null && method !== "") setConfirming({ cents, method });
   };
 
   const submit = async () => {
     if (!confirming) return;
     setBusy(true);
     try {
-      await recordStayPayment(token, stayId, { amount_cents: confirming.cents, method: confirming.method, note: note.trim() });
-      onDone(`Pagamento de ${formatMoney(confirming.cents)} registrado.`);
+      await payPayable(token, payable.id, { amount_cents: confirming.cents, method: confirming.method, note: note.trim() }, payable.version);
+      onDone(`Pagamento de ${formatMoney(confirming.cents)} da conta ${payable.code} registrado e salvo neste computador.`);
     } catch (e) {
+      const apiError = e as ApiError;
       setConfirming(null);
-      setMessage((e as ApiError).message);
+      setMessage(apiError.message);
+      if (apiError.code === "conflict") onConflict();
     } finally {
       setBusy(false);
     }
@@ -71,36 +73,36 @@ export default function PaymentDialog({ open, stayId, balanceCents, onClose, onD
       <Dialog open={open} onOpenChange={(next) => !next && requestClose()}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Registrar pagamento</DialogTitle>
-            <DialogDescription>{`${balanceLabel(balanceCents)}. Registro provisório: será substituído pelo módulo financeiro.`}</DialogDescription>
+            <DialogTitle>Registrar pagamento da conta</DialogTitle>
+            <DialogDescription>{`${payable.supplier} · ${payable.code}. Saldo da conta: ${formatMoney(payable.balance_cents)}.`}</DialogDescription>
           </DialogHeader>
           {confirming === null ? (
             <div className="grid gap-3">
-              <FormField id="pay-value" label="Valor recebido" required error={errors.value}>
-                <Input id="pay-value" inputMode="decimal" placeholder="R$ 0,00" value={value} onChange={(e) => setValue(e.target.value)} />
+              <FormField id="pp-value" label="Valor pago" required error={errors.value}>
+                <Input id="pp-value" inputMode="decimal" placeholder="R$ 0,00" value={value} onChange={(e) => setValue(e.target.value)} />
               </FormField>
-              <FormField id="pay-method" label="Forma de pagamento" required error={errors.method}>
+              <FormField id="pp-method" label="Forma de pagamento" required error={errors.method}>
                 <select
-                  id="pay-method"
+                  id="pp-method"
                   className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
                   value={method}
-                  onChange={(e) => setMethod(e.target.value as PaymentInput["method"] | "")}
+                  onChange={(e) => setMethod(e.target.value as SelectableMethod | "")}
                 >
                   <option value="">Escolha…</option>
                   {selectableMethods.map((m) => (
                     <option key={m} value={m}>
-                      {paymentMethodLabel[m]}
+                      {methodLabel[m]}
                     </option>
                   ))}
                 </select>
               </FormField>
-              <FormField id="pay-note" label="Observação">
-                <Input id="pay-note" value={note} onChange={(e) => setNote(e.target.value)} />
+              <FormField id="pp-note" label="Observação">
+                <Input id="pp-note" value={note} onChange={(e) => setNote(e.target.value)} />
               </FormField>
             </div>
           ) : (
             <p className="text-sm font-medium">
-              {`Registrar pagamento de ${formatMoney(confirming.cents)} em ${paymentMethodLabel[confirming.method]}? Depois de salvo, o valor não pode ser corrigido nesta tela.`}
+              {`Registrar pagamento de ${formatMoney(confirming.cents)} em ${methodLabel[confirming.method]} para ${payable.supplier}? Depois de salvo, o pagamento não pode ser corrigido nesta tela.`}
             </p>
           )}
           {message && (
@@ -115,7 +117,7 @@ export default function PaymentDialog({ open, stayId, balanceCents, onClose, onD
                   Cancelar
                 </Button>
                 <Button type="button" onClick={review}>
-                  Registrar pagamento
+                  Registrar pagamento da conta
                 </Button>
               </>
             ) : (
@@ -123,8 +125,8 @@ export default function PaymentDialog({ open, stayId, balanceCents, onClose, onD
                 <Button type="button" variant="outline" onClick={() => setConfirming(null)}>
                   Corrigir dados
                 </Button>
-                <Button type="button" disabled={busy} onClick={submit}>
-                  Confirmar pagamento
+                <Button type="button" disabled={busy} onClick={() => void submit()}>
+                  Confirmar pagamento da conta
                 </Button>
               </>
             )}

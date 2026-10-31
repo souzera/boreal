@@ -33,7 +33,13 @@ const account = (balance: number): api.StayAccount => ({
     line(4, "consumption", "Água", 3500, { reversed: true }),
     line(5, "reversal", "Estorno de: Água", -3500, { reverses_charge_id: 4 }),
   ],
-  payments: [{ id: 1, code: "PAG-000001", amount_cents: 12000, method: "prior_deposit", received_at: "2026-10-21T17:00:00Z", received_by_name: "Administrador" }],
+  payments: [
+    {
+      id: 1, code: "PAG-000001", amount_cents: 12000, received_at: "2026-10-21T17:00:00Z", received_by_name: "Administrador",
+      components: [{ method: "pix", amount_cents: 7000 }, { method: "cash", amount_cents: 5000 }],
+      released_duplicate: false, refunded_cents: 0, refundable_cents: 12000,
+    },
+  ],
   refunds: [],
   charges_total_cents: 36000,
   received_cents: 12000,

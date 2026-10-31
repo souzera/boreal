@@ -11,6 +11,7 @@ import GuestFormPage from "@/pages/guests/GuestFormPage";
 import GuestsPage from "@/pages/guests/GuestsPage";
 import ItemsPage from "@/pages/items/ItemsPage";
 import Login from "@/pages/Login";
+import PayablesPage from "@/pages/payables/PayablesPage";
 import RatesPage from "@/pages/rates/RatesPage";
 import Search from "@/pages/Search";
 import ReservationFormPage from "@/pages/reservations/ReservationFormPage";
@@ -75,6 +76,7 @@ export const appRoutes: RouteObject[] = [
           { path: "/manutencao/:id", element: <MaintenanceOrderPage /> },
           { path: "/hospedagens/nova", element: <WalkInPage /> },
           { path: "/hospedagens/:id", element: <StayPage /> },
+          { path: "/contas-a-pagar", element: <PayablesPage /> },
           { path: "/tarifas", element: <RatesPage /> },
           { path: "/quartos", element: <RoomsPage /> },
           { path: "/itens", element: <ItemsPage /> },

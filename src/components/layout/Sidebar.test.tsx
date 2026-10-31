@@ -1,16 +1,22 @@
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { screen, waitFor } from "@testing-library/react";
+import { vi } from "vitest";
 
-import { adminUser, recepcaoUser, signIn } from "@/test/render";
+import * as api from "@/lib/api";
+import { adminUser, recepcaoUser, renderPage, signIn } from "@/test/render";
 import Sidebar from "./Sidebar";
 
+vi.mock("@/lib/api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+  return { ...actual, myPermissions: vi.fn() };
+});
+
 function renderSidebar() {
-  render(
-    <MemoryRouter>
-      <Sidebar />
-    </MemoryRouter>,
-  );
+  renderPage(<Sidebar />);
 }
+
+beforeEach(() => {
+  vi.mocked(api.myPermissions).mockReset().mockResolvedValue([]);
+});
 
 describe("Sidebar", () => {
   it("administrador vê Configurações como link", () => {
@@ -33,6 +39,29 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("link", { name: "Bloqueios" })).toHaveAttribute("href", "/bloqueios");
     expect(screen.getByRole("link", { name: "Manutenção" })).toHaveAttribute("href", "/manutencao");
+  });
+
+  it("mostra Fechamento de caixa para toda a equipe", () => {
+    signIn(recepcaoUser);
+    renderSidebar();
+
+    expect(screen.getByRole("link", { name: "Fechamento de caixa" })).toHaveAttribute("href", "/fechamento");
+  });
+
+  it("Contas a pagar aparece para quem tem a permissão", async () => {
+    vi.mocked(api.myPermissions).mockResolvedValue(["manage_payables"]);
+    signIn(recepcaoUser);
+    renderSidebar();
+
+    expect(await screen.findByRole("link", { name: "Contas a pagar" })).toHaveAttribute("href", "/contas-a-pagar");
+  });
+
+  it("Contas a pagar não aparece sem a permissão", async () => {
+    signIn(recepcaoUser);
+    renderSidebar();
+    await waitFor(() => expect(api.myPermissions).toHaveBeenCalled());
+
+    expect(screen.queryByRole("link", { name: "Contas a pagar" })).toBeNull();
   });
 
   it("recepção não vê Configurações", () => {

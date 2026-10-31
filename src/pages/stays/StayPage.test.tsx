@@ -8,7 +8,7 @@ import StayPage from "./StayPage";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return { ...actual, getStay: vi.fn(), myPermissions: vi.fn(), setStayLateTolerance: vi.fn() };
+  return { ...actual, getStay: vi.fn(), myPermissions: vi.fn(), setStayLateTolerance: vi.fn(), recordRefund: vi.fn() };
 });
 
 const stay: api.Stay = {
@@ -31,7 +31,13 @@ const account: api.StayAccount = {
     line({ id: 2, kind: "consumption", description: "Água", amount_cents: 3500, reversed: true }),
     line({ id: 3, kind: "reversal", description: "Estorno de: Água", amount_cents: -3500, reverses_charge_id: 2, justification: "Engano" }),
   ],
-  payments: [{ id: 1, code: "PAG-000001", amount_cents: 12000, method: "prior_deposit", received_at: "2026-10-21T17:00:00Z", received_by_name: "Administrador" }],
+  payments: [
+    {
+      id: 1, code: "PAG-000001", amount_cents: 12000, received_at: "2026-10-21T17:00:00Z", received_by_name: "Administrador",
+      components: [{ method: "pix", amount_cents: 7000 }, { method: "cash", amount_cents: 5000 }],
+      released_duplicate: false, refunded_cents: 0, refundable_cents: 12000,
+    },
+  ],
   refunds: [],
   charges_total_cents: 20000,
   received_cents: 12000,
@@ -67,6 +73,29 @@ describe("StayPage", () => {
     expect(screen.getByRole("button", { name: "Lançar consumo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Registrar pagamento" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Concluir check-out" })).toBeInTheDocument();
+  });
+
+  it("mostra o recebimento dividido em cada forma de pagamento", async () => {
+    open();
+
+    expect(await screen.findByText(/Pix R\$ 70,00 \+ Dinheiro R\$ 50,00/)).toBeInTheDocument();
+  });
+
+  it("oferece a devolução de um recebimento e abre o diálogo", async () => {
+    open();
+    await userEvent.click(await screen.findByRole("button", { name: "Registrar devolução" }));
+
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText(/Recebimento PAG-000001 de R\$ 120,00/)).toBeInTheDocument();
+  });
+
+  it("recebimento já devolvido por inteiro não oferece nova devolução", async () => {
+    const paid = { ...account.payments[0], refunded_cents: 12000, refundable_cents: 0 };
+    vi.mocked(api.getStay).mockResolvedValue(detail({ account: { ...account, payments: [paid] } }));
+    open();
+    await screen.findByText("Hospedagem RES-000003");
+
+    expect(screen.queryByRole("button", { name: "Registrar devolução" })).toBeNull();
   });
 
   it("marca o lançamento estornado com o rótulo, sem depender de cor", async () => {

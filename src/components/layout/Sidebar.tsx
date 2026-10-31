@@ -1,9 +1,10 @@
 import { NavLink } from "react-router-dom";
 
+import { usePermissions } from "@/hooks/usePermissions";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/stores/session";
 
-const upcoming = ["Financeiro", "Relatórios"];
+const upcoming = ["Relatórios"];
 
 function linkClass({ isActive }: { isActive: boolean }) {
   return cn(
@@ -15,6 +16,7 @@ function linkClass({ isActive }: { isActive: boolean }) {
 /** Menu lateral fixo e permanente. Módulos futuros aparecem desabilitados. */
 export default function Sidebar() {
   const role = useSessionStore((s) => s.user?.role);
+  const { can } = usePermissions();
 
   return (
     <nav
@@ -43,6 +45,14 @@ export default function Sidebar() {
       <NavLink to="/manutencao" className={linkClass}>
         Manutenção
       </NavLink>
+      <NavLink to="/fechamento" className={linkClass}>
+        Fechamento de caixa
+      </NavLink>
+      {can("manage_payables") && (
+        <NavLink to="/contas-a-pagar" className={linkClass}>
+          Contas a pagar
+        </NavLink>
+      )}
       <NavLink to="/hospedes" className={linkClass}>
         Hóspedes
       </NavLink>

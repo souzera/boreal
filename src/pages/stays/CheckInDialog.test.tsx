@@ -17,7 +17,7 @@ const reservation: api.Reservation = {
   expected_check_out_time: "12:00", nights: 2, occupants: 2, status: "confirmed", list_total_cents: 30000,
   discount_cents: 3000, discount_reason: "Cliente antigo", agreed_total_cents: 27000, deposit_expected_cents: 8100,
   deposit_paid_cents: 4000, deposit_due_date: "1999-12-30", deposit_overdue: false, notes: "",
-  cancelled_at: null, cancellation_fee_cents: null, version: 3, created_at: "1999-12-01T12:00:00Z", origin: "booking",
+  cancelled_at: null, cancellation_fee_cents: null, refund_due_cents: 0, version: 3, created_at: "1999-12-01T12:00:00Z", origin: "booking",
 };
 
 const onDone = vi.fn();

@@ -40,7 +40,7 @@ const base: api.Reservation = {
   deposit_overdue: false,
   notes: "",
   cancelled_at: null,
-  cancellation_fee_cents: null,
+  cancellation_fee_cents: null, refund_due_cents: 0,
   version: 1,
   created_at: "2026-10-21T12:00:00Z",
   origin: "booking",

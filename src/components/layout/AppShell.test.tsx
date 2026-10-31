@@ -9,6 +9,8 @@ import Login from "@/pages/Login";
 import { useSessionStore } from "@/stores/session";
 import AppShell from "./AppShell";
 
+vi.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ can: () => false, permissions: [], ready: true }) }));
+
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return { ...actual, logout: vi.fn().mockResolvedValue(null), sessionStatus: vi.fn().mockResolvedValue({ state: "active", user: null }), getSessionPolicy: vi.fn().mockResolvedValue({ idle_lock_minutes: 10 }) };
