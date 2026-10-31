@@ -1,13 +1,14 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/onest";
+@import "material-symbols/rounded.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: 'Onest Variable', system-ui, sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -33,56 +34,142 @@
     --color-secondary: var(--secondary);
     --color-primary-foreground: var(--primary-foreground);
     --color-primary: var(--primary);
+    --color-primary-hover: var(--primary-hover);
+    --color-primary-subtle: var(--primary-subtle);
+    --color-primary-selected: var(--primary-selected);
     --color-popover-foreground: var(--popover-foreground);
     --color-popover: var(--popover);
     --color-card-foreground: var(--card-foreground);
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+
+    --color-success: var(--success);
+    --color-success-subtle: var(--success-subtle);
+    --color-success-foreground: var(--success-foreground);
+    --color-info: var(--info);
+    --color-info-subtle: var(--info-subtle);
+    --color-info-foreground: var(--info-foreground);
+    --color-warning: var(--warning);
+    --color-warning-subtle: var(--warning-subtle);
+    --color-warning-foreground: var(--warning-foreground);
+    --color-danger: var(--danger);
+    --color-danger-subtle: var(--danger-subtle);
+    --color-danger-foreground: var(--danger-foreground);
+
+    --color-state-occupied-bg: var(--state-occupied-bg);
+    --color-state-occupied-fg: var(--state-occupied-fg);
+    --color-state-occupied-border: var(--state-occupied-border);
+    --color-state-awaiting-cleaning-bg: var(--state-awaiting-cleaning-bg);
+    --color-state-awaiting-cleaning-fg: var(--state-awaiting-cleaning-fg);
+    --color-state-awaiting-cleaning-border: var(--state-awaiting-cleaning-border);
+    --color-state-cleaning-bg: var(--state-cleaning-bg);
+    --color-state-cleaning-fg: var(--state-cleaning-fg);
+    --color-state-cleaning-border: var(--state-cleaning-border);
+    --color-state-clean-waiting-interval-bg: var(--state-clean-waiting-interval-bg);
+    --color-state-clean-waiting-interval-fg: var(--state-clean-waiting-interval-fg);
+    --color-state-clean-waiting-interval-border: var(--state-clean-waiting-interval-border);
+    --color-state-available-bg: var(--state-available-bg);
+    --color-state-available-fg: var(--state-available-fg);
+    --color-state-available-border: var(--state-available-border);
+    --color-state-blocked-bg: var(--state-blocked-bg);
+    --color-state-blocked-fg: var(--state-blocked-fg);
+    --color-state-blocked-border: var(--state-blocked-border);
+
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+    --radius-xl: var(--radius-card);
+    --radius-2xl: var(--radius-card);
+    --radius-3xl: var(--radius-card);
+    --radius-4xl: var(--radius-card);
+
+    --shadow-card: var(--shadow-card);
+    --shadow-overlay: var(--shadow-overlay);
 }
 
+/* Identidade Boreal: teal sobre neutros frios (Cool Neutral). Valores de local/brief.md §5, validados por src/theme.test.ts. */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --background: #F4F7FA;
+    --foreground: #172033;
+    --card: #FFFFFF;
+    --card-foreground: #172033;
+    --popover: #FFFFFF;
+    --popover-foreground: #172033;
+
+    --primary: #0F766E;
+    --primary-foreground: #FFFFFF;
+    --primary-hover: #115E59;
+    --primary-subtle: #F0FDFA;
+    --primary-selected: #CCFBF1;
+
+    --secondary: #E7EDF3;
+    --secondary-foreground: #172033;
+    --muted: #E7EDF3;
+    --muted-foreground: #5B6B82;
+    --accent: #E7EDF3;
+    --accent-foreground: #172033;
+    --border: #CBD5E1;
+    --input: #CBD5E1;
+    --ring: #0D9488;
+    --destructive: #B91C1C;
+
+    --success: #15803D;
+    --success-subtle: #DCFCE7;
+    --success-foreground: #166534;
+    --info: #0369A1;
+    --info-subtle: #E0F2FE;
+    --info-foreground: #075985;
+    --warning: #B45309;
+    --warning-subtle: #FEF3C7;
+    --warning-foreground: #92400E;
+    --danger: #B91C1C;
+    --danger-subtle: #FEE2E2;
+    --danger-foreground: #991B1B;
+
+    /* Estados dos quartos: paleta própria (ocupação e limpeza são dimensões distintas). */
+    --state-occupied-bg: #E7EDF3;
+    --state-occupied-fg: #172033;
+    --state-occupied-border: #CBD5E1;
+    --state-awaiting-cleaning-bg: #FEF3C7;
+    --state-awaiting-cleaning-fg: #92400E;
+    --state-awaiting-cleaning-border: #FCD34D;
+    --state-cleaning-bg: #E0F2FE;
+    --state-cleaning-fg: #075985;
+    --state-cleaning-border: #7DD3FC;
+    --state-clean-waiting-interval-bg: #E0E7FF;
+    --state-clean-waiting-interval-fg: #3730A3;
+    --state-clean-waiting-interval-border: #A5B4FC;
+    --state-available-bg: #DCFCE7;
+    --state-available-fg: #166534;
+    --state-available-border: #86EFAC;
+    --state-blocked-bg: #FEE2E2;
+    --state-blocked-fg: #991B1B;
+    --state-blocked-border: #FCA5A5;
+
+    --chart-1: #0F766E;
+    --chart-2: #0369A1;
+    --chart-3: #B45309;
+    --chart-4: #3730A3;
+    --chart-5: #64748B;
+
+    --radius: 0.5rem;
+    --radius-card: 0.75rem;
+    /* Soft Elevation: sombras sutis, só em cards, painéis e diálogos. */
+    --shadow-card: 0 1px 2px rgb(23 32 51 / 0.06), 0 1px 3px rgb(23 32 51 / 0.08);
+    --shadow-overlay: 0 8px 24px rgb(23 32 51 / 0.12), 0 2px 6px rgb(23 32 51 / 0.08);
+
+    --sidebar: #FFFFFF;
+    --sidebar-foreground: #172033;
+    --sidebar-primary: #0F766E;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #CCFBF1;
+    --sidebar-accent-foreground: #0F766E;
+    --sidebar-border: #CBD5E1;
+    --sidebar-ring: #0D9488;
 }
 
+/* Modo escuro não faz parte da identidade da v1 (brief §5); o bloco abaixo é o padrão do shadcn, não projetado. */
 .dark {
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
@@ -102,11 +189,6 @@
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -127,4 +209,18 @@
   html {
     @apply font-sans;
     }
+  /* Valores e datas alinhados em colunas. */
+  td,
+  th {
+    font-variant-numeric: tabular-nums;
+    }
+}
+
+/* Material Symbols Rounded preenchido (brief §6.1). */
+.material-symbols-rounded {
+  font-variation-settings:
+    "FILL" 1,
+    "wght" 500,
+    "GRAD" 0,
+    "opsz" 24;
 }
