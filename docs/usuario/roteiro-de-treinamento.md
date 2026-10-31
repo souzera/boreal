@@ -17,8 +17,9 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 - **Quem:** todos.
 - **Passo a passo:**
   1. Entre com usuário e senha. No primeiro acesso, o sistema pede a troca da senha.
-  2. Mostre o menu lateral: Mapa de quartos, Reservas, Hospedagens, Limpeza, Bloqueios, Manutenção, Fechamento de caixa, Contas a pagar (só com permissão), Hóspedes, Quartos, Tarifas, Itens e serviços.
-  3. Mostre a busca no topo e o Dashboard ("Quartos aguardando limpeza").
+  2. Mostre o menu lateral, agrupado: **Recepção**; **Reservas** (Reservas, Hóspedes); **Hospedagens**; **Quartos** (Mapa de quartos, Limpeza, Bloqueios, Manutenção, Cadastro de quartos); **Financeiro** (Fechamento de caixa e, com permissão, Contas a pagar); **Configurações** (Tarifas e Itens e serviços; Configurações e Usuários só para o administrador). **Relatórios** e **Alertas** aparecem esmaecidos com "Em breve". A tela atual fica destacada no menu.
+  2b. Mostre as ações do topo e seus atalhos: **Nova reserva** (`Alt+N`), **Buscar** (`Ctrl+K`), **Check-in** (`Alt+C`), **Receber pagamento** (`Alt+R`) e **Check-out** (`Alt+S`). Por enquanto Check-in leva à lista de reservas e Receber pagamento e Check-out levam à lista de hospedagens.
+  3. Mostre a busca no topo e a tela **Recepção** ("Quartos aguardando limpeza").
   4. Deixe a tela parada até o bloqueio por inatividade e desbloqueie com a senha: o que estava aberto volta como estava.
 - **O participante deve ver:** que a sessão bloqueada esconde os dados e que nada digitado se perde.
 - **Erros comuns:** senha errada várias vezes bloqueia a conta por alguns minutos (⚠ 5 tentativas, 5 minutos).
@@ -158,7 +159,7 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
   2. Digite os valores conferidos; em uma forma, digite um valor diferente e veja **Falta**/**Sobra** e o pedido de justificativa.
   3. **Concluir fechamento** e leia a confirmação com as diferenças.
   4. Reabra o dia: somente leitura, com quem fechou e quando. Faça um novo pagamento e veja **Movimentos depois do fechamento**.
-  5. Mostre o aviso **Fechamento pendente** do Dashboard (aparece para dias anteriores sem fechamento) e que nada fica bloqueado.
+  5. Mostre o aviso **Fechamento pendente** da Recepção (aparece para dias anteriores sem fechamento) e que nada fica bloqueado.
 - **O participante deve ver:** que diferença não impede o fechamento e que o fechamento não muda nenhum recebimento.
 - **Erros comuns:** esquecer o valor de alguma forma; tentar fechar o mesmo dia duas vezes.
 - ⚠ **Provisório:** pagamentos a fornecedores não entram no esperado (decisão da pousada pendente).

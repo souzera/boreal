@@ -13,6 +13,7 @@ Regras de negócio, decisões técnicas, permissões, auditoria e efeitos no ban
 - [Bloqueios e manutenção (Marco 4)](bloqueios-e-manutencao.md) — bloqueios na disponibilidade, ordens e conflitos.
 - [Financeiro (Marco 5)](financeiro.md) — recebimentos divididos, duplicidade, devoluções, contas a pagar e categorias.
 - [Fechamento de caixa (Marco 5)](fechamento-de-caixa.md) — esperado por modalidade, conferência e regras.
+- [Design system (Marco 6.1)](design-system.md) — tokens, contraste, ícones, menu e atalhos.
 - [Seed de desenvolvimento](seed.md) — dados fictícios para desenvolver e demonstrar (feature `dev-seed`).
 - [Permissões](permissoes.md) — perfis, permissões extras por usuário e como acrescentar uma nova.
 - [Sequências](sequencias.md) — códigos visíveis sem reuso.
