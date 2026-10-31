@@ -175,6 +175,22 @@ describe("PaymentDialog", () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 
+  it("se a liberação do duplicado falhar, continua na tela do duplicado com a mensagem", async () => {
+    vi.mocked(api.myPermissions).mockResolvedValue(["release_duplicate_payment"]);
+    vi.mocked(api.recordStayPayment).mockRejectedValueOnce(duplicate).mockRejectedValueOnce(new api.ApiError("validation", "Justificativa: no máximo 200 caracteres."));
+    open();
+    const d = await dialog();
+    await fillSinglePix(d);
+    await userEvent.click(await d.findByRole("button", { name: "Confirmar pagamento" }));
+    await d.findByText(/PAG-000009/);
+    await userEvent.type(await d.findByLabelText(/Justificativa/), "Dois hóspedes pagaram o mesmo valor");
+    await userEvent.click(d.getByRole("button", { name: "Liberar recebimento duplicado" }));
+
+    expect(await d.findByText("Justificativa: no máximo 200 caracteres.")).toBeInTheDocument();
+    expect(d.getByText(/PAG-000009/)).toBeInTheDocument();
+    expect(d.getByLabelText(/Justificativa/)).toHaveValue("Dois hóspedes pagaram o mesmo valor");
+  });
+
   it("sinal da reserva usa a versão vista na tela e avisa conflito", async () => {
     vi.mocked(api.recordReservationPayment).mockRejectedValue(new api.ApiError("conflict", "O registro foi alterado por outra operação. Revise e tente novamente."));
     open({ kind: "reservation", reservationId: 5, version: 3 });

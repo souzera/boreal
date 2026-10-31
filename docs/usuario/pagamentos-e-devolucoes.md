@@ -38,7 +38,9 @@ Se já existe, na mesma reserva ou hospedagem, um recebimento do **mesmo valor, 
 
 ## Reserva cancelada com sinal para devolver
 
-Ao cancelar, o sistema calcula quanto do sinal volta ao hóspede (pela política de cancelamento) e a reserva mostra **Devolução a fazer: R$ …**. **O sistema não devolve nada sozinho**: quando o dinheiro for devolvido, use **Registrar devolução** no recebimento do sinal. O aviso diminui a cada devolução registrada.
+Ao cancelar, o sistema calcula quanto do sinal volta ao hóspede (pela política de cancelamento) e a reserva mostra **Devolução a fazer: R$ …**. **O sistema não devolve nada sozinho**: quando o dinheiro for devolvido, use **Registrar devolução** no recebimento do sinal. O aviso diminui a cada devolução registrada. Devolver **mais** do que a política calculou só é possível para quem tem a permissão **Autorizar exceções de cancelamento**.
+
+Devolver parte do sinal de uma reserva que ainda está aberta reduz o "sinal recebido" da reserva (a reserva continua como está; use **Confirmar reserva** ou receba o restante conforme o caso).
 
 ## Erros comuns
 

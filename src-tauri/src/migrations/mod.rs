@@ -331,6 +331,7 @@ mod tests {
         let mut conn = memory();
         run_with(&mut conn, &super::MIGRATIONS[..10]).unwrap();
         seed_stay(&conn);
+        conn.execute("UPDATE sequences SET next_value = 3 WHERE name = 'payment'", []).unwrap();
         let t = "'2026-10-22T12:00:00Z'";
         conn.execute_batch(&format!(
             "INSERT INTO payments (id, code, reservation_id, stay_id, amount_cents, method, received_at, received_by)
@@ -341,7 +342,12 @@ mod tests {
                  expected_check_out_time, occupants, status, list_total_cents, agreed_total_cents, deposit_expected_cents,
                  deposit_paid_cents, deposit_due_date, cancellation_fee_cents, created_by, created_at, updated_at)
                VALUES (2, 'RES-000002', 1, 1, '2026-12-01', '2026-12-03', '14:00', '12:00', 1, 'cancelled', 40000, 40000, 12000,
-                 12000, '2026-11-20', 6000, 1, {t}, {t});"
+                 12000, '2026-11-20', 6000, 1, {t}, {t});
+             INSERT INTO reservations (id, code, room_id, guest_id, check_in_date, check_out_date, expected_check_in_time,
+                 expected_check_out_time, occupants, status, list_total_cents, agreed_total_cents, deposit_expected_cents,
+                 deposit_paid_cents, deposit_due_date, created_by, created_at, updated_at)
+               VALUES (3, 'RES-000003', 1, 1, '2027-01-10', '2027-01-12', '14:00', '12:00', 1, 'confirmed', 40000, 40000, 12000,
+                 12000, '2027-01-05', 1, {t}, {t});"
         ))
         .unwrap();
 
@@ -354,11 +360,21 @@ mod tests {
         };
         assert_eq!(
             rows("SELECT payment_id, method, amount_cents FROM payment_components ORDER BY payment_id"),
-            vec![(1, "pix".to_string(), 10_000), (2, "unspecified".to_string(), 12_000)]
+            vec![
+                (1, "pix".to_string(), 10_000),
+                (2, "unspecified".to_string(), 12_000),
+                (3, "unspecified".to_string(), 12_000),
+                (4, "unspecified".to_string(), 12_000),
+            ]
         );
         assert_eq!(
             rows("SELECT id, kind, amount_cents FROM payments ORDER BY id"),
-            vec![(1, "stay".to_string(), 10_000), (2, "deposit".to_string(), 12_000)]
+            vec![
+                (1, "stay".to_string(), 10_000),
+                (2, "deposit".to_string(), 12_000),
+                (3, "deposit".to_string(), 12_000),
+                (4, "deposit".to_string(), 12_000),
+            ]
         );
         assert_eq!(
             rows("SELECT refund_id, method, amount_cents FROM refund_components"),
@@ -368,6 +384,20 @@ mod tests {
         assert_eq!(reservation, 1);
         let refund_due: i64 = conn.query_row("SELECT cancellation_refund_cents FROM reservations WHERE id = 2", [], |r| r.get(0)).unwrap();
         assert_eq!(refund_due, 6_000);
+        // sinal antigo que só existia como valor na reserva (sem hospedagem) ganha um recebimento sem modalidade
+        let legacy: (String, i64) = conn
+            .query_row(
+                "SELECT c.method, c.amount_cents FROM payments p JOIN payment_components c ON c.payment_id = p.id
+                 WHERE p.kind = 'deposit' AND p.reservation_id = 3",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((legacy.0.as_str(), legacy.1), ("unspecified", 12_000));
+        let next: i64 = conn.query_row("SELECT next_value FROM sequences WHERE name = 'payment'", [], |r| r.get(0)).unwrap();
+        assert_eq!(next, 5, "a sequência avança para os recebimentos criados pela migração");
+        let total: i64 = conn.query_row("SELECT count(*) FROM payments", [], |r| r.get(0)).unwrap();
+        assert_eq!(total, 4);
     }
 
     #[test]

@@ -24,7 +24,8 @@ const SELECT: &str = "SELECT r.id, r.code, r.room_id, rm.code, r.guest_id, g.ful
         (r.status = 'pending' AND r.deposit_paid_cents < r.deposit_expected_cents AND r.deposit_due_date < :today),
         r.notes, r.cancelled_at, r.cancellation_fee_cents, r.version, r.created_at, r.origin,
         CASE WHEN r.status = 'cancelled' THEN MAX(0, r.cancellation_refund_cents
-            - (SELECT COALESCE(SUM(f.amount_cents), 0) FROM refunds f WHERE f.reservation_id = r.id)) ELSE 0 END
+            - (SELECT COALESCE(SUM(f.amount_cents), 0) FROM refunds f WHERE f.reservation_id = r.id AND f.id > r.cancel_refund_marker))
+            ELSE 0 END
      FROM reservations r
      JOIN rooms rm ON rm.id = r.room_id
      JOIN guests g ON g.id = r.guest_id";
@@ -368,7 +369,8 @@ pub fn set_closed(
 ) -> Result<(), AppError> {
     let changed = tx.execute(
         "UPDATE reservations SET status = ?1, cancelled_at = ?2, cancellation_fee_cents = ?3,
-                cancellation_refund_cents = ?6, version = version + 1, updated_at = ?2
+                cancellation_refund_cents = ?6, cancel_refund_marker = (SELECT COALESCE(MAX(id), 0) FROM refunds),
+                version = version + 1, updated_at = ?2
          WHERE id = ?4 AND version = ?5",
         params![status, stamp(at), retained_cents, id, expected_version, refund_cents],
     )?;
@@ -546,4 +548,14 @@ pub fn map_reservations(conn: &Connection, from: NaiveDate, to: NaiveDate) -> Re
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+/// Uma devolução de sinal numa reserva ainda aberta reduz o sinal considerado pago (teto, cancelamento e alertas).
+pub fn lower_deposit_paid(tx: &Transaction, reservation_id: i64, cents: i64, at: DateTime<Utc>) -> Result<(), AppError> {
+    tx.execute(
+        "UPDATE reservations SET deposit_paid_cents = MAX(0, deposit_paid_cents - ?1), version = version + 1, updated_at = ?2
+         WHERE id = ?3 AND status IN ('pending', 'confirmed')",
+        params![cents, stamp(at), reservation_id],
+    )?;
+    Ok(())
 }

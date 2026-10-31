@@ -14,7 +14,37 @@
 
 ## Status
 
-**Não iniciado.** Plano escrito em 30/10/2026; nenhum passo executado.
+**Implementado e revisado** na branch `marco-5-financeiro` (a partir de `seed-dev`). T1 a T12 concluídas; revisão final independente feita (abaixo). Migração `0011`.
+
+- **Testes (última execução completa):** `cargo test` 457 unitários + 4 de integração; `cargo test --features dev-seed` 464 + 4 (inclui o seed) e `cargo clippy --all-targets --features dev-seed -- -D warnings` limpos; `npx vitest run` 356 (47 arquivos), `npx tsc --noEmit` limpo e `npm run build` ok; `graphify update .` executado.
+- **Pendências de verificação:** `npm run tauri dev` com a interface real e uma migração sobre um banco real de uma versão anterior não foram exercitados (responsável). `cargo fmt --check` já falhava na base; não foi aplicado.
+- **Pergunta aberta para a pousada (M5-10):** o fornecedor é pago com o dinheiro do caixa da recepção? Se sim, os pagamentos a fornecedores passam a descontar do esperado em dinheiro.
+
+## Desvios e decisões da execução
+
+- Migração: `reservations.cancel_refund_marker` (maior id de devolução no cancelamento) e `cash_closing_lines.counted_cents` sem `CHECK >= 0` (valor líquido), e sinal antigo só em `deposit_paid_cents` migrado como recebimento sem modalidade — os três vieram da revisão final (abaixo). A 0011 ainda não tinha sido aplicada em nenhum banco, por isso foi editada.
+- `StayService::record_payment` e `ReservationService::record_deposit` foram **removidos** (não delegam); testes usam `test_support::{pay, deposit}`.
+- `DuplicateDialog` é um painel dentro do `PaymentDialog` (um diálogo, três passos); o botão de pagamento fica desabilitado enquanto a soma da divisão não confere.
+- `pending_dates` só lista dias **anteriores a hoje**; `update_notes` do plano não foi implementado (sem uso).
+- O seed **não** cria fechamento de caixa (o relógio é o do computador, tudo nasce hoje): demonstra-se ao vivo (Módulo 11 do roteiro).
+- Os testes do seed só rodam com `--features dev-seed`.
+- `tsc` ficou propositalmente vermelho entre a T8 e a T9 (telas ainda usavam os tipos antigos).
+- Slips de TDD: `utc_bounds` (T6), testes de `Sidebar` e da `ClosingPage` foram escritos junto/antes sem uma execução RED separada. Um commit da T6 saiu com clippy vermelho e foi corrigido no commit seguinte.
+- `CLAUDE.md`, `docs/usuario/README.md` e `docs/usuario/roteiro-de-treinamento.md` já tinham alterações não commitadas do usuário no início e entraram nos commits desta branch.
+
+## Revisão final
+
+Revisor independente (modelo mais capaz) sobre a branch inteira. Corrigidos em uma passada, cada um com teste que falhou antes:
+
+- **Crítico C1** — devolução feita antes do check-in sumia da conta da hospedagem (a hóspede ficava com cobrança a menos). `link_to_stay` agora vincula também as devoluções (`refund_made_before_check_in_stays_on_the_stay_account`).
+- **Crítico C2** — devolver sinal de reserva aberta não reduzia `deposit_paid_cents` (teto do sinal e cancelamento usavam o valor antigo). Agora reduz, e a "devolução a fazer" usa um marcador para não descontar duas vezes (`refunding_a_deposit_of_an_open_reservation_lowers_the_deposit_paid`, `refund_before_cancellation_is_not_discounted_twice`).
+- **Importante I1** — devolução acima da política numa reserva cancelada/no-show agora exige `CancellationException` (`refunding_more_than_the_cancellation_policy_needs_the_exception_permission`).
+- **Importante I2** — sinal antigo só em `deposit_paid_cents` era perdido na migração; agora vira recebimento sem modalidade (`migration_0011_preserves_existing_payments_as_components`).
+- **Importante I3** — dia com mais devoluções que recebimentos forçava diferença falsa; o conferido pode ser negativo (`a_day_with_more_refunds_than_receipts_can_be_counted_with_a_negative_amount`, teste de tela).
+- **Importante I4** — a tela de fechamento não se recuperava quando surgia movimento novo; o erro agora recarrega a conferência (teste de tela).
+- **Menor M4 (corrigido, barato)** — falha ao liberar duplicado mantém o painel do duplicado.
+
+**Menores adiados:** M1 `after_closing_cents` compara só o total do dia (não por forma de pagamento); M2 o teste de preservação da migração roda com chaves estrangeiras desligadas (produção liga); M3 a duplicidade também casa recebimentos já devolvidos; M5 categorias exigem `ManageCatalog` e não `ManagePayables`; devolução não valida que o recebimento pertence à hospedagem aberta na tela (qualquer `payment_id` válido é aceito pelo backend); `PayableDialog`/`CategoriesPanel` só foram vistos por amostragem pelo revisor.
 
 ## Decisões deste plano (chamadas minhas; revisar antes de executar)
 
@@ -109,15 +139,15 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
   - Sequência `payable` em 1; `reservations.cancellation_refund_cents INTEGER NOT NULL DEFAULT 0` (devolução calculada no cancelamento; reservas já canceladas migram com `deposit_paid_cents − cancellation_fee_cents`).
 - Migração copia cada `payments` antigo: `kind` = `deposit` se `stay_id` nulo, senão `stay` (**exceto** `method = 'prior_deposit'`, que vira `deposit`); um componente com `method` antigo, e `prior_deposit` ⇒ `unspecified` (M5-5). `refunds` antigos ganham `reservation_id` pela hospedagem e um componente `unspecified`.
 
-- [ ] **Step 1: Write the failing tests** em `migrations/mod.rs`:
+- [x] **Step 1: Write the failing tests** em `migrations/mod.rs`:
   - `migration_0011_creates_finance_tables` (todas as tabelas existem; `payments` não tem coluna `method`; versão 11; sequência `payable`; 9 categorias semeadas).
   - `migration_0011_preserves_existing_payments_as_components`: aplicar até a 0010, inserir um `payments` com `method='pix'` (100 reais) e outro `prior_deposit`, migrar para 11 ⇒ componentes `pix` e `unspecified` com os mesmos valores e `payments.amount_cents` intactos.
   - `payment_components_reject_duplicate_method_and_zero_amount`.
   - `cash_closings_reject_second_closing_for_same_date`.
-- [ ] **Step 2: Run** `cargo test migration_0011` — Expected: FAIL (versão 10).
-- [ ] **Step 3: Write** `0011_finance.sql` (reconstrução com `PRAGMA foreign_keys` tratada como nas migrações anteriores que reconstroem tabela; copiar dados antes de remover; recriar índice `idx_payments_stay`) e registrar `Migration { version: 11, ... }`.
-- [ ] **Step 4: Run** `cargo test migration` — Expected: PASS (inclui as anteriores; os testes de `stay_repo` que inserem `payments.method` serão ajustados na Task 4).
-- [ ] **Step 5: Commit** `feat: migration 0011 finance`
+- [x] **Step 2: Run** `cargo test migration_0011` — Expected: FAIL (versão 10).
+- [x] **Step 3: Write** `0011_finance.sql` (reconstrução com `PRAGMA foreign_keys` tratada como nas migrações anteriores que reconstroem tabela; copiar dados antes de remover; recriar índice `idx_payments_stay`) e registrar `Migration { version: 11, ... }`.
+- [x] **Step 4: Run** `cargo test migration` — Expected: PASS (inclui as anteriores; os testes de `stay_repo` que inserem `payments.method` serão ajustados na Task 4).
+- [x] **Step 5: Commit** `feat: migration 0011 finance`
 
 ---
 
@@ -137,14 +167,14 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
   - `enum PayableStatus { Pending, Partial, Paid, Overdue }`; `fn payable_status(amount_cents: i64, paid_cents: i64, due: NaiveDate, today: NaiveDate) -> PayableStatus` — `Paid` se `paid ≥ amount`; senão `Overdue` se `due < today`; senão `Partial` se `paid > 0`; senão `Pending`.
   - `struct ExpectedLine { method: Method, expected_cents: i64 }`, `struct CountedLine { method: Method, counted_cents: i64, justification: Option<String> }`; `fn build_closing_lines(expected: &[ExpectedLine], counted: &[CountedLine]) -> Result<Vec<ClosingLine>, AppError>` — exige conferido para as cinco modalidades selecionáveis (e para `Unspecified` se esperado ≠ 0), valor conferido ≥ 0, justificativa não vazia quando a diferença ≠ 0; `ClosingLine { method, expected_cents, counted_cents, difference_cents, justification }`, diferença = conferido − esperado.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `payment.rs`: `components_must_sum_exactly` (Pix 6.000 + dinheiro 4.000 ⇒ total 10.000), `rejects_empty_zero_negative_repeated_and_unspecified`, `rejects_total_above_limit` (100.000.001 > 100.000.000), `debit_and_credit_are_distinct_methods`, `duplicate_needs_same_total_methods_and_local_date` (mesmo total, Pix vs dinheiro ⇒ não; mesmo conjunto em dia diferente ⇒ não), `refundable_is_payment_minus_refunded_and_never_negative`.
   - `payable.rs`: `due_today_is_not_overdue`, `due_yesterday_unpaid_is_overdue`, `partially_paid_and_overdue_is_overdue`, `fully_paid_is_paid_even_if_late`, `partial_before_due_is_partial`.
   - `closing.rs`: `difference_is_counted_minus_expected` (esperado 10.000, conferido 9.500 ⇒ −500), `difference_without_justification_is_refused`, `difference_with_justification_is_accepted`, `missing_method_is_refused`, `unspecified_line_required_only_when_expected_is_not_zero`, `negative_counted_is_refused`.
-- [ ] **Step 2: Run** `cargo test domain::payment domain::payable domain::closing` — Expected: FAIL (módulos inexistentes).
-- [ ] **Step 3: Implement** os módulos conforme as assinaturas acima (puros, sem banco, erros `AppError::Validation` em português simples).
-- [ ] **Step 4: Run** os mesmos testes — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: pure domain for payments, payables and closing`
+- [x] **Step 2: Run** `cargo test domain::payment domain::payable domain::closing` — Expected: FAIL (módulos inexistentes).
+- [x] **Step 3: Implement** os módulos conforme as assinaturas acima (puros, sem banco, erros `AppError::Validation` em português simples).
+- [x] **Step 4: Run** os mesmos testes — Expected: PASS.
+- [x] **Step 5: Commit** `feat: pure domain for payments, payables and closing`
 
 ---
 
@@ -157,11 +187,11 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
 **Interfaces:**
 - Produces: `Permission::ReleaseDuplicatePayment` (`"release_duplicate_payment"`) e `Permission::ManagePayables` (`"manage_payables"`), ambas em `ALL` e em `grantable()`; rótulos `Liberar recebimento duplicado` e `Gerenciar contas a pagar`.
 
-- [ ] **Step 1: Write the failing tests:** `new_finance_permissions_are_grantable_and_parse`; teste existente da máscara de bits cobre o novo número de variantes (`PermissionSet::with` para todas, sem estourar `u32`); `labels.test.ts` exige rótulo para toda permissão concedível.
-- [ ] **Step 2: Run** `cargo test auth::permissions` e `npx vitest run src/pages/users/labels.test.ts` — Expected: FAIL.
-- [ ] **Step 3: Implement** as duas variantes e `as_str`/`grantable`; rótulos no front; documentação de permissões.
-- [ ] **Step 4: Run** os testes — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: release-duplicate-payment and manage-payables permissions`
+- [x] **Step 1: Write the failing tests:** `new_finance_permissions_are_grantable_and_parse`; teste existente da máscara de bits cobre o novo número de variantes (`PermissionSet::with` para todas, sem estourar `u32`); `labels.test.ts` exige rótulo para toda permissão concedível.
+- [x] **Step 2: Run** `cargo test auth::permissions` e `npx vitest run src/pages/users/labels.test.ts` — Expected: FAIL.
+- [x] **Step 3: Implement** as duas variantes e `as_str`/`grantable`; rótulos no front; documentação de permissões.
+- [x] **Step 4: Run** os testes — Expected: PASS.
+- [x] **Step 5: Commit** `feat: release-duplicate-payment and manage-payables permissions`
 
 ---
 
@@ -183,7 +213,7 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
   - `StayAccount.payments: Vec<PaymentLine>` agora com `components: Vec<ComponentLine { method, amount_cents }>` (sem `method` único) e `released_duplicate: bool`.
 - Regras: `Stay` exige hospedagem aberta (`in_house`); `Reservation` exige reserva `pending|confirmed`, `expected_version` igual (`Conflict`) e `soma ≤ agreed_total`; ao gravar sinal atualiza `deposit_paid_cents` e confirma a reserva ao atingir `deposit_expected_cents` (lógica hoje em `record_deposit`, movida para cá via `reservation_repo::update_payment_state`); duplicado sem `duplicate_release` ⇒ `DuplicatePayment`; com `duplicate_release` exige `Permission::ReleaseDuplicatePayment` e justificativa não vazia, grava `duplicate_of_payment_id`; tudo (recebimento, componentes, sequência, atualização da reserva ou da hospedagem, auditoria `record_payment`) em **uma transação**.
 
-- [ ] **Step 1: Write the failing tests** (`payment_service.rs`, no estilo dos testes de `stay_service` com o `World`/`FakeUtc` existentes):
+- [x] **Step 1: Write the failing tests** (`payment_service.rs`, no estilo dos testes de `stay_service` com o `World`/`FakeUtc` existentes):
   - `split_payment_records_components_and_reduces_balance` (conta R$ 400,00; Pix 6.000 + dinheiro 4.000 ⇒ saldo 30.000; `payments.amount_cents = 10.000`; dois componentes; código `PAG-000001`).
   - `components_not_matching_are_refused_without_writing` (componente 0, repetido, `prior_deposit`, `unspecified`, vazio, total 100.000.001 ⇒ `Validation`; contagens de `payments`/`payment_components`/`sequences` intactas).
   - `same_stay_same_total_methods_and_day_is_blocked_as_duplicate` (segundo idêntico ⇒ `DuplicatePayment` com o código `PAG-000001`; nada gravado; sequência não consumida); `different_day_or_method_is_not_duplicate`.
@@ -194,10 +224,10 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
   - `payment_on_checked_out_stay_is_refused`.
   - `rolled_back_payment_does_not_consume_the_sequence` (falha de auditoria simulada/duplicado ⇒ próximo código continua `PAG-000001`).
   - Substituir os testes antigos de `stay_service` (`record_payment_reduces_balance_and_validates` etc.) pelos equivalentes com `PaymentInput` novo; o teste de propriedade de saldo (`SUM(charges) − SUM(payments) + SUM(refunds)`) segue passando.
-- [ ] **Step 2: Run** `cargo test payment_service` — Expected: FAIL (serviço inexistente).
-- [ ] **Step 3: Implement** `PaymentService::record` e repositório; fazer `StayService`/`ReservationService::record_deposit` **delegarem** (o comando `record_deposit` deixa de existir: o front chama `record_reservation_payment`); no check-in trocar o bloco `prior_deposit` por `payment_repo::link_to_stay`; remover do esquema do código o método `prior_deposit`; ajustar `seed.rs` e fixtures de teste.
-- [ ] **Step 4: Run** `cargo test` — Expected: PASS (suíte inteira, inclusive os testes de check-in dos Marcos 3/4).
-- [ ] **Step 5: Commit** `feat: split payments, duplicate guard and deposit as a real payment`
+- [x] **Step 2: Run** `cargo test payment_service` — Expected: FAIL (serviço inexistente).
+- [x] **Step 3: Implement** `PaymentService::record` e repositório; fazer `StayService`/`ReservationService::record_deposit` **delegarem** (o comando `record_deposit` deixa de existir: o front chama `record_reservation_payment`); no check-in trocar o bloco `prior_deposit` por `payment_repo::link_to_stay`; remover do esquema do código o método `prior_deposit`; ajustar `seed.rs` e fixtures de teste.
+- [x] **Step 4: Run** `cargo test` — Expected: PASS (suíte inteira, inclusive os testes de check-in dos Marcos 3/4).
+- [x] **Step 5: Commit** `feat: split payments, duplicate guard and deposit as a real payment`
 
 ---
 
@@ -217,7 +247,7 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
   - `ReservationDetail.reservation.refund_due_cents: i64` = `max(0, refund_calculado_do_cancelamento − devolvido_da_reserva)`; zero fora de reservas canceladas. O valor calculado vem da nova coluna `reservations.cancellation_refund_cents` (criada na Task 1, `NOT NULL DEFAULT 0`; gravada por `reservation_repo::set_closed` no cancelamento).
 - Regras: motivo obrigatório (≤ 200 caracteres); total ≤ `refundable_cents`; hospedagem do recebimento definida ⇒ `refunds.stay_id` copiado; devolução em hospedagem **encerrada** é permitida (devolução de crédito no pós-check-out); usuário e instante gravados; auditoria `record_refund` na mesma transação; sem permissão extra (M5-7).
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `partial_then_full_refund_never_exceeds_the_payment` (recebimento 10.000: devolver 3.000, depois 7.000 ok; mais R$ 0,01 ⇒ `Validation`).
   - `refund_split_across_methods_must_sum_exactly` (Pix 2.000 + dinheiro 1.000 = 3.000 ok; soma errada ⇒ recusa sem gravar).
   - `refund_requires_reason_and_existing_payment` (motivo vazio/espaços; `payment_id` inexistente).
@@ -226,10 +256,10 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
   - `no_show_has_no_pending_refund` e `cancellation_does_not_create_refund_or_change_payments` (contagens de `refunds` e `payments` iguais antes/depois).
   - `refund_audit_records_user_reason_and_amount`.
   - `double_click_cannot_refund_twice_beyond_the_balance` (duas chamadas idênticas de integral: a segunda `Validation`).
-- [ ] **Step 2: Run** `cargo test refund_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** serviço, repositório e `refund_due_cents`; atualizar `StayAccount.refunds` com `components`.
-- [ ] **Step 4: Run** `cargo test` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: refunds linked to the original payment`
+- [x] **Step 2: Run** `cargo test refund_service` — Expected: FAIL.
+- [x] **Step 3: Implement** serviço, repositório e `refund_due_cents`; atualizar `StayAccount.refunds` com `components`.
+- [x] **Step 4: Run** `cargo test` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: refunds linked to the original payment`
 
 ---
 
@@ -249,7 +279,7 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
   - `PayableService::summary(&self, token, SummaryQuery { from, to, basis: "competence"|"payment", category_id: Option<i64> }) -> Vec<CategoryTotal { category_id, category_name, total_cents }>` (M5-12).
 - Regras: todas as operações de conta exigem `ManagePayables`; valor 1…1.000.000,00; vencimento ≥ competência; fornecedor 1…120 e descrição 1…200 caracteres; pagamento ≤ saldo da conta e conta paga recusa novo pagamento; pagamento parcial conta pelo valor e data próprios; `pay` confere `version` (`Conflict`); tudo auditado na mesma transação; código `CAP-000001`.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `create_payable_starts_pending_with_code_and_audit` (`CAP-000001`, status `pending`, auditoria `create_payable`).
   - `requires_manage_payables_for_every_operation` (recepção sem permissão ⇒ `Forbidden` em criar, listar, pagar; recepção **com** a permissão concedida passa).
   - `partial_then_full_payment_moves_pending_partial_paid` (R$ 500: 200 ⇒ `partial`, saldo 300; +300 ⇒ `paid`; novo pagamento ⇒ `Validation`).
@@ -260,10 +290,10 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
   - `category_with_payables_can_only_be_deactivated` (tentar excluir não existe; desativar ok; reativar ok); `category_names_are_unique_ignoring_accents_and_case` (`Energia` × `energia`); `create_category_requires_manage_catalog`.
   - `summary_by_competence_and_by_payment_differ` (conta de R$ 500 com competência em outubro, pagamentos de 200 em outubro e 300 em novembro: competência outubro = 500; pagamento outubro = 200, novembro = 300).
   - `stale_version_on_pay_is_conflict`.
-- [ ] **Step 2: Run** `cargo test payable_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** serviço e repositório (SQL à mão, `payable_status` aplicado na leitura; filtro de status vencido por data na consulta).
-- [ ] **Step 4: Run** `cargo test payable` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: expense categories and accounts payable`
+- [x] **Step 2: Run** `cargo test payable_service` — Expected: FAIL.
+- [x] **Step 3: Implement** serviço e repositório (SQL à mão, `payable_status` aplicado na leitura; filtro de status vencido por data na consulta).
+- [x] **Step 4: Run** `cargo test payable` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: expense categories and accounts payable`
 
 ---
 
@@ -283,7 +313,7 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
   - `closing_repo::{movements_for_local_date(conn, day_start_utc, day_end_utc) -> Vec<(Method, received, refunded)>, find_by_date, insert}`; intervalo do dia local calculado de `ctx.utc.local_offset()` (nunca `date()` do UTC).
 - Regras: data ≤ hoje; uma por data (`closing_date UNIQUE` ⇒ erro "Esse dia já foi fechado"); esperado **recomputado no servidor** (o front só envia os conferidos); linhas, diferenças e justificativas gravadas; **nenhuma** escrita em `payments`/`refunds`; auditoria `close_cash` na mesma transação; fechar não bloqueia nenhuma operação posterior (M5-11); `after_closing_cents` = esperado atual − esperado gravado, quando fechado.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `expected_is_received_minus_refunded_per_method_with_debit_and_credit_apart` (Pix 10.000 recebido, devolvido 2.000 em Pix, débito 5.000, crédito 3.000 ⇒ esperado Pix 8.000, débito 5.000, crédito 3.000).
   - `closing_with_difference_and_justification_completes_and_stores_everything` (conferido −500 com justificativa; usuário/hora/linhas gravados; recebimentos inalterados — comparar `SELECT *` antes/depois).
   - `difference_without_justification_is_refused_without_writing`.
@@ -296,10 +326,10 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
   - `movements_after_closing_are_reported_but_not_added` (pagamento depois de fechar ⇒ `after_closing_cents` > 0 e o fechamento gravado não muda).
   - `supplier_payments_are_listed_apart_and_not_subtracted` (M5-10).
   - `legacy_unspecified_movements_get_their_own_line`.
-- [ ] **Step 2: Run** `cargo test closing_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** serviço e repositório.
-- [ ] **Step 4: Run** `cargo test closing` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: daily cash closing`
+- [x] **Step 2: Run** `cargo test closing_service` — Expected: FAIL.
+- [x] **Step 3: Implement** serviço e repositório.
+- [x] **Step 4: Run** `cargo test closing` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: daily cash closing`
 
 ---
 
@@ -314,11 +344,11 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
 - Produces (comandos → funções TS): `record_stay_payment`/`recordStayPayment(token, stayId, PaymentInput)`, `record_reservation_payment`/`recordReservationPayment(token, reservationId, expectedVersion, PaymentInput)`, `record_refund`/`recordRefund`, `list_payables`, `get_payable`, `create_payable`, `pay_payable`, `payables_summary`, `list_expense_categories`, `create_expense_category`, `rename_expense_category`, `set_expense_category_active`, `closing_preview`, `close_cash`, `closing_pending_dates`. Tipos TS: `ComponentInput`, `PaymentInput { components, note, duplicate_release? }`, `PayableView`, `ClosingPreview`, etc. `PaymentMethod` perde `prior_deposit` e ganha `unspecified` (só leitura).
 - O erro `duplicate_payment` chega ao front como `ApiError` com `code: "duplicate_payment"` e os dados do recebimento parecido (`details`), para o `DuplicateDialog`.
 
-- [ ] **Step 1: Write the failing test** `api.test.ts`: cada função nova chama o comando certo com os argumentos em camelCase; `recordStayPayment` envia `components`; erro `duplicate_payment` preserva `details`.
-- [ ] **Step 2: Run** `npx vitest run src/lib/api.test.ts` — Expected: FAIL.
-- [ ] **Step 3: Implement** comandos (finos: só `touch` de sessão + chamada ao serviço) e `api.ts`.
-- [ ] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `npx vitest run src/lib/api.test.ts` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: finance commands and api client`
+- [x] **Step 1: Write the failing test** `api.test.ts`: cada função nova chama o comando certo com os argumentos em camelCase; `recordStayPayment` envia `components`; erro `duplicate_payment` preserva `details`.
+- [x] **Step 2: Run** `npx vitest run src/lib/api.test.ts` — Expected: FAIL.
+- [x] **Step 3: Implement** comandos (finos: só `touch` de sessão + chamada ao serviço) e `api.ts`.
+- [x] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `npx vitest run src/lib/api.test.ts` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: finance commands and api client`
 
 ---
 
@@ -332,16 +362,16 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
 **Interfaces:**
 - Produces: `<ComponentsEditor value onChange />` (linhas modalidade + valor, botão `Dividir em outra forma`, mostra **soma, total e quanto falta/sobra**); `<PaymentDialog target={{ kind: "stay"|"reservation", … }} suggestedCents />`; `<DuplicateDialog existing canRelease onRelease />` (mostra `PAG-…`, valor, modalidades e hora; `Liberar recebimento duplicado` com justificativa só se o usuário tem `release_duplicate_payment`); `<RefundDialog payment refundableCents />`. `lib/payment.ts`: `sumComponents`, `methodLabel`, `remainingToAllocate`.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `ComponentsEditor`: soma e diferença mostradas ("Falta R$ 20,00"); `Confirmar` só habilita com soma = total informado; débito e crédito aparecem como opções separadas; valores digitados em `R$` viram centavos.
   - `PaymentDialog`: envia `components` corretos; falha de validação **preserva os campos** e mostra a mensagem; erro `duplicate_payment` abre o `DuplicateDialog` sem perder os dados; usuário sem permissão não vê o botão de liberar e lê a explicação; resultado "Pagamento PAG-… de R$ … registrado e salvo neste computador."
   - `RefundDialog`: motivo obrigatório; valor acima do disponível mostra "no máximo R$ …"; sucesso recarrega a conta.
   - `StayPage`: recebimento dividido lista "Pix R$ 60,00 + Dinheiro R$ 40,00"; `Registrar devolução` aparece só com valor devolvível.
   - `ReservationPage`: cancelada com sinal mostra `Devolução a fazer: R$ 120,00` e o botão; some quando zero; `Registrar pagamento` substitui `Registrar sinal`.
-- [ ] **Step 2: Run** `npx vitest run src/pages/payments src/pages/stays src/pages/reservations` — Expected: FAIL.
-- [ ] **Step 3: Implement** os componentes (shadcn, rótulos exatos, estado nunca só por cor: ícone + texto na soma "Confere"/"Falta"/"Sobra").
-- [ ] **Step 4: Run** os mesmos testes + `npx tsc --noEmit` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: split payment, duplicate review and refund screens`
+- [x] **Step 2: Run** `npx vitest run src/pages/payments src/pages/stays src/pages/reservations` — Expected: FAIL.
+- [x] **Step 3: Implement** os componentes (shadcn, rótulos exatos, estado nunca só por cor: ícone + texto na soma "Confere"/"Falta"/"Sobra").
+- [x] **Step 4: Run** os mesmos testes + `npx tsc --noEmit` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: split payment, duplicate review and refund screens`
 
 ---
 
@@ -356,11 +386,11 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
 - Consumes: funções de T8; `usePermissions` (já existente).
 - Produces: página com `DataTable` (fornecedor, descrição, categoria, vencimento, valor, pago, saldo, situação com **rótulo + ícone**: `Pendente`, `Parcial`, `Paga`, `Vencida`), filtros de situação/categoria/vencimento, alternador `Visão: Competência | Pagamento` com totais por categoria (M5-12), diálogos `Registrar conta a pagar` (com opção "Já paga à vista") e `Registrar pagamento da conta`, painel de categorias (criar, renomear, desativar; só `manage_catalog`).
 
-- [ ] **Step 1: Write the failing tests:** situação com rótulo (não só cor); vencida destacada com texto; `Registrar pagamento da conta` mostra saldo e recusa acima dele preservando o campo; à vista cria a conta já paga; usuário sem `manage_payables` não vê o item de menu nem a rota (mensagem de acesso); painel de categorias oculto sem `manage_catalog`; alternar a visão chama `payablesSummary` com `basis` certo.
-- [ ] **Step 2: Run** `npx vitest run src/pages/payables src/components/layout` — Expected: FAIL.
-- [ ] **Step 3: Implement** páginas e rota.
-- [ ] **Step 4: Run** os testes + `npx tsc --noEmit` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: accounts payable screens`
+- [x] **Step 1: Write the failing tests:** situação com rótulo (não só cor); vencida destacada com texto; `Registrar pagamento da conta` mostra saldo e recusa acima dele preservando o campo; à vista cria a conta já paga; usuário sem `manage_payables` não vê o item de menu nem a rota (mensagem de acesso); painel de categorias oculto sem `manage_catalog`; alternar a visão chama `payablesSummary` com `basis` certo.
+- [x] **Step 2: Run** `npx vitest run src/pages/payables src/components/layout` — Expected: FAIL.
+- [x] **Step 3: Implement** páginas e rota.
+- [x] **Step 4: Run** os testes + `npx tsc --noEmit` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: accounts payable screens`
 
 ---
 
@@ -374,11 +404,11 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
 **Interfaces:**
 - Produces: tela por data (padrão hoje; lista de datas pendentes): tabela por modalidade com **Recebido, Devolvido, Esperado, Conferido, Diferença**; campo de justificativa aparece **por linha** quando a diferença ≠ 0; botão `Concluir fechamento` com confirmação resumindo diferenças; depois de fechado, modo leitura com usuário e hora e, se houver, "Movimentos depois do fechamento: R$ …"; linha informativa "Pagamentos a fornecedores no dia" (M5-10); linha "Sem modalidade" só quando existir.
 
-- [ ] **Step 1: Write the failing tests:** diferença calculada ao digitar o conferido; justificativa obrigatória só nas linhas com diferença e **não impede** concluir (preenchida); erro de gravação preserva todos os campos; fechado vira somente leitura; dia futuro não é oferecido; Dashboard mostra o aviso com a data pendente e some quando não há pendência.
-- [ ] **Step 2: Run** `npx vitest run src/pages/closing src/pages/Dashboard.test.tsx` — Expected: FAIL.
-- [ ] **Step 3: Implement** as telas.
-- [ ] **Step 4: Run** os testes + `npx tsc --noEmit` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: cash closing screen and pending warning`
+- [x] **Step 1: Write the failing tests:** diferença calculada ao digitar o conferido; justificativa obrigatória só nas linhas com diferença e **não impede** concluir (preenchida); erro de gravação preserva todos os campos; fechado vira somente leitura; dia futuro não é oferecido; Dashboard mostra o aviso com a data pendente e some quando não há pendência.
+- [x] **Step 2: Run** `npx vitest run src/pages/closing src/pages/Dashboard.test.tsx` — Expected: FAIL.
+- [x] **Step 3: Implement** as telas.
+- [x] **Step 4: Run** os testes + `npx tsc --noEmit` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: cash closing screen and pending warning`
 
 ---
 
@@ -389,13 +419,13 @@ docs/desenvolvimento/{financeiro,fechamento-de-caixa}.md
 - Create: `docs/usuario/pagamentos-e-devolucoes.md`, `contas-a-pagar.md`, `fechamento-de-caixa.md`, `docs/desenvolvimento/financeiro.md`, `fechamento-de-caixa.md`
 - Modify: `docs/usuario/README.md`, `docs/usuario/roteiro-de-treinamento.md` (novos módulos: recebimento dividido e devolução; contas a pagar; fechamento; marcar **provisório**: M5-6, M5-7, M5-8, M5-10, M5-11, M5-13), `docs/usuario/conta-do-hospede.md`, `reservas.md`, `docs/desenvolvimento/{hospedagem-e-conta,reservas-e-disponibilidade,permissoes,sequencias}.md` (atualizar o que o Marco 5 substituiu: M3-3, M3-9, `record_deposit`)
 
-- [ ] **Step 1: Seed:** recebimento dividido (Pix + dinheiro), uma devolução parcial, uma reserva cancelada com `refund_due`, três contas a pagar (pendente, parcial, vencida) e **um fechamento de ontem com diferença justificada**, deixando hoje pendente; teste `seed_creates_finance_scenario` (contagens e códigos).
-- [ ] **Step 2: Anexo A.5** da spec com M5-6, M5-7, M5-8, M5-10, M5-11, M5-13 como **aguardando aprovação**; `CHANGELOG.md` (`Added`: recebimento dividido, devoluções, bloqueio de duplicidade, contas a pagar, fechamento; `Changed`: sinal vira recebimento, cancelamento passa a mostrar devolução a fazer; `Security`: duas permissões novas).
-- [ ] **Step 3: Docs** de usuário (objetivo, quando usar, passo a passo, resultado, avisos, erros comuns), desenvolvimento (regras, permissões, auditoria, efeitos no banco, migração `0011`, limitações, testes), roteiro de treinamento com cenário do seed e quem faz o quê.
-- [ ] **Step 4: Verificação completa:** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `npm test`, `npx tsc --noEmit`, `npm run build`; registrar contagens no Status. (`cargo fmt --check` já falha na base; não aplicar.)
-- [ ] **Step 5:** `graphify update .`; anotar no Status.
-- [ ] **Step 6:** Revisão final da branch por revisor independente; corrigir Críticos/Importantes (TDD); registrar menores adiados; atualizar Status, desvios e pendências.
-- [ ] **Step 7: Commit** `docs: close marco 5`
+- [x] **Step 1: Seed:** recebimento dividido (Pix + dinheiro), uma devolução parcial, uma reserva cancelada com `refund_due`, três contas a pagar (pendente, parcial, vencida) e **um fechamento de ontem com diferença justificada**, deixando hoje pendente; teste `seed_creates_finance_scenario` (contagens e códigos).
+- [x] **Step 2: Anexo A.5** da spec com M5-6, M5-7, M5-8, M5-10, M5-11, M5-13 como **aguardando aprovação**; `CHANGELOG.md` (`Added`: recebimento dividido, devoluções, bloqueio de duplicidade, contas a pagar, fechamento; `Changed`: sinal vira recebimento, cancelamento passa a mostrar devolução a fazer; `Security`: duas permissões novas).
+- [x] **Step 3: Docs** de usuário (objetivo, quando usar, passo a passo, resultado, avisos, erros comuns), desenvolvimento (regras, permissões, auditoria, efeitos no banco, migração `0011`, limitações, testes), roteiro de treinamento com cenário do seed e quem faz o quê.
+- [x] **Step 4: Verificação completa:** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `npm test`, `npx tsc --noEmit`, `npm run build`; registrar contagens no Status. (`cargo fmt --check` já falha na base; não aplicar.)
+- [x] **Step 5:** `graphify update .`; anotar no Status.
+- [x] **Step 6:** Revisão final da branch por revisor independente; corrigir Críticos/Importantes (TDD); registrar menores adiados; atualizar Status, desvios e pendências.
+- [x] **Step 7: Commit** `docs: close marco 5`
 
 ---
 

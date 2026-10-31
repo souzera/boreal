@@ -5,10 +5,12 @@ use serde_json::json;
 use super::payment_service::{parse_components, MAX_PAYMENT_CENTS};
 use super::Ctx;
 use crate::audit::{self, AuditEntry};
+use crate::auth::permissions::Permission;
+use crate::auth::session::require;
 use crate::domain::payment;
 use crate::error::AppError;
 use crate::models::refund::{RefundInput, RefundReceipt};
-use crate::repositories::{payment_repo, refund_repo, sequence_repo, stay_repo};
+use crate::repositories::{payment_repo, refund_repo, reservation_repo, sequence_repo, stay_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -63,6 +65,16 @@ impl RefundService {
             )));
         }
 
+        // Sinal de reserva cancelada ou no-show: devolver mais do que a política calculou é uma exceção de cancelamento.
+        let reservation = reservation_repo::find(&tx, original.reservation_id, self.ctx.today())?
+            .ok_or_else(|| invalid("Reserva do recebimento não encontrada."))?;
+        if original.stay_id.is_none()
+            && matches!(reservation.status.as_str(), "cancelled" | "no_show")
+            && total > reservation.refund_due_cents
+        {
+            require(&actor, Permission::CancellationException)?;
+        }
+
         let at = self.ctx.utc.now_utc();
         let code = sequence_repo::format_code("DEV", sequence_repo::next(&tx, "refund")?);
         let id = refund_repo::insert(
@@ -81,6 +93,8 @@ impl RefundService {
         refund_repo::insert_components(&tx, id, &components)?;
         if let Some(stay_id) = original.stay_id {
             stay_repo::bump(&tx, stay_id, at)?;
+        } else {
+            reservation_repo::lower_deposit_paid(&tx, original.reservation_id, total, at)?;
         }
         audit::record(
             &tx,
@@ -269,6 +283,114 @@ mod tests {
             .unwrap();
 
         assert_eq!(w.h.reservations.get(&w.admin, id).unwrap().reservation.refund_due_cents, 10_000);
+    }
+
+    #[test]
+    fn refund_made_before_check_in_stays_on_the_stay_account() {
+        let w = world();
+        let reservation = book(&w.h, &w.admin, &w.seed, "2026-10-21", "2026-10-23"); // R$ 400,00
+        let deposit = w
+            .h
+            .payments
+            .record(
+                &w.admin,
+                PaymentTarget::Reservation { reservation_id: reservation, expected_version: 1 },
+                PaymentInput { components: parts(&[("pix", 12_000)]), note: String::new(), duplicate_release: None },
+            )
+            .unwrap();
+        refund(&w, deposit.id, &[("pix", 5_000)], "Ajuste do sinal").unwrap();
+        w.h.utc.set(DateTime::parse_from_rfc3339("2026-10-21T17:00:00Z").unwrap().with_timezone(&Utc));
+        let version = w.h.reservations.get(&w.admin, reservation).unwrap().reservation.version;
+        let holder = OccupantInput { full_name: "Ana Souza".into(), guest_id: Some(w.seed.guest_id), document: String::new() };
+
+        let stay = w
+            .h
+            .stays
+            .check_in(&w.admin, CheckInInput { reservation_id: reservation, expected_version: version, occupants: vec![holder], exceed_capacity: false })
+            .unwrap();
+
+        let account = w.h.stays.get(&w.admin, stay).unwrap().account;
+        assert_eq!((account.received_cents, account.refunded_cents), (12_000, 5_000));
+        assert_eq!(account.balance_cents, 40_000 - 12_000 + 5_000);
+        assert_eq!(account.refunds.len(), 1);
+    }
+
+    #[test]
+    fn refunding_a_deposit_of_an_open_reservation_lowers_the_deposit_paid() {
+        let w = world();
+        let id = book(&w.h, &w.admin, &w.seed, "2026-11-10", "2026-11-13"); // total R$ 600,00; sinal R$ 180,00
+        let deposit = w
+            .h
+            .payments
+            .record(
+                &w.admin,
+                PaymentTarget::Reservation { reservation_id: id, expected_version: 1 },
+                PaymentInput { components: parts(&[("pix", 18_000)]), note: String::new(), duplicate_release: None },
+            )
+            .unwrap();
+
+        refund(&w, deposit.id, &[("pix", 5_000)], "Devolução parcial do sinal").unwrap();
+
+        let r = w.h.reservations.get(&w.admin, id).unwrap().reservation;
+        assert_eq!(r.deposit_paid_cents, 13_000);
+        // o teto do sinal considera o que de fato ficou: 13.000 + 47.000 = 60.000
+        w.h.payments
+            .record(
+                &w.admin,
+                PaymentTarget::Reservation { reservation_id: id, expected_version: r.version },
+                PaymentInput { components: parts(&[("cash", 47_000)]), note: String::new(), duplicate_release: None },
+            )
+            .unwrap();
+        assert_eq!(w.h.reservations.get(&w.admin, id).unwrap().reservation.deposit_paid_cents, 60_000);
+    }
+
+    #[test]
+    fn refund_before_cancellation_is_not_discounted_twice() {
+        let w = world();
+        let id = book(&w.h, &w.admin, &w.seed, "2026-11-10", "2026-11-13");
+        let deposit = w
+            .h
+            .payments
+            .record(
+                &w.admin,
+                PaymentTarget::Reservation { reservation_id: id, expected_version: 1 },
+                PaymentInput { components: parts(&[("pix", 18_000)]), note: String::new(), duplicate_release: None },
+            )
+            .unwrap();
+        refund(&w, deposit.id, &[("pix", 6_000)], "Devolução parcial").unwrap();
+        let version = w.h.reservations.get(&w.admin, id).unwrap().reservation.version;
+
+        w.h.reservations.cancel(&w.admin, id, version, None).unwrap();
+
+        assert_eq!(w.h.reservations.get(&w.admin, id).unwrap().reservation.refund_due_cents, 12_000);
+        refund(&w, deposit.id, &[("pix", 12_000)], "Resto do sinal").unwrap();
+        assert_eq!(w.h.reservations.get(&w.admin, id).unwrap().reservation.refund_due_cents, 0);
+    }
+
+    #[test]
+    fn refunding_more_than_the_cancellation_policy_needs_the_exception_permission() {
+        let w = world();
+        let id = book(&w.h, &w.admin, &w.seed, "2026-10-24", "2026-10-26"); // 3 dias antes: a política devolve 50%
+        let deposit = w
+            .h
+            .payments
+            .record(
+                &w.admin,
+                PaymentTarget::Reservation { reservation_id: id, expected_version: 1 },
+                PaymentInput { components: parts(&[("pix", 12_000)]), note: String::new(), duplicate_release: None },
+            )
+            .unwrap();
+        let version = w.h.reservations.get(&w.admin, id).unwrap().reservation.version;
+        w.h.reservations.cancel(&w.admin, id, version, None).unwrap();
+        assert_eq!(w.h.reservations.get(&w.admin, id).unwrap().reservation.refund_due_cents, 6_000);
+        let _ = crate::services::test_support::recepcao_token(&w.h, &w.admin);
+        let rec = w.h.auth.login("rec", "Definitiva-456").unwrap().token;
+        let input = |cents| RefundInput { payment_id: deposit.id, components: parts(&[("pix", cents)]), reason: "Pediu tudo de volta".into() };
+
+        assert!(matches!(w.h.refunds.record(&rec, input(7_000)), Err(AppError::Forbidden)), "acima do devido sem a permissão");
+        assert!(w.h.refunds.record(&rec, input(6_000)).is_ok(), "o devido pela política é rotina da recepção");
+        assert!(w.h.refunds.record(&w.admin, input(6_000)).is_ok(), "com CancellationException passa do devido");
+        assert_eq!(count(&w, "refunds"), 2);
     }
 
     #[test]

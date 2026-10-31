@@ -40,9 +40,6 @@ pub fn build_closing_lines(expected: &[ExpectedLine], counted: &[CountedLine]) -
             continue;
         }
         let entry = entry.ok_or_else(|| invalid("Informe o valor conferido de todas as formas de pagamento."))?;
-        if entry.counted_cents < 0 {
-            return Err(invalid("O valor conferido não pode ser negativo."));
-        }
         let difference_cents = super::money::sub(entry.counted_cents, expected_cents)?;
         let justification = entry.justification.as_deref().map(str::trim).filter(|j| !j.is_empty()).map(str::to_string);
         if difference_cents != 0 && justification.is_none() {
@@ -117,7 +114,8 @@ mod tests {
     }
 
     #[test]
-    fn negative_counted_is_refused() {
-        assert!(matches!(build_closing_lines(&expected(0), &counted(-1, Some("x"))), Err(AppError::Validation(_))));
+    fn negative_counted_is_accepted_because_the_amount_is_net() {
+        let lines = build_closing_lines(&expected(-10_000), &counted(-10_000, None)).unwrap();
+        assert_eq!(lines.iter().find(|l| l.method == Method::Cash).unwrap().difference_cents, 0);
     }
 }

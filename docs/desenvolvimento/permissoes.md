@@ -41,7 +41,8 @@ Controle de acesso é aplicado **no backend**; esconder botões na interface é 
 - `ReleaseDuplicatePayment`: recebimento bloqueado como possível duplicado só é gravado com esta permissão e justificativa (`PaymentService::record`).
 - `ManagePayables`: todas as operações de contas a pagar (`PayableService`).
 - `ManageCatalog`: categorias de despesa.
-- Devolução e fechamento de caixa não exigem permissão extra (decisões M5-7 e M5-11); o plano indica onde acrescentar `ReverseEntry` se a pousada quiser.
+- `CancellationException`: também em `RefundService::record` quando o sinal de uma reserva cancelada/no-show é devolvido acima da "devolução a fazer" da política.
+- Devolução comum e fechamento de caixa não exigem permissão extra (decisões M5-7 e M5-11); o plano indica onde acrescentar `ReverseEntry` se a pousada quiser.
 
 ## Regras de proteção
 

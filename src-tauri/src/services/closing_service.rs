@@ -276,7 +276,6 @@ mod tests {
 
         for (label, lines) in [
             ("diferença sem justificativa", counted(9_500, 0, 0, 0, 0, None)),
-            ("conferido negativo", counted(-1, 0, 0, 0, 0, Some("x"))),
             ("modalidade faltando", missing),
             ("modalidade repetida", repeated),
             ("modalidade desconhecida", unknown),
@@ -397,6 +396,21 @@ mod tests {
 
         assert_eq!(preview.supplier_payments_cents, 3_000);
         assert_eq!(preview.expected[0].expected_cents, 10_000);
+    }
+
+    #[test]
+    fn a_day_with_more_refunds_than_receipts_can_be_counted_with_a_negative_amount() {
+        let w = world();
+        at(&w, "2026-10-20T15:00:00Z");
+        let old = receive(&w, &[("cash", 10_000)]);
+        at(&w, "2026-10-21T15:00:00Z");
+        refund(&w, old, &[("cash", 10_000)]);
+        assert_eq!(expected(&w, "2026-10-21")[0], ("cash".to_string(), -10_000));
+
+        let view = close(&w, "2026-10-21", counted(-10_000, 0, 0, 0, 0, None)).unwrap();
+
+        let cash = view.lines.iter().find(|l| l.method == "cash").unwrap();
+        assert_eq!((cash.expected_cents, cash.counted_cents, cash.difference_cents), (-10_000, -10_000, 0));
     }
 
     #[test]

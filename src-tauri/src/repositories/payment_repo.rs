@@ -115,10 +115,13 @@ pub fn find_similar(
 
 /// Vincula à hospedagem os recebimentos da reserva ainda sem hospedagem (o sinal). Devolve quantos.
 pub fn link_to_stay(tx: &Transaction, reservation_id: i64, stay_id: i64) -> Result<usize, AppError> {
-    Ok(tx.execute(
+    let linked = tx.execute(
         "UPDATE payments SET stay_id = ?1 WHERE reservation_id = ?2 AND stay_id IS NULL",
         params![stay_id, reservation_id],
-    )?)
+    )?;
+    // devoluções feitas antes do check-in acompanham o recebimento, senão sumiriam da conta
+    tx.execute("UPDATE refunds SET stay_id = ?1 WHERE reservation_id = ?2 AND stay_id IS NULL", params![stay_id, reservation_id])?;
+    Ok(linked)
 }
 
 pub fn released_duplicate(conn: &Connection, payment_id: i64) -> Result<bool, AppError> {

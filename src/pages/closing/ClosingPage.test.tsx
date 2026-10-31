@@ -137,6 +137,29 @@ describe("ClosingPage", () => {
     expect(screen.getByLabelText("Conferido em Pix")).toHaveValue("60,00");
   });
 
+  it("aceita valor conferido negativo quando há mais devoluções que recebimentos", async () => {
+    vi.mocked(api.closingPreview).mockResolvedValue(
+      preview({ expected: [expectedLine("cash", "Dinheiro", 0, 10000), ...expected.slice(1)] }),
+    );
+    open();
+    await fillCounts({ Dinheiro: "-100,00" });
+
+    const cash = (await screen.findByText("Dinheiro", { selector: "td" })).closest("tr") as HTMLElement;
+    expect(within(cash).getByText(/Sem diferença/)).toBeInTheDocument();
+  });
+
+  it("se algo mudou no backend, o erro recarrega a conferência do dia", async () => {
+    vi.mocked(api.closeCash).mockRejectedValue(new api.ApiError("validation", "Explique a diferença encontrada em cada forma de pagamento."));
+    open();
+    await fillCounts(exact);
+    await userEvent.click(screen.getByRole("button", { name: "Concluir fechamento" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Concluir fechamento" }));
+    await screen.findByText("Explique a diferença encontrada em cada forma de pagamento.");
+
+    await waitFor(() => expect(vi.mocked(api.closingPreview).mock.calls.length).toBeGreaterThan(1));
+    expect(screen.getByLabelText("Conferido em Dinheiro")).toHaveValue("100,00");
+  });
+
   it("dia fechado vira somente leitura e mostra o que mudou depois", async () => {
     vi.mocked(api.closingPreview).mockResolvedValue(preview({ closed, after_closing_cents: 2500 }));
     open();

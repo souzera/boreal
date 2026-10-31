@@ -12,7 +12,7 @@ No fim de cada dia. Não existe "abertura" de caixa. Se um dia ficar sem fechame
 
 1. Abra **Fechamento de caixa** (ou clique no aviso do Dashboard). O dia de hoje vem escolhido; para outro dia use **Dia a fechar** (não é possível escolher dia futuro).
 2. Para cada forma de pagamento a tela mostra o **recebido**, o **devolvido** e o **esperado** (recebido menos devolvido). Débito e crédito aparecem separados.
-3. Digite o **valor conferido** de **todas** as formas, mesmo as zeradas.
+3. Digite o **valor conferido** de **todas** as formas, mesmo as zeradas. Se no dia saiu mais dinheiro (devoluções) do que entrou, o esperado fica negativo e o conferido também pode ser negativo (por exemplo, `-100,00`).
 4. Quando há diferença, a tela diz **Falta** ou **Sobra** e pede uma **justificativa** naquela linha. A diferença **não impede** o fechamento, mas precisa ser explicada.
 5. Clique em **Concluir fechamento**, confira as diferenças que serão registradas e confirme.
 

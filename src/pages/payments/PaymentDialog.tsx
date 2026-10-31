@@ -98,6 +98,11 @@ export default function PaymentDialog({ open, target, hint, onClose, onDone, onC
         setStep("duplicate");
         return;
       }
+      if (release !== undefined) {
+        // a liberação falhou: continua na tela do duplicado, com os dados e a justificativa
+        setReleaseError(apiError.message);
+        return;
+      }
       setStep("form");
       setMessage(apiError.message);
       if (apiError.code === "conflict") onConflict?.();

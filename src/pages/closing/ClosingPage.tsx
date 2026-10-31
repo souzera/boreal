@@ -11,6 +11,16 @@ import { formatDate, formatInstant, formatMoney, parseMoney, toLocalIsoDate } fr
 import { useSessionStore } from "@/stores/session";
 import ClosingDialog from "./ClosingDialog";
 
+/** Valor conferido em reais; aceita sinal de menos porque o esperado do dia pode ser negativo (mais devoluções que recebimentos). */
+function parseCounted(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("-")) {
+    const rest = parseMoney(trimmed.slice(1));
+    return rest === null ? null : -rest;
+  }
+  return parseMoney(trimmed);
+}
+
 /** Situação da diferença em palavras e ícone: nunca só cor. */
 function differenceText(cents: number): string {
   if (cents === 0) return "✓ Sem diferença";
@@ -45,7 +55,7 @@ export default function ClosingPage() {
 
   const data = preview.data;
   const lines: ExpectedLineView[] = data?.expected ?? [];
-  const countedCents = (line: ExpectedLineView) => parseMoney(counts[line.method] ?? "");
+  const countedCents = (line: ExpectedLineView) => parseCounted(counts[line.method] ?? "");
   const differenceOf = (line: ExpectedLineView) => {
     const counted = countedCents(line);
     return counted === null ? null : counted - line.expected_cents;
@@ -80,6 +90,8 @@ export default function ClosingPage() {
       await queryClient.invalidateQueries({ queryKey: ["closing-pending"] });
     } catch (e) {
       setMessage((e as ApiError).message);
+      // o esperado pode ter mudado (novo movimento): recarrega a conferência sem apagar o que foi digitado
+      await queryClient.invalidateQueries({ queryKey: ["closing"] });
     } finally {
       setBusy(false);
     }
