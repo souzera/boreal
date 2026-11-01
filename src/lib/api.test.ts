@@ -6,12 +6,16 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
 import {
+  alertHistory,
+  alertSummary,
   closeCash,
   closingPendingDates,
   closingPreview,
   completeCleaning,
   createBlock,
+  dismissAlert,
   getPayable,
+  listAlerts,
   listExpenseCategories,
   listPayables,
   listRoomStatus,
@@ -20,6 +24,7 @@ import {
   payPayable,
   recordRefund,
   recordReservationPayment,
+  refreshAlerts,
   recordStayPayment,
   releaseBlock,
   renameExpenseCategory,
@@ -191,5 +196,27 @@ describe("financeiro", () => {
     expect(invoke).toHaveBeenLastCalledWith("close_cash", { token: "t", input: close });
     await closingPendingDates("t");
     expect(invoke).toHaveBeenLastCalledWith("closing_pending_dates", { token: "t" });
+  });
+});
+
+describe("alertas", () => {
+  it("chama os comandos de alerta com os nomes e argumentos certos", async () => {
+    invoke.mockResolvedValue(null);
+
+    await refreshAlerts("t");
+    expect(invoke).toHaveBeenLastCalledWith("refresh_alerts", { token: "t" });
+
+    const query = { status: "history" as const, kind: "deposit_overdue" as const, severity: "high" as const, page: 2, page_size: 10 };
+    await listAlerts("t", query);
+    expect(invoke).toHaveBeenLastCalledWith("list_alerts", { token: "t", query });
+
+    await alertSummary("t");
+    expect(invoke).toHaveBeenLastCalledWith("alert_summary", { token: "t" });
+
+    await alertHistory("t", 4);
+    expect(invoke).toHaveBeenLastCalledWith("alert_history", { token: "t", alertId: 4 });
+
+    await dismissAlert("t", 4, "Hóspede avisou que chega tarde", 3);
+    expect(invoke).toHaveBeenLastCalledWith("dismiss_alert", { token: "t", alertId: 4, note: "Hóspede avisou que chega tarde", expectedVersion: 3 });
   });
 });

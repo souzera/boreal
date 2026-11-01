@@ -1214,3 +1214,75 @@ export const requestMaintenanceResolution = (token: string, orderId: number, exp
   call<null>("request_maintenance_resolution", { token, orderId, expectedVersion });
 export const completeMaintenance = (token: string, orderId: number, expectedVersion: number) =>
   call<null>("complete_maintenance", { token, orderId, expectedVersion });
+
+// ---- Alertas ----
+
+export type AlertSeverity = "critical" | "high" | "normal";
+export type AlertStatus = "active" | "resolved" | "dismissed";
+export type AlertKind =
+  | "arrival_today"
+  | "departure_today"
+  | "arrival_overdue"
+  | "deposit_overdue"
+  | "departure_late"
+  | "departure_risk"
+  | "maintenance_conflict"
+  | "cleaning_urgent"
+  | "payable_overdue"
+  | "checkout_balance"
+  | "closing_pending"
+  | "backup_missing"
+  | "disk_low"
+  | "update_failed";
+
+export interface AlertView {
+  id: number;
+  kind: AlertKind;
+  kind_label: string;
+  severity: AlertSeverity;
+  severity_label: string;
+  title: string;
+  detail: string;
+  /** Rota da tela do registro relacionado. */
+  link: string;
+  status: AlertStatus;
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+  resolved_by_name: string | null;
+  resolution_note: string | null;
+  version: number;
+}
+
+export interface AlertEvent {
+  id: number;
+  at: string;
+  user_name: string | null;
+  event: "raised" | "updated" | "resolved" | "dismissed";
+  note: string | null;
+}
+
+export interface AlertSummary {
+  critical: number;
+  high: number;
+  normal: number;
+  total: number;
+  /** Os alertas ativos mais urgentes (até 5). */
+  top: AlertView[];
+}
+
+export interface AlertQuery {
+  /** `active` (padrão) ou `history` (resolvidos e dispensados). */
+  status?: "active" | "history";
+  kind?: AlertKind;
+  severity?: AlertSeverity;
+  page: number;
+  page_size: number;
+}
+
+export const refreshAlerts = (token: string) => call<null>("refresh_alerts", { token });
+export const listAlerts = (token: string, query: AlertQuery) => call<Page<AlertView>>("list_alerts", { token, query });
+export const alertSummary = (token: string) => call<AlertSummary>("alert_summary", { token });
+export const alertHistory = (token: string, alertId: number) => call<AlertEvent[]>("alert_history", { token, alertId });
+export const dismissAlert = (token: string, alertId: number, note: string, expectedVersion: number) =>
+  call<null>("dismiss_alert", { token, alertId, note, expectedVersion });
