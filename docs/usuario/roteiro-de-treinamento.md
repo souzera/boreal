@@ -2,7 +2,7 @@
 
 Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de trabalho da recepção. Ele cresce junto com o sistema: cada módulo novo entra aqui quando a funcionalidade fica pronta. Os detalhes de cada tela estão nos guias de [docs/usuario](README.md); aqui está só o que mostrar, em que ordem e o que observar.
 
-**Estado atual:** módulos 0 a 11 (até o Marco 5). Ainda **não existem** alertas, relatórios e documentos internos (Marco 6) nem backup e restauração. Avise isso à equipe.
+**Estado atual:** módulos 0 a 12 (até o Marco 6.2). Ainda **não existem** relatórios e documentos internos (6.4), a Recepção completa (6.3) nem backup e restauração. Avise isso à equipe.
 
 ## Antes de começar
 
@@ -17,7 +17,7 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 - **Quem:** todos.
 - **Passo a passo:**
   1. Entre com usuário e senha. No primeiro acesso, o sistema pede a troca da senha.
-  2. Mostre o menu lateral, agrupado: **Recepção**; **Reservas** (Reservas, Hóspedes); **Hospedagens**; **Quartos** (Mapa de quartos, Limpeza, Bloqueios, Manutenção, Cadastro de quartos); **Financeiro** (Fechamento de caixa e, com permissão, Contas a pagar); **Configurações** (Tarifas e Itens e serviços; Configurações e Usuários só para o administrador). **Relatórios** e **Alertas** aparecem esmaecidos com "Em breve". A tela atual fica destacada no menu.
+  2. Mostre o menu lateral, agrupado: **Recepção**; **Reservas** (Reservas, Hóspedes); **Hospedagens**; **Quartos** (Mapa de quartos, Limpeza, Bloqueios, Manutenção, Cadastro de quartos); **Financeiro** (Fechamento de caixa e, com permissão, Contas a pagar); **Configurações** (Tarifas e Itens e serviços; Configurações e Usuários só para o administrador). **Alertas** mostra um selo com a contagem; **Relatórios** aparece esmaecido com "Em breve". A tela atual fica destacada no menu.
   2b. Mostre as ações do topo e seus atalhos: **Nova reserva** (`Alt+N`), **Buscar** (`Ctrl+K`), **Check-in** (`Alt+C`), **Receber pagamento** (`Alt+R`) e **Check-out** (`Alt+S`). Por enquanto Check-in leva à lista de reservas e Receber pagamento e Check-out levam à lista de hospedagens.
   3. Mostre a busca no topo e a tela **Recepção** ("Quartos aguardando limpeza").
   4. Deixe a tela parada até o bloqueio por inatividade e desbloqueie com a senha: o que estava aberto volta como estava.
@@ -159,11 +159,27 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
   2. Digite os valores conferidos; em uma forma, digite um valor diferente e veja **Falta**/**Sobra** e o pedido de justificativa.
   3. **Concluir fechamento** e leia a confirmação com as diferenças.
   4. Reabra o dia: somente leitura, com quem fechou e quando. Faça um novo pagamento e veja **Movimentos depois do fechamento**.
-  5. Mostre o aviso **Fechamento pendente** da Recepção (aparece para dias anteriores sem fechamento) e que nada fica bloqueado.
+  5. Mostre o alerta **Fechamento de caixa pendente** (aparece para dias anteriores sem fechamento) e que nada fica bloqueado.
 - **O participante deve ver:** que diferença não impede o fechamento e que o fechamento não muda nenhum recebimento.
 - **Erros comuns:** esquecer o valor de alguma forma; tentar fechar o mesmo dia duas vezes.
 - ⚠ **Provisório:** pagamentos a fornecedores não entram no esperado (decisão da pousada pendente).
 - **Guia:** [Fechamento de caixa](fechamento-de-caixa.md).
+
+## Módulo 12 — Alertas e busca (20 min)
+
+- **Objetivo:** saber o que exige atenção agora e achar qualquer registro rápido.
+- **Quem:** todos; "Conta vencida" só aparece para quem tem **Gerenciar contas a pagar**.
+- **Cenário:** o seed já deixa alertas prontos (reserva afetada por manutenção, conta vencida e a chegada de hoje do quarto 201).
+- **Passo a passo:**
+  1. Na **Recepção**, leia os alertas mais urgentes; o crítico vem primeiro. Mostre o selo do menu **Alertas**.
+  2. Abra **Alertas**: prioridade em ícone e texto, "visto desde", **Abrir registro**. Clique em **Abrir registro** do conflito de manutenção e volte.
+  3. Em um alerta de prioridade Normal ou Alta, **Dispensar alerta**: a justificativa é obrigatória; ele vai para o **Histórico** com o seu nome. Mostre que o alerta **crítico** não tem esse botão e explica por quê.
+  4. Resolva a causa (por exemplo, faça o check-in da reserva de hoje) e mostre o alerta indo sozinho para o Histórico em até um minuto.
+  5. Busca: `Ctrl+K`, digite `ana` (hóspedes, reservas, hospedagens e movimentos), depois `PAG-` e o número de um quarto (`101`). Mostre que 1 caractere não busca e que "Mostrando 8 de N" pede para refinar.
+- **O participante deve ver:** que nada é apagado, que crítico só some quando o problema é resolvido e que cada resultado abre o registro certo.
+- **Erros comuns:** esquecer a justificativa; procurar "Conta vencida" sem a permissão.
+- ⚠ **Provisório:** tipos e prioridades dos alertas (Anexo A.6).
+- **Guias:** [Alertas](alertas.md), [Busca](busca.md).
 
 ## Fechamento do treinamento (5 min)
 
@@ -173,4 +189,4 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 
 ## Ainda por vir
 
-Entram neste roteiro quando existirem: alertas, relatórios e documentos internos (Marco 6); backup e restauração.
+Entram neste roteiro quando existirem: Recepção completa (6.3), relatórios e documentos internos (6.4); backup e restauração.

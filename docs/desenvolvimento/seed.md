@@ -27,7 +27,7 @@ Passa pelos serviços reais (regras, auditoria e códigos sequenciais ficam cons
 | 102 | Saiu hoje, **aguardando limpeza**; reserva confirmada chegando amanhã (prioridade sobe) |
 | 103 | Saiu hoje, **em limpeza** |
 | 104 | Limpeza concluída, **aguardando o intervalo** |
-| 201 | Bloqueio manual futuro (pintura) e uma reserva **cancelada** com sinal pago (mostra "Devolução a fazer") |
+| 201 | Bloqueio manual futuro (pintura), uma reserva **cancelada** com sinal pago (mostra "Devolução a fazer") e uma **chegada marcada para hoje** (gera o alerta "Chegada hoje" ou, depois do horário, "Chegada atrasada") |
 | 202 | Reserva confirmada afetada por uma ordem de manutenção (bloqueio preventivo + conflito a resolver) |
 | 203 | Ordem de manutenção em andamento hoje (quarto **bloqueado**) |
 | 204 | Reserva pendente e reserva confirmada com sinal |
@@ -38,7 +38,7 @@ Passa pelos serviços reais (regras, auditoria e códigos sequenciais ficam cons
 
 ## Limitações
 
-Só roda uma vez por banco. O seed cria também três **contas a pagar** (pendente, parcial e vencida). Ele **não** cria fechamento de caixa: o relógio é o do computador e todo movimento nasce hoje, então o fechamento é demonstrado ao vivo (Módulo 11 do roteiro de treinamento).
+Só roda uma vez por banco. O seed cria também três **contas a pagar** (pendente, parcial e vencida). Ao final ele reavalia os alertas (conflito de manutenção crítico, conta vencida, chegada de hoje). Ele **não** cria fechamento de caixa: o relógio é o do computador e todo movimento nasce hoje, então o fechamento é demonstrado ao vivo (Módulo 11 do roteiro de treinamento).
 
 ## Banco de demonstração à parte
 

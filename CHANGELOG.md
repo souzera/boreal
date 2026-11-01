@@ -40,9 +40,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - **Fechamento de caixa** diário por forma de pagamento (débito e crédito separados), com diferença justificada, sem alterar recebimentos e sem bloquear o dia seguinte; o Dashboard avisa dos dias sem fechamento.
 - Permissões **Liberar recebimento duplicado** e **Gerenciar contas a pagar**, concedíveis à recepção.
 
+- **Alertas persistentes** com prioridade (Crítico, Alto e Normal, sempre com ícone e texto), tela **Alertas** com filtros e histórico, selo de contagem no menu e os mais urgentes na tela **Recepção**: chegadas e saídas de hoje, chegada atrasada, sinal vencido, saída atrasada, risco para a próxima reserva, reserva afetada por manutenção, limpeza urgente, conta vencida, saldo pendente na saída e fechamento de caixa pendente. Cada alerta abre o registro de origem e some sozinho quando o problema é resolvido.
+- **Dispensar alerta** com justificativa (fica no histórico e na auditoria); alertas críticos não podem ser dispensados; nenhum alerta é apagado.
+- **Busca global** por hóspedes, reservas, hospedagens e movimentos financeiros (nome sem acento, telefone, CPF mascarado, códigos, número do quarto), com resultados agrupados, limitados a 8 por grupo e respeitando permissões.
+
 ### Changed
 - **Novo visual do Boreal**: identidade teal com neutros frios, fonte Onest, ícones Material Symbols (empacotados, funcionam sem internet) e cantos e sombras suaves. Os estados dos quartos, reservas, bloqueios, manutenção e contas continuam combinando cor, ícone e rótulo.
 - **Menu lateral reorganizado** em grupos (Recepção, Reservas, Hospedagens, Quartos, Financeiro, Configurações), com o item da tela atual destacado; Relatórios e Alertas aparecem como "Em breve". A tela inicial agora se chama **Recepção**.
+- O aviso de dias sem fechamento de caixa na Recepção virou o alerta **Fechamento de caixa pendente**; a busca do topo só envia com 2 ou mais caracteres.
 - **Ações rápidas no topo** (Nova reserva, Buscar, Check-in, Receber pagamento e Check-out) com atalhos de teclado (`Ctrl+K`, `Alt+N`, `Alt+C`, `Alt+R`, `Alt+S`), que não disparam com uma janela aberta ou com a sessão bloqueada.
 - Reservas passam a ter as situações **Hospedado** e **Concluída**; a lista de reservas identifica hospedagens **sem reserva**.
 - O **check-in** e a hospedagem sem reserva agora exigem o quarto **limpo**: recusam quarto aguardando limpeza, em limpeza ou antes do intervalo mínimo depois da limpeza.

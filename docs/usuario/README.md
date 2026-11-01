@@ -22,4 +22,7 @@ Guias passo a passo para a equipe da pousada. Cada guia explica o objetivo, quan
 - [Contas a pagar](contas-a-pagar.md) — despesas da pousada, vencimentos, pagamentos parciais e categorias.
 - [Fechamento de caixa](fechamento-de-caixa.md) — conferência diária por forma de pagamento.
 
-_Os demais guias serão adicionados à medida que os módulos forem entregues (alertas, relatórios…)._
+- [Alertas](alertas.md) — pendências persistentes, prioridades, como dispensar e abrir o registro.
+- [Busca](busca.md) — encontrar hóspedes, reservas, hospedagens e movimentos.
+
+_Os demais guias serão adicionados à medida que os módulos forem entregues (relatórios e documentos…)._

@@ -246,6 +246,10 @@ pub fn run(app: &AppState, admin_username: &str, admin_password: &str, recepcao_
     app.reservations.cancel(&t, cancelled, version, None)?;
     summary.reservations += 1;
 
+    // 201: chegada marcada para hoje (aparece como "Chegada hoje" ou, depois do horário, "Chegada atrasada").
+    book(app, "201", 7, 0, 1)?;
+    summary.reservations += 1;
+
     // Contas a pagar: uma pendente, uma parcial e uma vencida.
     let category = |name: &str| -> Result<i64, AppError> {
         app.payables
@@ -309,6 +313,9 @@ pub fn run(app: &AppState, admin_username: &str, admin_password: &str, recepcao_
     app.maintenance.start(&t, opened.id, 1)?;
     summary.maintenance_orders += 1;
 
+    // Avalia os alertas do cenário pronto (chegada de hoje, conta vencida, conflito de manutenção…).
+    app.alerts.refresh(&t)?;
+
     Ok(summary)
 }
 
@@ -341,7 +348,7 @@ mod tests {
 
         assert_eq!(summary.rooms, 8);
         assert_eq!(summary.guests, 10);
-        assert_eq!((summary.stays, summary.reservations), (4, 5), "{summary:?}");
+        assert_eq!((summary.stays, summary.reservations), (4, 6), "{summary:?}");
         assert_eq!((summary.blocks, summary.maintenance_orders, summary.payables), (1, 2, 3));
         let got: std::collections::HashMap<_, _> = states(&app).into_iter().collect();
         for (room, state) in [
@@ -400,6 +407,31 @@ mod tests {
         assert_eq!(reservations.total, 1);
         assert!(reservations.items[0].refund_due_cents > 0, "cancelada com devolução a fazer");
         assert!(app.closing.pending_dates(&token).unwrap().is_empty(), "o seed só tem movimento de hoje");
+    }
+
+    #[test]
+    fn seed_raises_alerts_and_is_searchable() {
+        let (_dir, app) = fresh();
+        run(&app, "admin", ADMIN, None).unwrap();
+        let token = app.auth.login("admin", ADMIN).unwrap().token;
+
+        let summary = app.alerts.summary(&token).unwrap();
+        let kinds: Vec<String> = app
+            .alerts
+            .list(&token, crate::models::alert::AlertQuery { status: None, kind: None, severity: None, page: 1, page_size: 100 })
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|a| a.kind)
+            .collect();
+
+        assert!(kinds.iter().any(|k| k == "maintenance_conflict"), "{kinds:?}");
+        assert!(kinds.iter().any(|k| k == "payable_overdue"), "{kinds:?}");
+        assert!(kinds.iter().any(|k| k == "arrival_today" || k == "arrival_overdue"), "{kinds:?}");
+        assert!(summary.critical >= 1 && summary.high >= 1 && summary.total >= 3, "{summary:?}");
+        assert!(app.search.search(&token, "Ana").unwrap().guests.total >= 1);
+        assert!(app.search.search(&token, "PAG-").unwrap().movements.total >= 1);
+        assert_eq!(app.search.search(&token, "Padaria").unwrap().movements.items[0].kind, "payable");
     }
 
     #[test]
