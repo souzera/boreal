@@ -598,7 +598,7 @@ impl StayService {
     }
 
     /// Atraso da saída (com a tolerância em vigor) e risco para a próxima reserva do mesmo quarto.
-    fn assess_departure(
+    pub(crate) fn assess_departure(
         conn: &Connection,
         stay: &Stay,
         settings: &AppSettings,

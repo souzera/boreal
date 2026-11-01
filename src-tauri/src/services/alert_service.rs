@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::json;
 
+use super::alert_detectors;
 use super::Ctx;
 use crate::audit::{self, AuditEntry};
 use crate::auth::session::{require, SessionInfo};
@@ -13,6 +14,7 @@ use crate::error::AppError;
 use crate::models::alert::{AlertEventView, AlertQuery, AlertSummary, AlertView};
 use crate::models::page::{clamp_paging, Page};
 use crate::repositories::alert_repo::{self, AlertRow, Filters};
+use crate::repositories::settings_repo;
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
@@ -117,7 +119,12 @@ impl AlertService {
     pub fn refresh(&self, token: &str) -> Result<(), AppError> {
         self.touch(token)?;
         let managed: Vec<AlertKind> = AlertKind::ALL.into_iter().filter(|k| k.managed_by_detectors()).collect();
-        self.sync(Vec::new(), &managed)
+        let findings = {
+            let conn = self.ctx.conn()?;
+            let settings = settings_repo::load(&conn)?;
+            alert_detectors::collect_all(&conn, self.ctx.today(), self.ctx.local_now(), &settings)?
+        };
+        self.sync(findings, &managed)
     }
 
     pub fn list(&self, token: &str, query: AlertQuery) -> Result<Page<AlertView>, AppError> {

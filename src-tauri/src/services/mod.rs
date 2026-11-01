@@ -1,4 +1,5 @@
 pub mod alert_service;
+pub(crate) mod alert_detectors;
 pub mod auth_service;
 pub mod block_service;
 pub mod catalog_service;
