@@ -15,6 +15,7 @@ import {
   createBlock,
   dismissAlert,
   getPayable,
+  globalSearch,
   listAlerts,
   listExpenseCategories,
   listPayables,
@@ -218,5 +219,15 @@ describe("alertas", () => {
 
     await dismissAlert("t", 4, "Hóspede avisou que chega tarde", 3);
     expect(invoke).toHaveBeenLastCalledWith("dismiss_alert", { token: "t", alertId: 4, note: "Hóspede avisou que chega tarde", expectedVersion: 3 });
+  });
+});
+
+describe("busca global", () => {
+  it("chama global_search com o texto digitado", async () => {
+    invoke.mockResolvedValue(null);
+
+    await globalSearch("t", "ana souza");
+
+    expect(invoke).toHaveBeenLastCalledWith("global_search", { token: "t", text: "ana souza" });
   });
 });

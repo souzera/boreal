@@ -22,6 +22,7 @@ use super::reservation_service::ReservationService;
 use super::room_map_service::RoomMapService;
 use super::policy_service::PolicyService;
 use super::pousada_service::PousadaService;
+use super::search_service::SearchService;
 use super::settings_service::SettingsService;
 use super::stay_service::StayService;
 use super::user_service::UserService;
@@ -87,6 +88,7 @@ pub struct Harness {
     pub payables: PayableService,
     pub closing: ClosingService,
     pub alerts: AlertService,
+    pub search: SearchService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -131,7 +133,8 @@ pub fn harness() -> Harness {
         refunds: RefundService::new(ctx.clone()),
         payables: PayableService::new(ctx.clone()),
         closing: ClosingService::new(ctx.clone()),
-        alerts: AlertService::new(ctx),
+        alerts: AlertService::new(ctx.clone()),
+        search: SearchService::new(ctx),
         utc,
         clock,
         db,

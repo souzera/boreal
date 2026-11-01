@@ -22,6 +22,7 @@ use crate::services::room_status_service::RoomStatusService;
 use crate::services::cleaning_service::CleaningService;
 use crate::services::closing_service::ClosingService;
 use crate::services::room_map_service::RoomMapService;
+use crate::services::search_service::SearchService;
 use crate::services::settings_service::SettingsService;
 use crate::services::stay_service::StayService;
 use crate::services::user_service::UserService;
@@ -57,6 +58,7 @@ pub struct AppState {
     pub payables: PayableService,
     pub closing: ClosingService,
     pub alerts: AlertService,
+    pub search: SearchService,
     ctx: Ctx,
 }
 
@@ -104,6 +106,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         payables: PayableService::new(ctx.clone()),
         closing: ClosingService::new(ctx.clone()),
         alerts: AlertService::new(ctx.clone()),
+        search: SearchService::new(ctx.clone()),
         ctx,
     })
 }

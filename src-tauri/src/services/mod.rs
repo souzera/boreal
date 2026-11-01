@@ -18,6 +18,7 @@ pub mod reservation_service;
 pub mod room_map_service;
 pub mod room_status_service;
 pub(crate) mod room_rules;
+pub mod search_service;
 pub mod settings_service;
 pub mod stay_service;
 pub mod user_service;

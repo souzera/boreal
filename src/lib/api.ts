@@ -1286,3 +1286,58 @@ export const alertSummary = (token: string) => call<AlertSummary>("alert_summary
 export const alertHistory = (token: string, alertId: number) => call<AlertEvent[]>("alert_history", { token, alertId });
 export const dismissAlert = (token: string, alertId: number, note: string, expectedVersion: number) =>
   call<null>("dismiss_alert", { token, alertId, note, expectedVersion });
+
+// ---- Busca global ----
+
+export interface SearchGroup<T> {
+  items: T[];
+  total: number;
+}
+
+export interface GuestHit {
+  id: number;
+  code: string;
+  name: string;
+  phone: string;
+  /** CPF sempre mascarado. */
+  cpf_masked: string | null;
+  active: boolean;
+}
+
+export interface ReservationHit {
+  id: number;
+  code: string;
+  guest_name: string;
+  room_code: string;
+  check_in_date: string;
+  check_out_date: string;
+  status: ReservationStatus;
+}
+
+export interface StayHit {
+  id: number;
+  code: string;
+  guest_name: string;
+  room_code: string;
+  status: StayStatus;
+}
+
+export interface MovementHit {
+  kind: "payment" | "refund" | "payable";
+  code: string;
+  label: string;
+  amount_cents: number;
+  at: string;
+  /** Rota da tela do registro relacionado. */
+  link: string;
+}
+
+export interface SearchResults {
+  query: string;
+  guests: SearchGroup<GuestHit>;
+  reservations: SearchGroup<ReservationHit>;
+  stays: SearchGroup<StayHit>;
+  movements: SearchGroup<MovementHit>;
+}
+
+export const globalSearch = (token: string, text: string) => call<SearchResults>("global_search", { token, text });

@@ -14,6 +14,7 @@ pub mod rate;
 pub mod refund;
 pub mod reservation;
 pub mod room_status;
+pub mod search;
 pub mod room_map;
 pub mod settings;
 pub mod stay;
