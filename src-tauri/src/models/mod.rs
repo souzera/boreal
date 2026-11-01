@@ -1,3 +1,4 @@
+pub mod alert;
 pub mod block;
 pub mod catalog;
 pub mod closing;

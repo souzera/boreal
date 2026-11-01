@@ -4,6 +4,7 @@ use crate::db::keystore::KeyStore;
 use crate::db::open_database;
 use crate::error::AppError;
 use crate::migrations::{current_version, last_applied_at, run_migrations};
+use crate::services::alert_service::AlertService;
 use crate::services::auth_service::AuthService;
 use crate::services::catalog_service::CatalogService;
 use crate::services::guest_service::GuestService;
@@ -55,6 +56,7 @@ pub struct AppState {
     pub refunds: RefundService,
     pub payables: PayableService,
     pub closing: ClosingService,
+    pub alerts: AlertService,
     ctx: Ctx,
 }
 
@@ -101,6 +103,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         refunds: RefundService::new(ctx.clone()),
         payables: PayableService::new(ctx.clone()),
         closing: ClosingService::new(ctx.clone()),
+        alerts: AlertService::new(ctx.clone()),
         ctx,
     })
 }

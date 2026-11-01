@@ -1,3 +1,4 @@
+pub mod alert_service;
 pub mod auth_service;
 pub mod block_service;
 pub mod catalog_service;
