@@ -9,6 +9,7 @@ import RoomsPage from "@/pages/catalog/RoomsPage";
 import Dashboard from "@/pages/Dashboard";
 import GuestFormPage from "@/pages/guests/GuestFormPage";
 import GuestsPage from "@/pages/guests/GuestsPage";
+import AlertsPage from "@/pages/alerts/AlertsPage";
 import ClosingPage from "@/pages/closing/ClosingPage";
 import ItemsPage from "@/pages/items/ItemsPage";
 import Login from "@/pages/Login";
@@ -78,6 +79,7 @@ export const appRoutes: RouteObject[] = [
           { path: "/hospedagens/nova", element: <WalkInPage /> },
           { path: "/hospedagens/:id", element: <StayPage /> },
           { path: "/contas-a-pagar", element: <PayablesPage /> },
+          { path: "/alertas", element: <AlertsPage /> },
           { path: "/fechamento", element: <ClosingPage /> },
           { path: "/fechamento/:data", element: <ClosingPage /> },
           { path: "/tarifas", element: <RatesPage /> },

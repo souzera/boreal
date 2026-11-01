@@ -9,6 +9,8 @@ import Login from "@/pages/Login";
 import { useSessionStore } from "@/stores/session";
 import AppShell from "./AppShell";
 
+vi.mock("@/hooks/useAlertSummary", () => ({ useAlertSummary: () => ({ data: undefined }) }));
+
 vi.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ can: () => false, permissions: [], ready: true }) }));
 
 vi.mock("@/lib/api", async () => {

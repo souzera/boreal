@@ -7,15 +7,19 @@ import Sidebar from "./Sidebar";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return { ...actual, myPermissions: vi.fn() };
+  return { ...actual, myPermissions: vi.fn(), refreshAlerts: vi.fn(), alertSummary: vi.fn() };
 });
 
 function renderSidebar(entry = "/") {
   renderPage(<Sidebar />, { path: "*", entry });
 }
 
+const noAlerts = { critical: 0, high: 0, normal: 0, total: 0, top: [] };
+
 beforeEach(() => {
   vi.mocked(api.myPermissions).mockReset().mockResolvedValue([]);
+  vi.mocked(api.refreshAlerts).mockReset().mockResolvedValue(null);
+  vi.mocked(api.alertSummary).mockReset().mockResolvedValue(noAlerts);
 });
 
 describe("Sidebar", () => {
@@ -91,16 +95,44 @@ describe("Sidebar", () => {
     for (const link of screen.getAllByRole("link")) expect(link.querySelector("[data-icon]")).not.toBeNull();
   });
 
-  it("Relatórios e Alertas aparecem desabilitados, com 'Em breve'", () => {
+  it("Relatórios aparece desabilitado, com 'Em breve'", () => {
     signIn(recepcaoUser);
     renderSidebar();
 
-    for (const label of ["Relatórios", "Alertas"]) {
-      const item = screen.getByText(label, { selector: "span" }).closest("[aria-disabled]") as HTMLElement;
-      expect(item).toHaveAttribute("aria-disabled", "true");
-      expect(item).toHaveAttribute("title", "Em breve");
-      expect(screen.queryByRole("link", { name: label })).toBeNull();
-    }
+    const item = screen.getByText("Relatórios", { selector: "span" }).closest("[aria-disabled]") as HTMLElement;
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveAttribute("title", "Em breve");
+    expect(screen.queryByRole("link", { name: "Relatórios" })).toBeNull();
+  });
+
+  it("Alertas é um link para a tela de alertas, com selo e texto acessível quando há alertas", async () => {
+    vi.mocked(api.alertSummary).mockResolvedValue({ critical: 1, high: 1, normal: 1, total: 3, top: [] });
+    signIn(recepcaoUser);
+    renderSidebar();
+
+    const link = await screen.findByRole("link", { name: /Alertas/ });
+    expect(link).toHaveAttribute("href", "/alertas");
+    await waitFor(() => expect(link).toHaveTextContent("3 alertas ativos, 1 crítico"));
+    expect(link.querySelector('[data-icon="error"]')).not.toBeNull();
+    expect(api.refreshAlerts).toHaveBeenCalledWith("t");
+  });
+
+  it("sem alertas não há selo", async () => {
+    signIn(recepcaoUser);
+    renderSidebar();
+    await waitFor(() => expect(api.alertSummary).toHaveBeenCalled());
+
+    expect(screen.getByRole("link", { name: /Alertas/ })).not.toHaveTextContent(/\d alerta/);
+  });
+
+  it("se a consulta de alertas falhar, o menu continua funcionando", async () => {
+    vi.mocked(api.alertSummary).mockRejectedValue(new api.ApiError("database", "x"));
+    signIn(recepcaoUser);
+    renderSidebar();
+    await waitFor(() => expect(api.alertSummary).toHaveBeenCalled());
+
+    expect(screen.getByRole("link", { name: "Limpeza" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Alertas/ })).toHaveAttribute("href", "/alertas");
   });
 
   it("Contas a pagar aparece para quem tem a permissão", async () => {

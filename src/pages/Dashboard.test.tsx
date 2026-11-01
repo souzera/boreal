@@ -7,7 +7,7 @@ import Dashboard from "./Dashboard";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return { ...actual, cleaningQueue: vi.fn(), closingPendingDates: vi.fn() };
+  return { ...actual, cleaningQueue: vi.fn(), refreshAlerts: vi.fn(), alertSummary: vi.fn() };
 });
 
 function task(id: number): api.CleaningItem {
@@ -25,7 +25,8 @@ function task(id: number): api.CleaningItem {
 
 beforeEach(() => {
   signIn();
-  vi.mocked(api.closingPendingDates).mockReset().mockResolvedValue([]);
+  vi.mocked(api.refreshAlerts).mockReset().mockResolvedValue(null);
+  vi.mocked(api.alertSummary).mockReset().mockResolvedValue({ critical: 0, high: 0, normal: 0, total: 0, top: [] });
 });
 
 describe("Dashboard", () => {
@@ -51,21 +52,28 @@ describe("Dashboard", () => {
     expect(await screen.findByText("Nenhum quarto aguardando limpeza.")).toBeInTheDocument();
   });
 
-  it("avisa dos dias com movimento e sem fechamento, com atalho para a conferência", async () => {
+  it("mostra os alertas mais urgentes com link para a origem", async () => {
     vi.mocked(api.cleaningQueue).mockReset().mockResolvedValue([]);
-    vi.mocked(api.closingPendingDates).mockResolvedValue(["2026-10-19", "2026-10-20"]);
+    const alert = (id: number, severity: api.AlertSeverity, title: string, link: string): api.AlertView => ({
+      id, kind: "deposit_overdue", kind_label: "Sinal vencido", severity, severity_label: "Alto", title, detail: "Detalhe", link, status: "active",
+      first_seen_at: "2026-10-21T15:00:00Z", last_seen_at: "2026-10-21T15:00:00Z", resolved_at: null, resolved_by_name: null, resolution_note: null, version: 1,
+    });
+    vi.mocked(api.alertSummary).mockResolvedValue({
+      critical: 1, high: 1, normal: 0, total: 2,
+      top: [alert(1, "critical", "Risco para a próxima reserva: quarto 101", "/hospedagens/7"), alert(2, "high", "Sinal vencido: Ana Souza", "/reservas/5")],
+    });
     renderPage(<Dashboard />);
 
-    const first = await screen.findByRole("link", { name: "Fechamento pendente: 19/10/2026" });
-    expect(first).toHaveAttribute("href", "/fechamento/2026-10-19");
-    expect(screen.getByRole("link", { name: "Fechamento pendente: 20/10/2026" })).toHaveAttribute("href", "/fechamento/2026-10-20");
+    const first = await screen.findByRole("link", { name: /Risco para a próxima reserva: quarto 101/ });
+    expect(first).toHaveAttribute("href", "/hospedagens/7");
+    expect(screen.getByRole("link", { name: /Sinal vencido: Ana Souza/ })).toHaveAttribute("href", "/reservas/5");
+    expect(screen.getByRole("link", { name: "Ver todos os alertas" })).toHaveAttribute("href", "/alertas");
   });
 
-  it("sem dias pendentes não mostra aviso de fechamento", async () => {
+  it("sem alertas, diz que está tudo em ordem", async () => {
     vi.mocked(api.cleaningQueue).mockReset().mockResolvedValue([]);
     renderPage(<Dashboard />);
-    await screen.findByText("Nenhum quarto aguardando limpeza.");
 
-    expect(screen.queryByText(/Fechamento pendente/)).toBeNull();
+    expect(await screen.findByText("Nenhum alerta ativo. Está tudo em ordem.")).toBeInTheDocument();
   });
 });

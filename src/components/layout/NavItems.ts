@@ -51,7 +51,7 @@ export const NAV: NavEntry[] = [
     ],
   },
   { label: "Relatórios", icon: "bar_chart", soon: true },
-  { label: "Alertas", icon: "notifications", soon: true },
+  { label: "Alertas", to: "/alertas", icon: "notifications" },
   {
     label: "Configurações",
     items: [

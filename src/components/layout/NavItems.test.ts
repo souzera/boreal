@@ -37,12 +37,13 @@ describe("menu lateral", () => {
     for (const leaf of leaves(NAV)) expect(leaf.icon, leaf.label).toMatch(/^[a-z][a-z0-9_]*$/);
   });
 
-  it("Relatórios e Alertas aparecem como 'em breve' e sem destino", () => {
-    for (const label of ["Relatórios", "Alertas"]) {
-      const leaf = leaves(NAV).find((l) => l.label === label);
-      expect(leaf?.soon, label).toBe(true);
-      expect(leaf?.to, label).toBeUndefined();
-    }
+  it("Relatórios aparece como 'em breve' e sem destino; Alertas já tem tela", () => {
+    const reports = leaves(NAV).find((l) => l.label === "Relatórios");
+    expect(reports?.soon).toBe(true);
+    expect(reports?.to).toBeUndefined();
+    const alerts = leaves(NAV).find((l) => l.label === "Alertas");
+    expect(alerts?.soon).toBeFalsy();
+    expect(alerts?.to).toBe("/alertas");
   });
 
   it("a recepção vê o dia a dia e continua vendo Tarifas e Itens e serviços, mas não Configurações nem Usuários", () => {
