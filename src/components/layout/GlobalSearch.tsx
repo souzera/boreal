@@ -15,7 +15,8 @@ export default function GlobalSearch({ inputRef }: { inputRef?: Ref<HTMLInputEle
       onSubmit={(e) => {
         e.preventDefault();
         const query = text.trim();
-        if ([...query].length < 2) return;
+        // Um só caractere vai para a página de resultados, que explica a regra dos 2 caracteres.
+        if (!query) return;
         navigate(`/busca?${new URLSearchParams({ q: query })}`);
       }}
     >

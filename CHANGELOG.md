@@ -47,7 +47,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ### Changed
 - **Novo visual do Boreal**: identidade teal com neutros frios, fonte Onest, ícones Material Symbols (empacotados, funcionam sem internet) e cantos e sombras suaves. Os estados dos quartos, reservas, bloqueios, manutenção e contas continuam combinando cor, ícone e rótulo.
 - **Menu lateral reorganizado** em grupos (Recepção, Reservas, Hospedagens, Quartos, Financeiro, Configurações), com o item da tela atual destacado; Relatórios e Alertas aparecem como "Em breve". A tela inicial agora se chama **Recepção**.
-- O aviso de dias sem fechamento de caixa na Recepção virou o alerta **Fechamento de caixa pendente**; a busca do topo só envia com 2 ou mais caracteres.
+- O aviso de dias sem fechamento de caixa na Recepção virou o alerta **Fechamento de caixa pendente**; a busca do topo orienta quando o texto tem menos de 2 caracteres.
 - **Ações rápidas no topo** (Nova reserva, Buscar, Check-in, Receber pagamento e Check-out) com atalhos de teclado (`Ctrl+K`, `Alt+N`, `Alt+C`, `Alt+R`, `Alt+S`), que não disparam com uma janela aberta ou com a sessão bloqueada.
 - Reservas passam a ter as situações **Hospedado** e **Concluída**; a lista de reservas identifica hospedagens **sem reserva**.
 - O **check-in** e a hospedagem sem reserva agora exigem o quarto **limpo**: recusam quarto aguardando limpeza, em limpeza ou antes do intervalo mínimo depois da limpeza.

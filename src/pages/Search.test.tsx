@@ -46,15 +46,16 @@ describe("GlobalSearch", () => {
     expect(await screen.findByText("/busca?q=ana+souza")).toBeInTheDocument();
   });
 
-  it("busca vazia ou de um só caractere não navega", async () => {
+  it("busca vazia não navega; com um só caractere a página de resultados explica a regra", async () => {
     renderPage(<GlobalSearch />, { extraRoutes: [{ path: "/busca", element: <Where /> }] });
     const box = screen.getByRole("searchbox", { name: "Busca geral" });
 
     await userEvent.type(box, "   {Enter}");
+    expect(screen.queryByText(/\/busca/)).toBeNull();
+
     await userEvent.clear(box);
     await userEvent.type(box, "a{Enter}");
-
-    expect(screen.queryByText(/\/busca/)).toBeNull();
+    expect(await screen.findByText("/busca?q=a")).toBeInTheDocument();
   });
 });
 

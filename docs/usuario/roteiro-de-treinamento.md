@@ -175,7 +175,7 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
   2. Abra **Alertas**: prioridade em ícone e texto, "visto desde", **Abrir registro**. Clique em **Abrir registro** do conflito de manutenção e volte.
   3. Em um alerta de prioridade Normal ou Alta, **Dispensar alerta**: a justificativa é obrigatória; ele vai para o **Histórico** com o seu nome. Mostre que o alerta **crítico** não tem esse botão e explica por quê.
   4. Resolva a causa (por exemplo, faça o check-in da reserva de hoje) e mostre o alerta indo sozinho para o Histórico em até um minuto.
-  5. Busca: `Ctrl+K`, digite `ana` (hóspedes, reservas, hospedagens e movimentos), depois `PAG-` e o número de um quarto (`101`). Mostre que 1 caractere não busca e que "Mostrando 8 de N" pede para refinar.
+  5. Busca: `Ctrl+K`, digite `ana` (hóspedes, reservas, hospedagens e movimentos), depois `PAG-` e o número de um quarto (`101`). Mostre que 1 caractere só mostra a orientação e que "Mostrando 8 de N" pede para refinar.
 - **O participante deve ver:** que nada é apagado, que crítico só some quando o problema é resolvido e que cada resultado abre o registro certo.
 - **Erros comuns:** esquecer a justificativa; procurar "Conta vencida" sem a permissão.
 - ⚠ **Provisório:** tipos e prioridades dos alertas (Anexo A.6).

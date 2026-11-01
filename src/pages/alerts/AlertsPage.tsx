@@ -27,6 +27,7 @@ export default function AlertsPage() {
   const query = { status: tab, ...(kind ? { kind } : {}), ...(severity ? { severity } : {}), page, page_size: PAGE_SIZE };
   const { data, isPending, isError } = useQuery({
     queryKey: ["alerts", query],
+    refetchInterval: tab === "active" ? 60_000 : false,
     queryFn: async () => {
       if (tab === "active") {
         try {

@@ -3,6 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use chrono::{DateTime, Utc};
+
 use serde_json::json;
 
 use super::alert_detectors;
@@ -68,10 +70,15 @@ impl AlertService {
     /// Sincroniza os achados com a tabela, numa só transação: cria o que é novo, atualiza o que mudou,
     /// resolve (sozinho) os ativos do `scope` cuja causa sumiu e mantém dispensados enquanto a causa continua.
     /// Nada é apagado.
+    #[cfg_attr(not(test), allow(dead_code))] // o Marco 7 o usa para backup, disco e atualização
     pub(crate) fn sync(&self, findings: Vec<Finding>, scope: &[AlertKind]) -> Result<(), AppError> {
-        let scope: HashSet<AlertKind> = scope.iter().copied().collect();
         let now = self.ctx.utc.now_utc();
         let mut conn = self.ctx.conn()?;
+        Self::sync_in(&mut conn, now, findings, scope)
+    }
+
+    fn sync_in(conn: &mut rusqlite::Connection, now: DateTime<Utc>, findings: Vec<Finding>, scope: &[AlertKind]) -> Result<(), AppError> {
+        let scope: HashSet<AlertKind> = scope.iter().copied().collect();
         let tx = conn.transaction()?;
         let existing: HashMap<(String, String), AlertRow> =
             alert_repo::open_rows(&tx)?.into_iter().map(|r| ((r.kind.clone(), r.subject_key.clone()), r)).collect();
@@ -79,12 +86,21 @@ impl AlertService {
         let mut seen = HashSet::new();
         for finding in findings {
             let key = (finding.kind.as_str().to_string(), finding.subject_key.clone());
+            // Um achado repetido na mesma rodada não pode criar dois alertas (nem derrubar a rodada).
+            if !seen.insert(key.clone()) {
+                continue;
+            }
             let severity = finding.kind.severity().as_str();
             match existing.get(&key) {
                 Some(row) if row.status == "active" => {
-                    if row.title != finding.title || row.detail != finding.detail || row.link != finding.link || row.severity != severity {
+                    // Texto que muda sozinho com o tempo (minutos de atraso) atualiza a linha sem barulho:
+                    // não mexe na versão (a dispensa em andamento continua valendo) nem enche o histórico.
+                    let retitled = row.title != finding.title || row.link != finding.link || row.severity != severity;
+                    if retitled || row.detail != finding.detail {
                         alert_repo::update_text(&tx, row.id, &finding, severity, now)?;
-                        alert_repo::insert_event(&tx, row.id, now, None, "updated", None)?;
+                        if retitled {
+                            alert_repo::insert_event(&tx, row.id, now, None, "updated", None)?;
+                        }
                     } else {
                         alert_repo::touch(&tx, row.id, now)?;
                     }
@@ -96,7 +112,6 @@ impl AlertService {
                     alert_repo::insert_event(&tx, id, now, None, "raised", None)?;
                 }
             }
-            seen.insert(key);
         }
 
         for (key, row) in &existing {
@@ -119,12 +134,12 @@ impl AlertService {
     pub fn refresh(&self, token: &str) -> Result<(), AppError> {
         self.touch(token)?;
         let managed: Vec<AlertKind> = AlertKind::ALL.into_iter().filter(|k| k.managed_by_detectors()).collect();
-        let findings = {
-            let conn = self.ctx.conn()?;
-            let settings = settings_repo::load(&conn)?;
-            alert_detectors::collect_all(&conn, self.ctx.today(), self.ctx.local_now(), self.ctx.utc.local_offset().local_minus_utc(), &settings)?
-        };
-        self.sync(findings, &managed)
+        let now = self.ctx.utc.now_utc();
+        // Detectores e sincronização sob a mesma trava da conexão: duas rodadas nunca se misturam.
+        let mut conn = self.ctx.conn()?;
+        let settings = settings_repo::load(&conn)?;
+        let findings = alert_detectors::collect_all(&conn, self.ctx.today(), self.ctx.local_now(), self.ctx.utc.local_offset().local_minus_utc(), &settings)?;
+        Self::sync_in(&mut conn, now, findings, &managed)
     }
 
     pub fn list(&self, token: &str, query: AlertQuery) -> Result<Page<AlertView>, AppError> {
@@ -186,14 +201,14 @@ impl AlertService {
         let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
         let row = self.visible(&tx, &actor, alert_id)?;
+        if row.status != "active" {
+            return Err(invalid("Este alerta já foi resolvido."));
+        }
         if row.version != expected_version {
             return Err(AppError::Conflict);
         }
         if !can_dismiss(Severity::parse(&row.severity).unwrap_or(Severity::Critical)) {
             return Err(invalid("Alertas críticos só se resolvem quando o problema for resolvido; não podem ser dispensados."));
-        }
-        if row.status != "active" {
-            return Err(invalid("Este alerta já foi resolvido."));
         }
         alert_repo::dismiss(&tx, alert_id, actor.user_id, note, now, expected_version)?;
         alert_repo::insert_event(&tx, alert_id, now, Some(actor.user_id), "dismissed", Some(note))?;
@@ -302,17 +317,67 @@ mod tests {
     }
 
     #[test]
-    fn changed_detail_updates_the_alert_and_logs_one_updated_event() {
+    fn detail_only_changes_update_the_row_without_event_or_version_bump() {
         let w = world();
         w.h.alerts.sync(vec![finding(AlertKind::DepartureLate, "stay:1", "30 min")], &managed()).unwrap();
+        let before = w.h.alerts.list(&w.admin, query("active")).unwrap().items.remove(0);
 
-        w.h.alerts.sync(vec![finding(AlertKind::DepartureLate, "stay:1", "45 min")], &managed()).unwrap();
-        w.h.alerts.sync(vec![finding(AlertKind::DepartureLate, "stay:1", "45 min")], &managed()).unwrap();
+        w.h.alerts.sync(vec![finding(AlertKind::DepartureLate, "stay:1", "31 min")], &managed()).unwrap();
+        w.h.alerts.sync(vec![finding(AlertKind::DepartureLate, "stay:1", "32 min")], &managed()).unwrap();
 
-        let alert = &w.h.alerts.list(&w.admin, query("active")).unwrap().items[0];
-        assert_eq!(alert.detail, "45 min");
+        let after = w.h.alerts.list(&w.admin, query("active")).unwrap().items.remove(0);
+        assert_eq!((after.detail.as_str(), after.version), ("32 min", before.version));
+        let events: Vec<String> = w.h.alerts.history(&w.admin, after.id).unwrap().into_iter().map(|e| e.event).collect();
+        assert_eq!(events, ["raised"], "os minutos que passam não enchem o histórico");
+    }
+
+    #[test]
+    fn a_new_title_updates_the_alert_and_logs_one_updated_event() {
+        let w = world();
+        w.h.alerts.sync(vec![finding(AlertKind::CheckoutBalance, "stay:1", "x")], &managed()).unwrap();
+        let renamed = || Finding { title: "Crédito do hóspede na saída: Ana".into(), ..finding(AlertKind::CheckoutBalance, "stay:1", "x") };
+
+        w.h.alerts.sync(vec![renamed()], &managed()).unwrap();
+        w.h.alerts.sync(vec![renamed()], &managed()).unwrap();
+
+        let alert = w.h.alerts.list(&w.admin, query("active")).unwrap().items.remove(0);
+        assert_eq!(alert.title, "Crédito do hóspede na saída: Ana");
         let events: Vec<String> = w.h.alerts.history(&w.admin, alert.id).unwrap().into_iter().map(|e| e.event).collect();
         assert_eq!(events, ["raised", "updated"]);
+    }
+
+    #[test]
+    fn dismissing_with_the_version_seen_still_works_after_a_text_only_refresh() {
+        let w = world();
+        w.h.alerts.sync(vec![finding(AlertKind::DepartureLate, "stay:1", "40 min")], &managed()).unwrap();
+        let seen = w.h.alerts.list(&w.admin, query("active")).unwrap().items.remove(0);
+
+        w.h.alerts.sync(vec![finding(AlertKind::DepartureLate, "stay:1", "41 min")], &managed()).unwrap();
+
+        assert!(w.h.alerts.dismiss(&w.admin, seen.id, "Combinei a saída com o hóspede".into(), seen.version).is_ok());
+    }
+
+    #[test]
+    fn duplicate_findings_in_one_sync_do_not_abort_it() {
+        let w = world();
+        let f = || finding(AlertKind::ArrivalToday, "reservation:1", "x");
+
+        w.h.alerts.sync(vec![f(), f(), finding(AlertKind::DepositOverdue, "reservation:1", "y")], &managed()).unwrap();
+
+        assert_eq!(active_ids(&w).len(), 2);
+    }
+
+    #[test]
+    fn dismissing_an_alert_that_resolved_itself_says_so() {
+        let w = world();
+        w.h.alerts.sync(vec![finding(AlertKind::ArrivalToday, "reservation:1", "x")], &managed()).unwrap();
+        let seen = w.h.alerts.list(&w.admin, query("active")).unwrap().items.remove(0);
+        w.h.alerts.sync(vec![], &managed()).unwrap();
+
+        let result = w.h.alerts.dismiss(&w.admin, seen.id, "Tarde demais".into(), seen.version);
+
+        assert!(matches!(result, Err(AppError::Validation(m)) if m.contains("já foi resolvido")));
+        assert_eq!(count(&w, "SELECT count(*) FROM alert_events WHERE event = 'dismissed'"), 0);
     }
 
     #[test]
@@ -382,6 +447,16 @@ mod tests {
     }
 
     #[test]
+    fn a_wrong_version_of_an_active_alert_is_a_conflict() {
+        let w = world();
+        w.h.alerts.sync(vec![finding(AlertKind::ArrivalToday, "reservation:1", "x")], &managed()).unwrap();
+        let alert = w.h.alerts.list(&w.admin, query("active")).unwrap().items.remove(0);
+
+        assert!(matches!(w.h.alerts.dismiss(&w.admin, alert.id, "x".into(), alert.version + 5), Err(AppError::Conflict)));
+        assert_eq!(active_ids(&w).len(), 1);
+    }
+
+    #[test]
     fn dismissed_alert_does_not_come_back_while_the_cause_continues() {
         let w = world();
         let f = || vec![finding(AlertKind::ClosingPending, "closing:2026-10-20", "x")];
@@ -414,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn dismiss_is_audited_with_user_and_note_and_double_dismiss_conflicts() {
+    fn dismiss_is_audited_with_user_and_note_and_double_dismiss_is_refused() {
         let w = world();
         w.h.alerts.sync(vec![finding(AlertKind::ArrivalToday, "reservation:1", "x")], &managed()).unwrap();
         let alert = w.h.alerts.list(&w.admin, query("active")).unwrap().items.remove(0);
@@ -422,7 +497,7 @@ mod tests {
         w.h.alerts.dismiss(&w.admin, alert.id, "Hóspede avisou que chega tarde".into(), alert.version).unwrap();
         let again = w.h.alerts.dismiss(&w.admin, alert.id, "Hóspede avisou que chega tarde".into(), alert.version);
 
-        assert!(matches!(again, Err(AppError::Conflict)));
+        assert!(matches!(again, Err(AppError::Validation(m)) if m.contains("já foi resolvido")), "o segundo clique é recusado sem duplicar o evento");
         assert_eq!(count(&w, "SELECT count(*) FROM alert_events WHERE event = 'dismissed'"), 1);
         let (module, operation, why): (String, String, String) = w
             .h

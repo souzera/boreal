@@ -84,7 +84,7 @@ pub fn touch(tx: &Transaction, id: i64, now: DateTime<Utc>) -> Result<(), AppErr
 
 pub fn update_text(tx: &Transaction, id: i64, f: &Finding, severity: &str, now: DateTime<Utc>) -> Result<(), AppError> {
     tx.execute(
-        "UPDATE alerts SET title = ?1, detail = ?2, link = ?3, severity = ?4, last_seen_at = ?5, version = version + 1 WHERE id = ?6",
+        "UPDATE alerts SET title = ?1, detail = ?2, link = ?3, severity = ?4, last_seen_at = ?5 WHERE id = ?6",
         params![f.title, f.detail, f.link, severity, stamp(now), id],
     )?;
     Ok(())

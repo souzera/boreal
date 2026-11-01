@@ -19,7 +19,7 @@ Spec §20.1. Serviço de leitura: `SearchService::search(token, text) -> SearchR
 
 ## Interface
 
-`/busca?q=` mostra os grupos com ícone e rótulo de situação, link para cada registro (`/hospedes/:id`, `/reservas/:id`, `/hospedagens/:id`, ou o `link` do movimento), a contagem ("Mostrando 8 de 12") e orientação quando não há resultado. O campo do topo só envia com 2 ou mais caracteres e `Ctrl+K` o foca.
+`/busca?q=` mostra os grupos com ícone e rótulo de situação, link para cada registro (`/hospedes/:id`, `/reservas/:id`, `/hospedagens/:id`, ou o `link` do movimento), a contagem ("Mostrando 8 de 12") e orientação quando não há resultado. O campo do topo envia qualquer texto não vazio e a página de resultados explica a regra dos 2 caracteres; `Ctrl+K` foca o campo.
 
 ## Testes
 

@@ -105,11 +105,12 @@ pub(crate) fn collect_finance_findings(conn: &Connection, today: NaiveDate, offs
         }
         let balance = stay_repo::balance(conn, stay.id)?;
         if balance != 0 {
-            let situation = if balance > 0 { format!("Saldo a receber {}", money_br(balance)) } else { format!("Crédito do hóspede {}", money_br(balance)) };
+            let situation = if balance > 0 { format!("Saldo a receber {}", money_br(balance)) } else { format!("Crédito do hóspede {}", money_br(-balance)) };
+            let title = if balance > 0 { "Saldo pendente na saída" } else { "Crédito do hóspede na saída" };
             out.push(finding(
                 AlertKind::CheckoutBalance,
                 format!("stay:{}", stay.id),
-                format!("Saldo pendente na saída: {}, quarto {}", stay.guest_name, stay.room_code),
+                format!("{title}: {}, quarto {}", stay.guest_name, stay.room_code),
                 format!("{situation}. Resolva a conta antes do check-out."),
                 format!("/hospedagens/{}", stay.id),
             ));
@@ -164,12 +165,13 @@ pub(crate) fn collect_stay_findings(
                 format!("Previsto para {} às {}. Faça o check-in ou marque no-show.", br(&r.check_in_date), r.expected_check_in_time),
                 link,
             ));
-        } else if date == today {
+        } else if date <= today {
+            // Também depois da meia-noite, até acabar a tolerância: o alerta não pode sumir no intervalo.
             out.push(finding(
                 AlertKind::ArrivalToday,
                 key,
                 format!("Chegada hoje: {who}"),
-                format!("Previsto às {}. Faça o check-in quando a pessoa chegar.", r.expected_check_in_time),
+                format!("Previsto para {} às {}. Faça o check-in quando a pessoa chegar.", br(&r.check_in_date), r.expected_check_in_time),
                 link,
             ));
         }
@@ -372,6 +374,41 @@ mod tests {
         assert_eq!(alerts.iter().find(|a| a.kind == "arrival_overdue").unwrap().link, format!("/reservas/{id}"));
         let history = w.h.alerts.list(&w.admin, AlertQuery { status: Some("history".into()), kind: Some("arrival_today".into()), severity: None, page: 1, page_size: 10 }).unwrap();
         assert_eq!((history.total, history.items[0].status.as_str()), (1, "resolved"));
+    }
+
+    #[test]
+    fn late_arrival_alert_survives_midnight_until_the_tolerance_ends() {
+        let w = world();
+        book(&w, "2026-10-22", "2026-10-24", Some("23:55"));
+        at(&w, "2026-10-23T02:30:00Z"); // 22/10 23:30 local
+        assert_eq!(movement_kinds(&active(&w)), ["arrival_today"]);
+
+        at(&w, "2026-10-23T03:10:00Z"); // 23/10 00:10 local: virou o dia, mas a tolerância (até 00:55) não acabou
+
+        let alerts = active(&w);
+        assert_eq!(movement_kinds(&alerts), ["arrival_today"]);
+        assert!(alerts.iter().find(|a| a.kind == "arrival_today").unwrap().detail.contains("22/10/2026"));
+        let history = w.h.alerts.list(&w.admin, AlertQuery { status: Some("history".into()), kind: Some("arrival_today".into()), severity: None, page: 1, page_size: 10 }).unwrap();
+        assert_eq!(history.total, 0, "não pode ir para o histórico como resolvido");
+
+        at(&w, "2026-10-23T04:00:00Z"); // 01:00 local: passou da tolerância
+        assert_eq!(movement_kinds(&active(&w)), ["arrival_overdue"]);
+    }
+
+    #[test]
+    fn a_credit_balance_is_worded_as_credit_not_as_a_pending_balance() {
+        let w = world();
+        let id = book(&w, "2026-10-21", "2026-10-23", None);
+        at(&w, "2026-10-21T17:00:00Z");
+        let stay = check_in(&w, id);
+        pay(&w.h, &w.admin, stay, 50_000, "pix").unwrap(); // R$ 100,00 a mais que a conta
+        at(&w, "2026-10-23T12:00:00Z");
+
+        let alerts = active(&w);
+
+        let alert = alerts.iter().find(|a| a.kind == "checkout_balance").expect("crédito na saída");
+        assert!(alert.title.starts_with("Crédito do hóspede na saída"), "{}", alert.title);
+        assert!(alert.detail.contains("R$ 100,00"), "{}", alert.detail);
     }
 
     #[test]
