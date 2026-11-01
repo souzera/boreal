@@ -53,6 +53,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 11,
         sql: include_str!("sql/0011_finance.sql"),
     },
+    Migration {
+        version: 12,
+        sql: include_str!("sql/0012_alerts.sql"),
+    },
 ];
 
 /// Versão atual do esquema (0 se nenhuma migração foi aplicada).
@@ -252,7 +256,7 @@ mod tests {
 
         let next: i64 = conn.query_row("SELECT next_value FROM sequences WHERE name='maintenance'", [], |r| r.get(0)).unwrap();
         assert_eq!(next, 1);
-        assert_eq!(super::current_version(&conn).unwrap(), 11);
+        assert_eq!(super::current_version(&conn).unwrap(), 12);
     }
 
     /// Usuário, hóspede, categoria, quarto, reserva e hospedagem mínimos para exercitar as restrições.
@@ -296,7 +300,7 @@ mod tests {
             assert_eq!(n, 1, "tabela {table} ausente");
         }
         let latest: i64 = conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).unwrap();
-        assert_eq!(latest, 11);
+        assert_eq!(latest, 12);
         let fee: String = conn
             .query_row("SELECT value FROM settings WHERE key = 'late_checkout_fee_bp'", [], |r| r.get(0))
             .unwrap();
@@ -323,7 +327,7 @@ mod tests {
         assert_eq!(next, 1);
         let categories: i64 = conn.query_row("SELECT count(*) FROM expense_categories WHERE active = 1", [], |r| r.get(0)).unwrap();
         assert_eq!(categories, 9);
-        assert_eq!(super::current_version(&conn).unwrap(), 11);
+        assert_eq!(super::current_version(&conn).unwrap(), 12);
     }
 
     #[test]
@@ -439,6 +443,50 @@ mod tests {
 
         assert!(close("2026-10-22").is_err());
         close("2026-10-23").unwrap();
+    }
+
+    #[test]
+    fn migration_0012_creates_alert_tables() {
+        let conn = migrated();
+        for table in ["alerts", "alert_events"] {
+            let n: i64 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0)).unwrap();
+            assert_eq!(n, 1, "{table}");
+        }
+        assert_eq!(super::current_version(&conn).unwrap(), 12);
+        let insert = |kind: &str, key: &str, status: &str| {
+            conn.execute(
+                "INSERT INTO alerts (kind, subject_key, severity, title, detail, link, status, first_seen_at, last_seen_at)
+                 VALUES (?1, ?2, 'high', 't', 'd', '/x', ?3, '2026-10-31T12:00:00Z', '2026-10-31T12:00:00Z')",
+                rusqlite::params![kind, key, status],
+            )
+        };
+
+        insert("deposit_overdue", "reservation:1", "active").unwrap();
+        assert!(insert("deposit_overdue", "reservation:1", "active").is_err(), "um alerta ativo por causa");
+        insert("deposit_overdue", "reservation:1", "resolved").unwrap();
+        insert("deposit_overdue", "reservation:1", "dismissed").unwrap();
+        assert!(insert("deposit_overdue", "reservation:1", "dismissed").is_err(), "um dispensado por causa enquanto ela continua");
+        assert!(insert("deposit_overdue", "reservation:2", "x").is_err(), "situação inválida");
+        assert!(insert("tipo_novo", "reservation:2", "active").is_err(), "tipo desconhecido");
+    }
+
+    #[test]
+    fn alert_history_cannot_be_deleted() {
+        let conn = migrated();
+        conn.execute(
+            "INSERT INTO alerts (kind, subject_key, severity, title, detail, link, status, first_seen_at, last_seen_at)
+             VALUES ('departure_risk', 'stay:1', 'critical', 't', 'd', '/x', 'active', 'a', 'a')",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO alert_events (alert_id, at, event) VALUES (1, 'a', 'raised')", []).unwrap();
+
+        let del_alert = conn.execute("DELETE FROM alerts", []).unwrap_err();
+        let del_event = conn.execute("DELETE FROM alert_events", []).unwrap_err();
+
+        assert!(del_alert.to_string().contains("imutável"));
+        assert!(del_event.to_string().contains("imutável"));
+        assert!(conn.execute("INSERT INTO alert_events (alert_id, at, event) VALUES (1, 'a', 'x')", []).is_err());
     }
 
     #[test]

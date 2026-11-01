@@ -1,4 +1,5 @@
 pub mod account;
+pub mod alert;
 pub mod availability;
 pub mod cancellation;
 pub mod cleaning;
