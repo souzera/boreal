@@ -15,7 +15,7 @@ export default function GlobalSearch({ inputRef }: { inputRef?: Ref<HTMLInputEle
       onSubmit={(e) => {
         e.preventDefault();
         const query = text.trim();
-        if (!query) return;
+        if ([...query].length < 2) return;
         navigate(`/busca?${new URLSearchParams({ q: query })}`);
       }}
     >

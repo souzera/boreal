@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useLocation } from "react-router-dom";
 import { vi } from "vitest";
@@ -10,24 +10,25 @@ import Search from "./Search";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return { ...actual, listGuests: vi.fn() };
+  return { ...actual, globalSearch: vi.fn() };
 });
 
-const ana: api.Guest = {
-  id: 7,
-  code: "HOS-000007",
-  full_name: "Ana Souza",
-  phone: "11999990000",
-  cpf: null,
-  email: "",
-  address: "",
-  active: true,
-  version: 1,
-};
+const group = <T,>(items: T[], total = items.length) => ({ items, total });
+
+const results = (patch: Partial<api.SearchResults> = {}): api.SearchResults => ({
+  query: "ana",
+  guests: group([{ id: 7, code: "HOS-000007", name: "Ana Souza", phone: "11999990000", cpf_masked: "***.***.***-25", active: true }]),
+  reservations: group([{ id: 5, code: "RES-000005", guest_name: "Ana Souza", room_code: "101", check_in_date: "2026-10-21", check_out_date: "2026-10-23", status: "confirmed" as const }]),
+  stays: group([{ id: 3, code: "RES-000005", guest_name: "Ana Souza", room_code: "101", status: "in_house" as const }]),
+  movements: group([{ kind: "payment" as const, code: "PAG-000001", label: "Recebimento PAG-000001 · Ana Souza", amount_cents: 12000, at: "2026-10-21T15:00:00Z", link: "/hospedagens/3" }]),
+  ...patch,
+});
+
+const empty = results({ guests: group([]), reservations: group([]), stays: group([]), movements: group([]) });
 
 beforeEach(() => {
   signIn();
-  vi.mocked(api.listGuests).mockReset().mockResolvedValue({ items: [ana], total: 1, page: 1, page_size: 10 });
+  vi.mocked(api.globalSearch).mockReset().mockResolvedValue(results());
 });
 
 function Where() {
@@ -45,39 +46,85 @@ describe("GlobalSearch", () => {
     expect(await screen.findByText("/busca?q=ana+souza")).toBeInTheDocument();
   });
 
-  it("busca vazia não navega", async () => {
+  it("busca vazia ou de um só caractere não navega", async () => {
     renderPage(<GlobalSearch />, { extraRoutes: [{ path: "/busca", element: <Where /> }] });
+    const box = screen.getByRole("searchbox", { name: "Busca geral" });
 
-    await userEvent.type(screen.getByRole("searchbox", { name: "Busca geral" }), "   {Enter}");
+    await userEvent.type(box, "   {Enter}");
+    await userEvent.clear(box);
+    await userEvent.type(box, "a{Enter}");
 
     expect(screen.queryByText(/\/busca/)).toBeNull();
   });
 });
 
 describe("Search page", () => {
-  it("mostra hóspedes encontrados com link para o cadastro", async () => {
+  it("mostra os quatro grupos, cada um com link para o registro", async () => {
     renderPage(<Search />, { path: "/busca", entry: "/busca?q=ana" });
 
-    const link = await screen.findByRole("link", { name: /Ana Souza/ });
-
-    expect(link).toHaveAttribute("href", "/hospedes/7");
-    expect(screen.getByText("HOS-000007")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(api.listGuests).toHaveBeenCalledWith("t", expect.objectContaining({ text: "ana" })),
-    );
+    expect(await screen.findByRole("heading", { name: /Hóspedes/ })).toBeInTheDocument();
+    for (const name of [/Reservas/, /Hospedagens/, /Movimentos/]) expect(screen.getByRole("heading", { name })).toBeInTheDocument();
+    const guests = within(screen.getByRole("region", { name: "Hóspedes" }));
+    expect(guests.getByRole("link", { name: /Ana Souza/ })).toHaveAttribute("href", "/hospedes/7");
+    expect(guests.getByText("***.***.***-25")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Reservas" })).getByRole("link", { name: /RES-000005/ })).toHaveAttribute("href", "/reservas/5");
+    expect(within(screen.getByRole("region", { name: "Hospedagens" })).getByRole("link", { name: /RES-000005/ })).toHaveAttribute("href", "/hospedagens/3");
+    expect(within(screen.getByRole("region", { name: "Movimentos" })).getByRole("link", { name: /PAG-000001/ })).toHaveAttribute("href", "/hospedagens/3");
+    await waitFor(() => expect(api.globalSearch).toHaveBeenCalledWith("t", "ana"));
   });
 
-  it("sem resultados orienta a pessoa", async () => {
-    vi.mocked(api.listGuests).mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 });
+  it("reserva e hospedagem mostram a situação em ícone e texto", async () => {
+    renderPage(<Search />, { path: "/busca", entry: "/busca?q=ana" });
+
+    await screen.findByRole("region", { name: "Reservas" });
+    const reservation = within(screen.getByRole("region", { name: "Reservas" })).getByRole("listitem");
+    expect(reservation.querySelector("[data-icon]")).not.toBeNull();
+    expect(reservation).toHaveTextContent("Confirmada");
+    expect(reservation).toHaveTextContent("21/10/2026 a 23/10/2026");
+  });
+
+  it("grupo sem resultado some", async () => {
+    vi.mocked(api.globalSearch).mockResolvedValue(results({ movements: group([]), stays: group([]) }));
+    renderPage(<Search />, { path: "/busca", entry: "/busca?q=ana" });
+    await screen.findByRole("heading", { name: /Hóspedes/ });
+
+    expect(screen.queryByRole("heading", { name: /Hospedagens/ })).toBeNull();
+    expect(screen.queryByRole("heading", { name: /Movimentos/ })).toBeNull();
+  });
+
+  it("quando há mais do que o mostrado, diz quantos", async () => {
+    vi.mocked(api.globalSearch).mockResolvedValue(results({ guests: group([{ id: 7, code: "HOS-000007", name: "Ana Souza", phone: "11999990000", cpf_masked: null, active: true }], 12) }));
+    renderPage(<Search />, { path: "/busca", entry: "/busca?q=ana" });
+
+    expect(await screen.findByText("Mostrando 1 de 12. Refine a busca para ver os demais.")).toBeInTheDocument();
+  });
+
+  it("sem resultados orienta a pessoa com exemplos de busca", async () => {
+    vi.mocked(api.globalSearch).mockResolvedValue(empty);
     renderPage(<Search />, { path: "/busca", entry: "/busca?q=zzz" });
 
     expect(await screen.findByText("Nenhum resultado para “zzz”.")).toBeInTheDocument();
+    expect(screen.getByText(/RES-000012/)).toBeInTheDocument();
   });
 
-  it("sem texto explica o que dá para buscar", () => {
+  it("texto curto mostra a orientação e não chama o backend", async () => {
+    renderPage(<Search />, { path: "/busca", entry: "/busca?q=a" });
+
+    expect(await screen.findByText("Digite pelo menos 2 letras ou números no campo de busca.")).toBeInTheDocument();
+    expect(api.globalSearch).not.toHaveBeenCalled();
+  });
+
+  it("sem texto também orienta", async () => {
     renderPage(<Search />, { path: "/busca", entry: "/busca" });
 
-    expect(screen.getByText(/Digite um nome, telefone, CPF ou código/)).toBeInTheDocument();
-    expect(api.listGuests).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Digite um nome, telefone, CPF, código ou número do quarto/)).toBeInTheDocument();
+    expect(api.globalSearch).not.toHaveBeenCalled();
+  });
+
+  it("erro do backend aparece como mensagem", async () => {
+    vi.mocked(api.globalSearch).mockRejectedValue(new api.ApiError("validation", "Digite pelo menos 2 letras ou números."));
+    renderPage(<Search />, { path: "/busca", entry: "/busca?q=ab" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Digite pelo menos 2 letras ou números.");
   });
 });
