@@ -127,6 +127,13 @@ pub fn open_conflicts(conn: &Connection, order_id: i64) -> Result<Vec<Maintenanc
     Ok(conflicts(conn, order_id)?.into_iter().filter(|c| c.status == "open").collect())
 }
 
+/// Conflitos ainda abertos de todas as ordens (para os alertas).
+pub fn all_open_conflicts(conn: &Connection) -> Result<Vec<MaintenanceConflict>, AppError> {
+    let mut stmt = conn.prepare(&format!("{SELECT_CONFLICT} WHERE c.status = 'open' ORDER BY r.check_in_date, c.id"))?;
+    let rows = stmt.query_map([], map_conflict)?.collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 pub fn find_conflict(conn: &Connection, id: i64) -> Result<Option<MaintenanceConflict>, AppError> {
     Ok(conn.query_row(&format!("{SELECT_CONFLICT} WHERE c.id = ?1"), [id], map_conflict).optional()?)
 }

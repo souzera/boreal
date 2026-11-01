@@ -122,7 +122,7 @@ impl AlertService {
         let findings = {
             let conn = self.ctx.conn()?;
             let settings = settings_repo::load(&conn)?;
-            alert_detectors::collect_all(&conn, self.ctx.today(), self.ctx.local_now(), &settings)?
+            alert_detectors::collect_all(&conn, self.ctx.today(), self.ctx.local_now(), self.ctx.utc.local_offset().local_minus_utc(), &settings)?
         };
         self.sync(findings, &managed)
     }
