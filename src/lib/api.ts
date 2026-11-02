@@ -1341,3 +1341,111 @@ export interface SearchResults {
 }
 
 export const globalSearch = (token: string, text: string) => call<SearchResults>("global_search", { token, text });
+
+// ---- Recepção e visão gerencial ----
+
+export interface ReceptionSummary {
+  arrivals: number;
+  departures: number;
+  occupied_rooms: number;
+  available_rooms: number;
+  total_rooms: number;
+  critical_alerts: number;
+}
+
+export interface ArrivalItem {
+  reservation_id: number;
+  code: string;
+  guest_name: string;
+  room_code: string;
+  check_in_date: string;
+  expected_time: string;
+  status: string;
+  overdue: boolean;
+  deposit_overdue: boolean;
+}
+
+export interface DepartureItem {
+  stay_id: number;
+  code: string;
+  guest_name: string;
+  room_code: string;
+  check_out_date: string;
+  expected_time: string;
+  balance_cents: number;
+  minutes_late: number;
+}
+
+export interface RiskItem {
+  kind: string;
+  title: string;
+  detail: string;
+  link: string;
+}
+
+export interface ReceptionOverview {
+  date: string;
+  summary: ReceptionSummary;
+  arrivals: SearchGroup<ArrivalItem>;
+  departures: SearchGroup<DepartureItem>;
+  at_risk: SearchGroup<RiskItem>;
+}
+
+export const receptionOverview = (token: string) => call<ReceptionOverview>("reception_overview", { token });
+
+export interface DayOccupancy {
+  date: string;
+  occupied: number;
+  rooms: number;
+  /** Pontos-base: 10000 = 100%. */
+  rate_bp: number;
+}
+
+export interface MethodNet {
+  method: string;
+  label: string;
+  received_cents: number;
+  refunded_cents: number;
+  net_cents: number;
+}
+
+export interface DayNet {
+  date: string;
+  net_cents: number;
+}
+
+export interface BalanceSummary {
+  to_receive_count: number;
+  to_receive_cents: number;
+  credit_count: number;
+  credit_cents: number;
+}
+
+export interface CategoryOpen {
+  category_name: string;
+  open_cents: number;
+}
+
+export interface PayablesSummary {
+  overdue_count: number;
+  overdue_cents: number;
+  open_cents: number;
+  by_category: CategoryOpen[];
+}
+
+export interface ManagementDashboard {
+  from: string;
+  to: string;
+  rooms_total: number;
+  occupancy: DayOccupancy[];
+  arrivals: number;
+  departures: number;
+  in_house_now: number;
+  receipts_by_method: MethodNet[];
+  receipts_daily: DayNet[];
+  balances: BalanceSummary;
+  payables: PayablesSummary;
+}
+
+export const managementDashboard = (token: string, from: string, to: string) =>
+  call<ManagementDashboard>("management_dashboard", { token, from, to });

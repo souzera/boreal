@@ -141,6 +141,8 @@ pub fn run() {
             commands::alerts::alert_history,
             commands::alerts::dismiss_alert,
             commands::search::global_search,
+            commands::reception::reception_overview,
+            commands::management::management_dashboard,
             commands::stays::preview_stay_checkout,
             commands::stays::checkout_stay,
             commands::stays::set_stay_late_tolerance,

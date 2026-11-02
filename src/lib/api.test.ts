@@ -6,6 +6,8 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
 import {
+  managementDashboard,
+  receptionOverview,
   alertHistory,
   alertSummary,
   closeCash,
@@ -229,5 +231,17 @@ describe("busca global", () => {
     await globalSearch("t", "ana souza");
 
     expect(invoke).toHaveBeenLastCalledWith("global_search", { token: "t", text: "ana souza" });
+  });
+});
+
+describe("recepção e visão gerencial", () => {
+  it("chama reception_overview e management_dashboard", async () => {
+    invoke.mockResolvedValue(null);
+
+    await receptionOverview("t");
+    expect(invoke).toHaveBeenLastCalledWith("reception_overview", { token: "t" });
+
+    await managementDashboard("t", "2026-10-21", "2026-10-28");
+    expect(invoke).toHaveBeenLastCalledWith("management_dashboard", { token: "t", from: "2026-10-21", to: "2026-10-28" });
   });
 });
