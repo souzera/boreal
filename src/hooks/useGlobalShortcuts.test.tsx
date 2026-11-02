@@ -54,7 +54,7 @@ describe("useGlobalShortcuts", () => {
     press({ key: "r", code: "KeyR", altKey: true });
     press({ key: "s", code: "KeyS", altKey: true });
 
-    expect(onNavigate.mock.calls.map((c) => c[0])).toEqual(["/reservas/nova", "/reservas", "/hospedagens", "/hospedagens"]);
+    expect(onNavigate.mock.calls.map((c) => c[0])).toEqual(["/reservas/nova", "/?aba=chegadas", "/hospedagens", "/?aba=saidas"]);
   });
 
   it("reconhece a tecla pelo código físico mesmo quando o Alt troca o caractere", () => {

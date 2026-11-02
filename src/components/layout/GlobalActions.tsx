@@ -13,11 +13,11 @@ interface Props {
 /** Ações de alto uso do cabeçalho, com atalho de teclado (brief §2). */
 export default function GlobalActions({ onSearch }: Props) {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const covered = useSessionStore((s) => s.state === "locked" || s.state === "expired");
   // Repetir o atalho na própria tela não empilha entradas no histórico.
   const go = (to: string) => {
-    if (to !== pathname) navigate(to);
+    if (to !== `${pathname}${search}`) navigate(to);
   };
   useGlobalShortcuts({ onSearch, onNavigate: go, enabled: !covered });
 

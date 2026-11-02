@@ -34,11 +34,11 @@ describe("GlobalActions", () => {
     await userEvent.click(screen.getByRole("button", { name: /Nova reserva/ }));
     expect(router.state.location.pathname).toBe("/reservas/nova");
     await userEvent.click(screen.getByRole("button", { name: /^Check-in/ }));
-    expect(router.state.location.pathname).toBe("/reservas");
+    expect(router.state.location.pathname + router.state.location.search).toBe("/?aba=chegadas");
     await userEvent.click(screen.getByRole("button", { name: /Receber pagamento/ }));
     expect(router.state.location.pathname).toBe("/hospedagens");
     await userEvent.click(screen.getByRole("button", { name: /^Check-out/ }));
-    expect(router.state.location.pathname).toBe("/hospedagens");
+    expect(router.state.location.pathname + router.state.location.search).toBe("/?aba=saidas");
   });
 
   it("Buscar chama o foco da busca", async () => {
@@ -66,6 +66,18 @@ describe("GlobalActions", () => {
 
     expect(router.state.location.pathname).toBe("/reservas/nova");
     expect(router.state.location.key).toBe(key);
+  });
+
+  it("repetir Check-in na aba de chegadas não empilha entradas, mas trocar de aba navega", () => {
+    const { router } = open();
+
+    fireEvent.keyDown(window, { key: "c", code: "KeyC", altKey: true });
+    const key = router.state.location.key;
+    fireEvent.keyDown(window, { key: "c", code: "KeyC", altKey: true });
+    expect(router.state.location.key).toBe(key);
+
+    fireEvent.keyDown(window, { key: "s", code: "KeyS", altKey: true });
+    expect(router.state.location.search).toBe("?aba=saidas");
   });
 
   it("com um diálogo de verdade aberto, nem os atalhos nem Ctrl+K fazem nada", async () => {

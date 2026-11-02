@@ -6,7 +6,7 @@ import RoomMapPage from "@/pages/calendar/RoomMapPage";
 import ChangePassword from "@/pages/ChangePassword";
 import CategoriesPage from "@/pages/catalog/CategoriesPage";
 import RoomsPage from "@/pages/catalog/RoomsPage";
-import Dashboard from "@/pages/Dashboard";
+import ReceptionPage from "@/pages/reception/ReceptionPage";
 import GuestFormPage from "@/pages/guests/GuestFormPage";
 import GuestsPage from "@/pages/guests/GuestsPage";
 import AlertsPage from "@/pages/alerts/AlertsPage";
@@ -61,7 +61,7 @@ export const appRoutes: RouteObject[] = [
       {
         element: <AppShell />,
         children: [
-          { path: "/", element: <Dashboard /> },
+          { path: "/", element: <ReceptionPage /> },
           { path: "/configuracoes", element: <SettingsPage /> },
           { path: "/usuarios", element: <UsersPage /> },
           { path: "/busca", element: <Search /> },

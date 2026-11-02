@@ -9,12 +9,12 @@ export const SHORTCUTS = {
   checkOut: "Alt+S",
 } as const;
 
-/** Destinos das ações globais: a tela de cada fluxo específico chega junto com a Recepção (6.3). */
+/** Destinos das ações globais: Check-in e Check-out abrem a aba certa da Recepção. */
 export const SHORTCUT_DESTINATIONS = {
   newReservation: "/reservas/nova",
-  checkIn: "/reservas",
+  checkIn: "/?aba=chegadas",
   receivePayment: "/hospedagens",
-  checkOut: "/hospedagens",
+  checkOut: "/?aba=saidas",
 } as const;
 
 const ALT_KEYS: Record<string, keyof typeof SHORTCUT_DESTINATIONS> = {
