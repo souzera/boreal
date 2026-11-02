@@ -46,6 +46,13 @@ describe("menu lateral", () => {
     expect(alerts?.to).toBe("/alertas");
   });
 
+  it("Visão gerencial é só do administrador", () => {
+    const leaf = leaves(NAV).find((l) => l.label === "Visão gerencial");
+    expect(leaf?.to).toBe("/gerencial");
+    expect(labels(visibleNav(NAV, recepcao))).not.toContain("Visão gerencial");
+    expect(labels(visibleNav(NAV, { role: "admin", can: () => true }))).toContain("Visão gerencial");
+  });
+
   it("a recepção vê o dia a dia e continua vendo Tarifas e Itens e serviços, mas não Configurações nem Usuários", () => {
     const seen = labels(visibleNav(NAV, recepcao));
     for (const label of ["Recepção", "Reservas", "Hóspedes", "Hospedagens", "Mapa de quartos", "Limpeza", "Bloqueios", "Manutenção", "Cadastro de quartos", "Fechamento de caixa", "Tarifas", "Itens e serviços"]) {

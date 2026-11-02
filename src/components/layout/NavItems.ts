@@ -51,6 +51,7 @@ export const NAV: NavEntry[] = [
     ],
   },
   { label: "Relatórios", icon: "bar_chart", soon: true },
+  { label: "Visão gerencial", to: "/gerencial", icon: "monitoring", admin: true },
   { label: "Alertas", to: "/alertas", icon: "notifications" },
   {
     label: "Configurações",
