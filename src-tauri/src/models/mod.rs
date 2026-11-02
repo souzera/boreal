@@ -12,6 +12,7 @@ pub mod payment;
 pub mod pousada;
 pub mod rate;
 pub mod refund;
+pub mod reception;
 pub mod reservation;
 pub mod room_status;
 pub mod search;

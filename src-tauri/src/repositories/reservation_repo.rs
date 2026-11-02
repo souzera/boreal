@@ -453,6 +453,18 @@ pub fn review_candidates(conn: &Connection, today: NaiveDate) -> Result<Vec<Rese
     Ok(rows)
 }
 
+/// Reservas pendentes/confirmadas cuja chegada é hoje ou já passou (a fila de chegadas da Recepção).
+pub fn pending_arrivals(conn: &Connection, today: NaiveDate) -> Result<Vec<Reservation>, AppError> {
+    let mut stmt = conn.prepare(&format!(
+        "{SELECT} WHERE r.status IN ('pending', 'confirmed') AND r.check_in_date <= :today
+         ORDER BY r.check_in_date, r.expected_check_in_time, r.id"
+    ))?;
+    let rows = stmt
+        .query_map(named_params! { ":today": dates::format(today) }, map_reservation)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 fn expect_one(changed: usize) -> Result<(), AppError> {
     if changed == 0 {
         Err(AppError::Conflict)
