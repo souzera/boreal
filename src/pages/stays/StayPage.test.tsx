@@ -54,7 +54,7 @@ function detail(patch: Partial<api.StayDetail> = {}, stayPatch: Partial<api.Stay
   };
 }
 
-const open = () => renderPage(<StayPage />, { path: "/hospedagens/:id", entry: "/hospedagens/3" });
+const open = (search = "") => renderPage(<StayPage />, { path: "/hospedagens/:id", entry: { pathname: "/hospedagens/3", search } });
 
 beforeEach(() => {
   signIn();
@@ -73,6 +73,26 @@ describe("StayPage", () => {
     expect(screen.getByRole("button", { name: "Lançar consumo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Registrar pagamento" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Concluir check-out" })).toBeInTheDocument();
+  });
+
+  it("?abrir=pagamento abre o registro de pagamento", async () => {
+    open("?abrir=pagamento");
+
+    expect(await screen.findByRole("dialog", { name: "Registrar pagamento" })).toBeInTheDocument();
+  });
+
+  it("?abrir=checkout abre o check-out", async () => {
+    open("?abrir=checkout");
+
+    expect(await screen.findByRole("dialog", { name: /Concluir check-out/ })).toBeInTheDocument();
+  });
+
+  it("?abrir= numa hospedagem encerrada avisa em vez de abrir", async () => {
+    vi.mocked(api.getStay).mockResolvedValue(detail({}, { status: "checked_out", checked_out_at: "2026-10-23T15:00:00Z" }));
+    open("?abrir=pagamento");
+
+    expect(await screen.findByText(/Esta ação não está mais disponível/)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("mostra o recebimento dividido em cada forma de pagamento", async () => {

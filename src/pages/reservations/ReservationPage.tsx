@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { useOpenFromQuery } from "@/hooks/useOpenFromQuery";
 import { usePermissions } from "@/hooks/usePermissions";
 import {
   confirmReservation,
@@ -66,6 +67,16 @@ export default function ReservationPage() {
 
   const queryKey = ["reservation", reservationId];
   const { data, isError } = useQuery({ queryKey, queryFn: () => getReservation(token, reservationId) });
+
+  // Ações rápidas da Recepção chegam como ?abrir=checkin|pagamento.
+  useOpenFromQuery(["checkin", "pagamento"] as const, !!data, (action) => {
+    if (!data || !isOpen(data.reservation.status)) {
+      setError("Esta ação não está mais disponível para esta reserva.");
+      return false;
+    }
+    setDialog(action === "checkin" ? "check_in" : "payment");
+    return true;
+  });
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey });

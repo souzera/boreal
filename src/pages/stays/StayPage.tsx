@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useOpenFromQuery } from "@/hooks/useOpenFromQuery";
 import { usePermissions } from "@/hooks/usePermissions";
 import { getStay, setStayLateTolerance, type ApiError, type PaymentLine } from "@/lib/api";
 import { formatDate, formatInstant, formatMoney } from "@/lib/format";
@@ -43,6 +44,16 @@ export default function StayPage() {
   const [tolerance, setTolerance] = useState<string | null>(null);
   const [toleranceError, setToleranceError] = useState<string | null>(null);
   const { data, isError } = useQuery({ queryKey: ["stay", stayId], queryFn: () => getStay(token, stayId) });
+
+  // Ações rápidas da Recepção chegam como ?abrir=pagamento|checkout.
+  useOpenFromQuery(["pagamento", "checkout"] as const, !!data, (action) => {
+    if (!data || data.stay.status !== "in_house") {
+      setNotice("Esta ação não está mais disponível: a hospedagem já foi encerrada.");
+      return false;
+    }
+    setDialog(action === "pagamento" ? "payment" : "checkout");
+    return true;
+  });
 
   if (isError) {
     return (

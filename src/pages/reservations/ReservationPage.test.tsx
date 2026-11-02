@@ -89,10 +89,10 @@ beforeEach(() => {
   vi.mocked(api.recordReservationPayment).mockResolvedValue({ id: 10, code: "PAG-000010", total_cents: 4100 });
 });
 
-async function open(state?: unknown) {
+async function open(state?: unknown, search = "") {
   const view = renderPage(<ReservationPage />, {
     path: "/reservas/:id",
-    entry: { pathname: "/reservas/5", state },
+    entry: { pathname: "/reservas/5", search, state },
     extraRoutes: routes,
   });
   await screen.findByRole("heading", { name: /RES-000005/ });
@@ -160,6 +160,30 @@ describe("ReservationPage — dados", () => {
     expect(screen.getByRole("button", { name: "Confirmar check-in" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Alterar datas ou quarto" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Aplicar desconto" })).toBeNull();
+  });
+
+  it("?abrir=checkin abre o diálogo de check-in uma única vez", async () => {
+    await open(undefined, "?abrir=checkin");
+
+    expect(await screen.findByRole("dialog", { name: /Check-in da reserva RES-000005/ })).toBeInTheDocument();
+  });
+
+  it("?abrir=checkin numa reserva cancelada avisa em vez de abrir", async () => {
+    vi.mocked(api.getReservation).mockResolvedValue({ ...detail, reservation: { ...reservation, status: "cancelled" } });
+    await open(undefined, "?abrir=checkin");
+
+    expect(await screen.findByText("Esta ação não está mais disponível para esta reserva.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("?abrir=pagamento abre o registro de pagamento e valor desconhecido é ignorado", async () => {
+    await open(undefined, "?abrir=pagamento");
+    expect(await screen.findByRole("dialog", { name: "Registrar pagamento" })).toBeInTheDocument();
+  });
+
+  it("?abrir= desconhecido não abre nada", async () => {
+    await open(undefined, "?abrir=lixo");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("reserva já hospedada leva à hospedagem e não oferece novo check-in", async () => {
