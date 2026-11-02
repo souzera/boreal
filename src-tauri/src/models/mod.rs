@@ -6,6 +6,7 @@ pub mod cleaning;
 pub mod guest;
 pub mod item;
 pub mod maintenance;
+pub mod management;
 pub mod page;
 pub mod payable;
 pub mod payment;
