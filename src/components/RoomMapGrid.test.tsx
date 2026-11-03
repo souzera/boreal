@@ -55,9 +55,10 @@ describe("RoomMapGrid", () => {
     expect(screen.queryByRole("button", { name: /Reservar quarto/ })).not.toBeInTheDocument();
   });
 
-  it("transforma o quarto em botão quando recebe onOpenRoom", async () => {
+  it("transforma o quarto ativo em botão quando recebe onOpenRoom; o inativo continua texto", async () => {
     const onOpenRoom = vi.fn();
     show({ onOpenRoom });
+    expect(screen.queryByRole("button", { name: /102 · Luxo/ })).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: /101 · Standard/ }));
 

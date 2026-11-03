@@ -56,6 +56,13 @@ describe("ReservationPanel", () => {
     expect(screen.getByRole("link", { name: "Abrir reserva completa" })).toHaveAttribute("href", "/reservas/5");
   });
 
+  it("oferece abrir o painel do hóspede", async () => {
+    vi.mocked(api.getReservation).mockResolvedValue(reservation({ guest_id: 7 }));
+    renderPage(<ReservationPanel id={5} onClose={noop} />);
+
+    expect(await screen.findByRole("link", { name: "Ver hóspede" })).toHaveAttribute("href", "/?painel=hospede-7");
+  });
+
   it("não oferece o check-in antes da chegada nem em reserva cancelada", async () => {
     vi.mocked(api.getReservation).mockResolvedValue(reservation({ check_in_date: "2099-10-27" }));
     const first = renderPage(<ReservationPanel id={5} onClose={noop} />);

@@ -13,6 +13,12 @@ Uma chamada (`reception_overview`) devolve `ReceptionOverview { date, summary, a
 - Cada lista traz até 50 itens e o **total completo** (`Group<T>`, o mesmo tipo da busca).
 - Somente leitura: não grava nem audita. Exige sessão válida; sem permissão extra.
 
+- O foco vai para o painel ao abrir (e ao trocar de registro): é isso que faz o `Esc` funcionar sem clicar nele.
+- O painel do hóspede abre pelo botão **Ver hóspede** do painel da reserva (`/?painel=hospede-N`); o quarto, pelo código dele no mapa (só quartos ativos).
+- Uma reserva pendente/confirmada que nunca chegou continua em **Chegadas** (com **Atrasada**) até ser marcada como no-show ou cancelada, mesmo depois da data de saída; a ação é abrir a reserva.
+
+Adiado (menores da revisão): `?abrir=` decide com dados que podem estar em cache antes do refetch (o backend recusa de qualquer forma); a reavaliação de alertas roda em `useReceptionOverview` e em `useAlertSummary` (duas rodadas por minuto na Recepção).
+
 Limitação conhecida: a chamada percorre as hospedagens em andamento com consultas por item (N+1), desprezível para uma pousada; não medido com meses de dados.
 
 ## Frontend

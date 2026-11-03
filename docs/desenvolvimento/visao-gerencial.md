@@ -21,6 +21,8 @@ Dashboard do administrador. Plano: `docs/superpowers/plans/2026-11-02-marco-6-3-
 
 - O denominador da ocupação usa os quartos ativos de hoje, não o histórico de ativação.
 - Saldos e contas são da situação atual, não do período.
+- A saída antecipada não remove as noites restantes da reserva (`reservation_nights`), então esses dias ainda contam como ocupados; e noites de quartos hoje inativos entram no numerador, por isso a taxa pode passar de 100% (o gráfico acompanha).
+- O cartão "Recebido líquido" é recebido menos devolvido.
 - Relatórios com filtros e exportação ficam para o 6.4.
 
 ## Testes

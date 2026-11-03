@@ -1,12 +1,20 @@
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { vi } from "vitest";
 
 import { useOpenFromQuery } from "./useOpenFromQuery";
 
 function Probe({ ready, onOpen }: { ready: boolean; onOpen: (a: "checkin" | "pagamento") => boolean }) {
   useOpenFromQuery(["checkin", "pagamento"] as const, ready, onOpen);
-  return <p data-testid="search">{useLocation().search}</p>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <p data-testid="search">{useLocation().search}</p>
+      <button type="button" onClick={() => navigate("/x?abrir=checkin")}>
+        de novo
+      </button>
+    </>
+  );
 }
 
 function show(url: string, ready = true, onOpen = vi.fn(() => true)) {
@@ -44,6 +52,15 @@ describe("useOpenFromQuery", () => {
         <Probe ready onOpen={onOpen} />
       </MemoryRouter>,
     );
+  });
+
+  it("atende um novo pedido depois que o anterior foi limpo, na mesma instância", () => {
+    const { onOpen } = show("/x?abrir=checkin");
+    expect(onOpen).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "de novo" }));
+
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
   it("limpa o parâmetro também quando a ação não cabe mais", () => {

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -13,10 +13,18 @@ interface Props {
  * para que abrir um registro não faça a pessoa perder o mapa em que estava.
  */
 export function SidePanel({ title, onClose, children }: Props) {
+  const ref = useRef<HTMLElement>(null);
+  // O foco vai para o painel ao abrir (e ao trocar de registro), para o Esc funcionar sem clicar nele.
+  useEffect(() => {
+    ref.current?.focus();
+  }, [title]);
+
   return (
     <aside
+      ref={ref}
+      tabIndex={-1}
       aria-label={title}
-      className="rounded-lg border bg-card p-4"
+      className="rounded-lg border bg-card p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();

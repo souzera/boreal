@@ -154,6 +154,17 @@ describe("ReceptionPage", () => {
     expect(screen.queryByRole("complementary", { name: /Reserva/ })).toBeNull();
   });
 
+  it("Esc fecha o painel logo depois de aberto, sem clicar nele", async () => {
+    await open();
+    await userEvent.click(await screen.findByRole("button", { name: "Ver detalhes da reserva RES-000005" }));
+    await screen.findByRole("complementary", { name: /Reserva/ });
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(await screen.findByRole("tab", { name: "Chegadas", selected: true })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: /Reserva/ })).toBeNull();
+  });
+
   it("clicar numa reserva do mapa abre o painel", async () => {
     await open();
     await userEvent.click(await screen.findByRole("button", { name: /Ana Souza · Confirmada · chegada/ }));

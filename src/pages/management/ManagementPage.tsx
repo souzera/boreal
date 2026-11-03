@@ -38,7 +38,14 @@ export default function ManagementPage() {
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
 
-  const invalid = !from || !to ? "Informe as duas datas do período." : to < from ? "A data final não pode ser antes da inicial." : null;
+  const days = from && to ? Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1 : 0;
+  const invalid = !from || !to
+    ? "Informe as duas datas do período."
+    : to < from
+      ? "A data final não pode ser antes da inicial."
+      : days > 366
+        ? "O período pode ter no máximo 366 dias."
+        : null;
   const { data, error } = useQuery({
     queryKey: ["management", from, to],
     queryFn: () => managementDashboard(token, from, to),
@@ -99,7 +106,7 @@ export default function ManagementPage() {
               ["Chegadas", String(data.arrivals)],
               ["Saídas", String(data.departures)],
               ["Hospedados agora", String(data.in_house_now)],
-              ["Recebido no período", formatMoney(received)],
+              ["Recebido líquido no período", formatMoney(received)],
               ["Saldos a receber", `${formatMoney(data.balances.to_receive_cents)} (${data.balances.to_receive_count})`],
               ["Créditos de hóspedes", `${formatMoney(data.balances.credit_cents)} (${data.balances.credit_count})`],
               ["Contas vencidas", `${formatMoney(data.payables.overdue_cents)} (${data.payables.overdue_count})`],
@@ -142,7 +149,7 @@ export default function ManagementPage() {
                 <LineChart data={data.occupancy.map((o) => ({ dia: shortDate(o.date), taxa: o.rate_bp / 100 }))}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="dia" />
-                  <YAxis unit="%" domain={[0, 100]} />
+                  <YAxis unit="%" domain={[0, "auto"]} />
                   <Tooltip formatter={(v) => `${v}%`} />
                   <Line type="monotone" dataKey="taxa" name="Ocupação" stroke={COLORS[0]} strokeWidth={2} />
                 </LineChart>

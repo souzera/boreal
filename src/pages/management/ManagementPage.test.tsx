@@ -93,6 +93,17 @@ describe("ManagementPage", () => {
     expect(api.managementDashboard).not.toHaveBeenCalled();
   });
 
+  it("período acima de 366 dias mostra o erro e não consulta", async () => {
+    open();
+    await screen.findByRole("list", { name: "Números do período" });
+    vi.mocked(api.managementDashboard).mockClear();
+
+    fireEvent.change(screen.getByLabelText("De"), { target: { value: "2098-01-01" } });
+
+    expect(await screen.findByText("O período pode ter no máximo 366 dias.")).toBeInTheDocument();
+    expect(api.managementDashboard).not.toHaveBeenCalled();
+  });
+
   it("mostra os números em reais e em palavras", async () => {
     open();
 
@@ -100,7 +111,7 @@ describe("ManagementPage", () => {
     const value = (label: string) => within(list).getByText(label).nextSibling;
     expect(value("Chegadas")).toHaveTextContent("2");
     expect(value("Hospedados agora")).toHaveTextContent("3");
-    expect(value("Recebido no período")).toHaveTextContent("R$ 120,00");
+    expect(value("Recebido líquido no período")).toHaveTextContent("R$ 120,00");
     expect(value("Saldos a receber")).toHaveTextContent("R$ 150,00 (2)");
     expect(value("Créditos de hóspedes")).toHaveTextContent("R$ 15,00 (1)");
     expect(value("Contas vencidas")).toHaveTextContent("R$ 500,00 (1)");

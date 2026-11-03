@@ -34,6 +34,9 @@ export function ReservationPanel({ id, onClose }: { id: number; onClose: () => v
           </dl>
           <div className="flex flex-wrap gap-2">
             {canCheckIn && <Button render={<Link to={`/reservas/${r.id}?abrir=checkin`} />}>Confirmar check-in</Button>}
+            <Button variant="outline" render={<Link to={`/?painel=hospede-${r.guest_id}`} />}>
+              Ver hóspede
+            </Button>
             <Button variant="outline" render={<Link to={`/reservas/${r.id}`} />}>
               Abrir reserva completa
             </Button>

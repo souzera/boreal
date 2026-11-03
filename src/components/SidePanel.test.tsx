@@ -35,14 +35,22 @@ describe("SidePanel", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("fecha com Esc quando o foco está dentro, e só então", async () => {
+  it("recebe o foco ao abrir, então Esc fecha sem precisar clicar nele", async () => {
     const onClose = show();
 
+    expect(screen.getByRole("complementary", { name: "Reserva RES-000005" })).toHaveFocus();
     await userEvent.keyboard("{Escape}");
-    expect(onClose).not.toHaveBeenCalled();
 
-    await userEvent.click(screen.getByRole("button", { name: "Dentro" }));
-    await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("Esc com o foco fora do painel não o fecha", async () => {
+    const onClose = show();
+    screen.getByText("Agenda atrás do painel").focus();
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

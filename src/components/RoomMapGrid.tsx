@@ -57,7 +57,7 @@ export function RoomMapGrid({ data, from, days, today, onOpenReservation, onBook
             return (
               <tr key={room.id} className={cn(!room.active && "opacity-60")}>
                 <th scope="row" className="border p-2 text-left font-medium">
-                  {onOpenRoom ? (
+                  {onOpenRoom && room.active ? (
                     <button type="button" className="text-left underline-offset-2 hover:underline" onClick={() => onOpenRoom(room.id)}>
                       {label}
                     </button>

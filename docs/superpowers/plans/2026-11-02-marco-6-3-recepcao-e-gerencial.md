@@ -259,9 +259,9 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
 
 ## Status
 
-**Implementado, aguardando revisão final** na branch `marco-6-3-recepcao` (a partir de `marco-6-2-alertas`). T1 a T7 concluídas; sem migração.
+**Implementado e revisado** na branch `marco-6-3-recepcao` (a partir de `marco-6-2-alertas`). T1 a T7 concluídas; sem migração.
 
-- **Testes (última execução completa):** `cargo test --features dev-seed` 545 + 4; `cargo clippy --all-targets --features dev-seed -- -D warnings` limpo; `npx vitest run` 496 testes em 64 arquivos; `npx tsc --noEmit` e `npm run build` limpos; `graphify update .` executado.
+- **Testes (última execução completa):** `cargo test --features dev-seed` 545 + 4; `cargo clippy --all-targets --features dev-seed -- -D warnings` limpo; `npx vitest run` 501 testes em 64 arquivos (após a revisão; `PayablesPage` falha só sob carga total e passa sozinho); `npx tsc --noEmit` e `npm run build` limpos; `graphify update .` executado.
 - **Pendências de verificação (manuais):** `npm run tauri dev` com a interface real (Alt+C/Alt+S no WebView2, aparência do painel lateral e dos gráficos com dados reais); tempo de `reception_overview` com meses de dados (há N+1 consultas por hospedagem).
 
 ## Desvios e decisões da execução
@@ -269,7 +269,6 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
 - O cartão **Alertas críticos** leva a `/alertas` sem filtro (a tela de Alertas não lê filtros da URL).
 - `RoomMapGrid` ganhou `onOpenRoom` opcional (o código do quarto vira botão que abre o painel do quarto).
 - `useOpenFromQuery` recebe `ready` (os dados da página) além de `allowed` e `onOpen`.
-- Nos testes de painel e de página, a aba "Em risco" usa o mesmo componente `More` das outras listas.
 - Erros de teste corrigidos no caminho: minutos de atraso de uma saída de 21 h (não mais de 24 h) e limite de 366 dias inclusive.
 
 
@@ -284,3 +283,12 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
 - **Consistência de tipos:** `ReceptionOverview`/`Group` (T1) e `ManagementDashboard` (T2) refletidos em T3; `RoomMapGrid`, `SidePanel`, `useOpenFromQuery` (T4) usados por T5; destinos de atalho (T5) conferidos nos testes de T4/T5.
 - **Migração:** nenhuma.
 - **Proporção:** corpos de função ficam com o implementador; os testes trazem valores exatos (50 itens, 60 min, 366 dias, 02:30Z/23:30 local, R$ 80,00).
+
+## Revisão final
+
+Revisor independente (modelo mais capaz). Nenhum Crítico. Corrigido com teste:
+
+- **Importante** — o `Esc` do painel lateral só funcionava com o foco já dentro dele, e nada o levava para lá; agora o painel recebe o foco ao abrir e ao trocar de registro.
+- **Menores corrigidos:** `?abrir=` volta a valer num novo pedido na mesma página; limite de 366 dias também no front (não consulta); cartão renomeado para "Recebido líquido no período"; eixo da ocupação sem teto de 100%; quarto inativo não abre painel; botão **Ver hóspede** (o painel do hóspede agora tem como abrir); linha em branco que quebrava a lista do CHANGELOG.
+
+**Menores adiados:** `?abrir=` decide com dados que podem estar em cache antes do refetch (o backend recusa de qualquer forma); a reavaliação de alertas roda em `useReceptionOverview` e em `useAlertSummary`; reserva que nunca chegou fica em Chegadas até ser marcada como no-show (documentado).

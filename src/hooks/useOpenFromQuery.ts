@@ -15,6 +15,8 @@ export function useOpenFromQuery<T extends string>(allowed: readonly T[], ready:
   const requested = params.get("abrir");
 
   useEffect(() => {
+    // Parâmetro limpo: um próximo pedido igual (mesma página, outro registro) volta a valer.
+    if (!requested) handled.current = null;
     if (!requested || !ready || handled.current === requested) return;
     handled.current = requested;
     if ((allowed as readonly string[]).includes(requested)) onOpen(requested as T);

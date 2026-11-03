@@ -60,7 +60,6 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Ao bloquear a sessão por inatividade, a tela aberta é preservada e volta como estava após desbloquear.
 - O sinal da reserva passa a ser um recebimento de verdade e acompanha a hospedagem no check-in (antes era só um valor na reserva); o botão **Registrar sinal recebido** virou **Registrar pagamento**.
 - O cancelamento continua calculando a devolução pela política, mas a devolução em si passa a ser registrada à parte quando o dinheiro volta.
-
 - **Check-in** (`Alt+C`) e **Check-out** (`Alt+S`) do topo agora abrem as abas **Chegadas** e **Saídas** da Recepção, em vez das listas de reservas e hospedagens.
 - A tela inicial deixou de ser o Dashboard simples e passou a ser a Recepção completa.
 
