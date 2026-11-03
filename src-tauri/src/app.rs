@@ -140,7 +140,7 @@ pub(crate) fn initialize_with(db_path: &Path, keys: &dyn KeyStore, migrations: &
 
     let (before, pending_count) = {
         let conn = ctx.conn()?;
-        (version_or_zero(&conn), pending(&conn, migrations))
+        (crate::migrations::version_checked(&conn)?, pending(&conn, migrations))
     };
     let now_text = || crate::services::format_utc(ctx.utc.now_utc());
     let mut pre_migration = None;
@@ -324,6 +324,17 @@ mod tests {
         let events: Vec<String> = conn.prepare("SELECT kind FROM system_events").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
         assert_eq!(kinds, ["pre_migration"], "registrada depois, quando a tabela passou a existir");
         assert_eq!(events, ["update_ok"]);
+    }
+
+    #[test]
+    fn the_checked_version_is_zero_only_for_a_new_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let keys = MemoryKeyStore::empty();
+        let conn = open_database(&dir.path().join("boreal.db"), &keys).unwrap();
+        assert_eq!(crate::migrations::version_checked(&conn).unwrap(), 0);
+
+        conn.execute_batch("CREATE TABLE schema_migrations (version INTEGER); INSERT INTO schema_migrations VALUES ('lixo');").unwrap();
+        assert!(crate::migrations::version_checked(&conn).is_err(), "tabela ilegível não vira banco novo");
     }
 
     #[test]

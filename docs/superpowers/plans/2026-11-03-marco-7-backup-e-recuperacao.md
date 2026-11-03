@@ -272,7 +272,7 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
 
 ## Status
 
-**Implementado, aguardando revisão final** na branch `marco-7-backup` (a partir de `marco-6-4-relatorios`). T1 a T10 concluídas; migração `0014`.
+**Implementado e revisado** (revisão independente: 1 crítico, 4 importantes e 11 menores; críticos/importantes e a maior parte dos menores corrigidos — ver "Revisão final") na branch `marco-7-backup` (a partir de `marco-6-4-relatorios`). T1 a T10 concluídas; migração `0014`.
 
 - **Testes (última execução completa):** `cargo test --features dev-seed --lib` 686 testes; `cargo test --test startup` 7 (os 4 de antes e 3 novos, agora executados com o aplicativo fechado); `cargo clippy --all-targets --features dev-seed -- -D warnings` limpo; `npx vitest run` 572 testes em 70 arquivos (`RatesPage` e outros testes por tempo falham só sob carga total e passam sozinhos); `npx tsc --noEmit`, `npm run build` e `cargo check` (valida CSP e permissões) limpos; `graphify update .` executado.
 - **Auditoria:** `npm audit --omit=dev` 0 vulnerabilidades (o `shadcn` passou a `devDependencies`); `cargo audit` achou 1 vulnerabilidade em `ctutils` (do `argon2`), corrigida com `cargo update -p ctutils`; 6 avisos de crates sem manutenção/unsound de dependências Linux do Tauri aceitos (ver `docs/desenvolvimento/seguranca-operacional.md`).
@@ -291,6 +291,11 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
 - A API de backup do SQLite funcionou com SQLCipher nos dois sentidos; não foi preciso `sqlcipher_export`.
 - Sem registro em `system_events` de integridade (o banco com problema não é confiável); fica só o log técnico.
 
+
+## Revisão final
+
+Corrigido (com teste): **C1** a troca de computador falhava no fluxo real (a primeira abertura já cria um banco vazio): agora o banco virgem é substituído e banco com dados é recusado; **I1** comandos de recuperação sem sessão só rodam no estado que os justifica (`guard`) e soltam a conexão antes de trocar o arquivo; **I2** falha da volta pela cópia de segurança vira mensagem que aponta o arquivo; **I3** cópia de segurança cai na pasta padrão se a configurada sumiu; **I4** tela de erro permite alternar desbloquear ↔ restaurar e cobre `schema_too_new`; menores: mutex de backup, `.partial` antigos, WAL no espaço, `version_checked`, `-wal/-shm` no modo de recuperação, reinício do diálogo de restauração, `queryClient.clear()` após restaurar, registro pós-restauração com mensagem própria.
+**Aceitos/adiados:** menores 6 e 11 (sem limite de tentativas da chave de recuperação, já documentado; ensaio com antivírus de terceiros). Testes: `cargo test --features dev-seed --lib` 692, clippy limpo, vitest das telas (377 + novos) verdes.
 
 ## Marcos seguintes
 

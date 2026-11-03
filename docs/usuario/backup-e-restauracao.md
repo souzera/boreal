@@ -49,7 +49,7 @@ Se a restauração não puder ser concluída, o sistema volta ao estado de antes
 3. **Escolha o arquivo de backup**, digite a **chave de recuperação** e clique em **Restaurar neste computador**.
 4. Entre com o seu usuário e senha de sempre.
 
-Só funciona num computador **sem banco de dados**. Com chave errada nada é criado.
+Só funciona num computador **sem dados**: o banco vazio que a primeira abertura cria é substituído; um banco que já tem usuários nunca é. Com chave errada nada é alterado.
 
 ## Avisos e erros comuns
 

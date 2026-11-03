@@ -82,6 +82,13 @@ pub fn last_applied_at(conn: &Connection) -> Result<Option<String>, AppError> {
     Ok(conn.query_row("SELECT MAX(applied_at) FROM schema_migrations", [], |r| r.get(0))?)
 }
 
+/// Versão do esquema; 0 só quando a tabela de migrações **não existe** (banco novo). Erro de leitura é propagado:
+/// um banco ilegível nunca é tratado como novo.
+pub fn version_checked(conn: &Connection) -> Result<u32, AppError> {
+    let exists: i64 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'", [], |r| r.get(0))?;
+    if exists == 0 { Ok(0) } else { current_version(conn) }
+}
+
 /// Versão do esquema, ou 0 se o banco ainda não tem nenhuma migração aplicada.
 pub fn version_or_zero(conn: &Connection) -> u32 {
     current_version(conn).unwrap_or(0)

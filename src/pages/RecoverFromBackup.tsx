@@ -14,6 +14,8 @@ interface Props {
   mode: Mode;
   /** Volta à tela anterior (só na troca de computador). */
   onBack?: () => void;
+  /** Só no desbloqueio: oferece restaurar um backup quando a chave de recuperação não resolve. */
+  onSwitch?: () => void;
 }
 
 const TEXT: Record<Mode, { title: string; intro: string; action: string }> = {
@@ -35,7 +37,7 @@ const TEXT: Record<Mode, { title: string; intro: string; action: string }> = {
 };
 
 /** Telas de recuperação sem login: troca de computador, banco com problema e chave perdida (spec §14, §16.2). */
-export default function RecoverFromBackup({ mode, onBack }: Props) {
+export default function RecoverFromBackup({ mode, onBack, onSwitch }: Props) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<string | null>(null);
   const [key, setKey] = useState("");
@@ -110,6 +112,11 @@ export default function RecoverFromBackup({ mode, onBack }: Props) {
             <Button disabled={!ready} onClick={() => void submit()}>
               {text.action}
             </Button>
+            {onSwitch && (
+              <Button type="button" variant="outline" onClick={onSwitch}>
+                Restaurar um backup
+              </Button>
+            )}
             {onBack && (
               <Button type="button" variant="outline" onClick={onBack}>
                 Voltar

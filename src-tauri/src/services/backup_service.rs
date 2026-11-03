@@ -122,6 +122,11 @@ struct Done {
 pub struct BackupService {
     ctx: Ctx,
     db_path: PathBuf,
+    /// Um backup por vez: dois no mesmo instante (automático e manual) não podem disputar o mesmo arquivo parcial.
+    lock: std::sync::Arc<std::sync::Mutex<()>>,
+    /// Só nos testes: quantas cópias para dentro do banco devem falhar de propósito.
+    #[cfg(test)]
+    pub(crate) force_copy_failures: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     /// Só nos testes: força a validação a falhar.
     #[cfg(test)]
     pub(crate) force_invalid: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -132,6 +137,9 @@ impl BackupService {
         Self {
             ctx,
             db_path,
+            lock: std::sync::Arc::default(),
+            #[cfg(test)]
+            force_copy_failures: std::sync::Arc::default(),
             #[cfg(test)]
             force_invalid: std::sync::Arc::default(),
         }
@@ -311,20 +319,28 @@ impl BackupService {
             invalid("Não foi possível fazer a cópia de segurança do estado atual. A restauração foi cancelada e nada foi alterado.")
         })?;
         let safety_file = safety.file_name.clone().unwrap_or_default();
+        // O caminho da cópia de segurança é fixado agora: depois da cópia o banco já é o do backup e a configuração
+        // de pasta pode ser outra.
+        let safety_path = self.resolve_dir(true)?.join(&safety_file);
 
         if self.copy_into_live(Path::new(path)).is_err() {
-            // Volta ao estado de antes, a partir da cópia de segurança.
-            let dir = {
-                let conn = self.ctx.conn()?;
-                self.dest_dir(&conn)?
-            };
-            let _ = self.copy_into_live(&dir.join(&safety_file));
-            self.ctx.log.error("restauracao.falhou", "a cópia para dentro do banco falhou; o estado anterior foi recuperado");
-            return Err(invalid("A restauração não pôde ser concluída. O estado anterior foi recuperado."));
+            // Volta ao estado de antes, a partir da cópia de segurança, e diz a verdade sobre o resultado.
+            return Err(match self.copy_into_live(&safety_path) {
+                Ok(()) => {
+                    self.ctx.log.error("restauracao.falhou", "a cópia para dentro do banco falhou; o estado anterior foi recuperado");
+                    invalid("A restauração não pôde ser concluída. O estado anterior foi recuperado.")
+                }
+                Err(_) => {
+                    self.ctx.log.error("restauracao.falhou", "a cópia falhou e a volta ao estado anterior também; usar a cópia de segurança");
+                    invalid(&format!("A restauração não pôde ser concluída e o estado anterior não pôde ser recuperado automaticamente. Feche o sistema e restaure a cópia de segurança {safety_file} (tela de recuperação, com a chave de recuperação)."))
+                }
+            });
         }
 
         self.ctx.sessions.destroy_all();
         let at = self.ctx.utc.now_utc();
+        // Depois da cópia a restauração já valeu: se só o registro falhar, a mensagem diz isso.
+        let logged = (|| -> Result<(), AppError> {
         let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
         // O banco restaurado não conhece a cópia de segurança recém-feita: registra-a, para o histórico (e o alerta de
@@ -359,12 +375,23 @@ impl BackupService {
             },
         )?;
         tx.commit()?;
+        Ok(())
+        })();
+        if logged.is_err() {
+            self.ctx.log.error("restauracao.registro", "o backup foi restaurado, mas o registro da restauração falhou");
+            return Err(invalid("A restauração foi concluída, mas o registro dela falhou. Entre de novo no sistema."));
+        }
         self.ctx.log.info("restauracao.ok", &format!("backup de {} restaurado; cópia de segurança {safety_file}", preview.backup_at));
         Ok(RestoreResult { safety_copy: safety_file, backup_at: preview.backup_at })
     }
 
     /// Copia o arquivo de backup para dentro da conexão aberta, reaplica migrações e confere a integridade.
     fn copy_into_live(&self, from: &Path) -> Result<(), AppError> {
+        #[cfg(test)]
+        if self.force_copy_failures.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            self.force_copy_failures.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            return Err(AppError::Database("falha simulada".into()));
+        }
         let source = open_with_key(from, &self.ctx.key)?;
         let mut live = self.ctx.conn()?;
         live.execute_batch("PRAGMA journal_mode = DELETE;")?;
@@ -393,6 +420,7 @@ impl BackupService {
     }
 
     fn execute(&self, kind: BackupKind) -> Result<BackupRunView, AppError> {
+        let _one_at_a_time = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         let started = format_utc(self.ctx.utc.now_utc());
         let outcome = self.try_backup(kind);
         let finished = format_utc(self.ctx.utc.now_utc());
@@ -442,19 +470,41 @@ impl BackupService {
         }
     }
 
-    fn try_backup(&self, kind: BackupKind) -> Result<Done, AppError> {
-        let dir = {
+    /// Pasta onde o backup vai. Cópias de segurança (antes de migrar ou restaurar) caem na pasta padrão ao lado do
+    /// banco se a configurada não estiver acessível: uma atualização nunca pode ficar presa a um pen drive ausente.
+    fn resolve_dir(&self, safety: bool) -> Result<PathBuf, AppError> {
+        let configured = {
             let conn = self.ctx.conn()?;
             self.dest_dir(&conn)?
         };
-        // Tamanho do arquivo do banco (o SQLCipher devolve `PRAGMA page_size` como texto, então não o usamos).
-        let size = std::fs::metadata(&self.db_path).map(|m| m.len()).unwrap_or(0);
+        if safety && !writable(&configured) {
+            let fallback = self.db_path.parent().map_or_else(|| PathBuf::from("backups"), |p| p.join("backups"));
+            self.ctx.log.warn("backup.pasta_alternativa", "a pasta de backup configurada não está acessível; usando a pasta padrão para a cópia de segurança");
+            return Ok(fallback);
+        }
+        Ok(configured)
+    }
+
+    fn try_backup(&self, kind: BackupKind) -> Result<Done, AppError> {
+        let safety = matches!(kind, BackupKind::PreMigration | BackupKind::PreRestore);
+        let dir = self.resolve_dir(safety)?;
+        // Tamanho do banco: arquivo principal mais o WAL (o SQLCipher devolve `PRAGMA page_size` como texto).
+        let size = std::fs::metadata(&self.db_path).map(|m| m.len()).unwrap_or(0)
+            + std::fs::metadata(self.db_path.with_file_name(format!("{}-wal", self.db_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()))).map(|m| m.len()).unwrap_or(0);
         let unreachable = || invalid("A pasta de backup não está acessível.");
 
-        std::fs::create_dir_all(&dir).map_err(|_| unreachable())?;
-        let probe = dir.join(".boreal-teste");
-        std::fs::write(&probe, b"ok").map_err(|_| unreachable())?;
-        let _ = std::fs::remove_file(&probe);
+        if !writable(&dir) {
+            return Err(unreachable());
+        }
+        // Parciais deixados por uma queda anterior (nunca são backups válidos).
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.filter_map(Result::ok) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("boreal-") && name.contains(".bak.partial") {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
 
         let free = self.ctx.disk.free_bytes(&dir).map_err(|_| unreachable())?;
         if free < size.saturating_mul(2).saturating_add(SPACE_MARGIN) {
@@ -463,7 +513,6 @@ impl BackupService {
 
         // Cópias de segurança (antes de restaurar ou atualizar) têm nome próprio e retenção própria: nunca apagam
         // um backup diário, nem o que está sendo restaurado.
-        let safety = matches!(kind, BackupKind::PreMigration | BackupKind::PreRestore);
         let name = if safety { safety_file_name(self.ctx.local_now()) } else { file_name(self.ctx.local_now()) };
         let target = dir.join(&name);
         let partial = dir.join(format!("{name}.partial"));
@@ -531,6 +580,17 @@ pub fn spawn_auto(service: BackupService) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let _ = service.run_system(BackupKind::Auto);
     })
+}
+
+/// A pasta existe (ou é criada) e aceita escrita.
+fn writable(dir: &Path) -> bool {
+    if std::fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let probe = dir.join(".boreal-teste");
+    let ok = std::fs::write(&probe, b"ok").is_ok();
+    let _ = std::fs::remove_file(&probe);
+    ok
 }
 
 /// Apaga o arquivo parcial e qualquer auxiliar do SQLite deixado ao lado dele.
@@ -684,14 +744,14 @@ mod tests {
         let w = disk_world();
         let dir = backups_dir(&w);
         old_files(&dir, 1..=8);
-        for other in ["notas.txt", "outro-2026-10-01-180000.bak", "boreal-2026-10-01-180000.bak.partial", "boreal-manual.bak"] {
+        for other in ["notas.txt", "outro-2026-10-01-180000.bak", "boreal-manual.bak"] {
             std::fs::write(dir.join(other), b"x").unwrap();
         }
 
         service(&w).run(&w.admin).unwrap();
 
         let left = files(&dir);
-        for other in ["notas.txt", "outro-2026-10-01-180000.bak", "boreal-2026-10-01-180000.bak.partial", "boreal-manual.bak"] {
+        for other in ["notas.txt", "outro-2026-10-01-180000.bak", "boreal-manual.bak"] {
             assert!(left.contains(&other.to_string()), "{other} foi apagado: {left:?}");
         }
     }
@@ -900,6 +960,53 @@ mod restore_tests {
         assert!(std::path::Path::new(&backup).exists(), "a cópia de segurança nunca apaga o backup restaurado");
         let listed = service(&w).list_files(&admin).unwrap();
         assert!(listed.iter().any(|f| f.safety) && listed.iter().any(|f| !f.safety), "a lista mostra as duas: {listed:?}");
+    }
+
+    #[test]
+    fn a_failed_copy_rolls_back_and_says_so_and_a_failed_rollback_points_to_the_safety_copy() {
+        let w = disk_world();
+        add_guests(&w, 1, 3);
+        let backup = make_backup(&w);
+        add_guests(&w, 4, 5);
+        let svc = service(&w);
+
+        svc.force_copy_failures.store(1, std::sync::atomic::Ordering::SeqCst);
+        let rolled_back = svc.restore(&w.admin, &backup, "RESTAURAR", ADMIN_PASSWORD);
+        assert!(matches!(&rolled_back, Err(AppError::Validation(m)) if m.contains("estado anterior foi recuperado")), "{rolled_back:?}");
+        assert_eq!(guest_count(&w), 5, "o estado de antes voltou");
+
+        let admin = w.ctx.sessions.create(1, crate::models::user::Role::Admin, w.ctx.clock.now());
+        at(&w, "2026-10-21T16:00:00Z");
+        svc.force_copy_failures.store(2, std::sync::atomic::Ordering::SeqCst);
+        let stuck = svc.restore(&admin, &backup, "RESTAURAR", ADMIN_PASSWORD);
+        assert!(matches!(&stuck, Err(AppError::Validation(m)) if m.contains("boreal-seguranca-") && m.contains("não pôde ser recuperado")), "{stuck:?}");
+    }
+
+    #[test]
+    fn a_safety_copy_falls_back_to_the_default_folder_when_the_configured_one_is_gone_but_a_daily_backup_does_not() {
+        let w = disk_world();
+        let blocked = w.dir.path().join("arquivo-no-lugar-da-pasta");
+        std::fs::write(&blocked, b"x").unwrap();
+        w.ctx.conn().unwrap().execute("UPDATE settings SET value = ?1 WHERE key = 'backup_dir'", [blocked.to_string_lossy().to_string()]).unwrap();
+        let svc = service(&w);
+
+        assert!(svc.run(&w.admin).is_err(), "backup diário não troca a pasta escolhida");
+        let safety = svc.execute(BackupKind::PreMigration).unwrap();
+
+        assert_eq!(safety.status, "ok", "{safety:?}");
+        assert!(backups_dir(&w).join(safety.file_name.unwrap()).exists());
+    }
+
+    #[test]
+    fn leftover_partial_files_are_cleaned_before_the_next_backup() {
+        let w = disk_world();
+        std::fs::create_dir_all(backups_dir(&w)).unwrap();
+        let stale = backups_dir(&w).join("boreal-2026-10-20-090000.bak.partial");
+        std::fs::write(&stale, b"lixo").unwrap();
+
+        make_backup(&w);
+
+        assert!(!stale.exists());
     }
 
     #[test]

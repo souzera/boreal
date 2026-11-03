@@ -32,6 +32,33 @@ fn check_backup_with_key(backup: &Path, recovery_key_text: &str) -> Result<Vec<u
     Ok(key)
 }
 
+/// O banco existente não tem usuário nenhum: é o banco vazio que a primeira abertura num computador novo cria.
+fn is_virgin(db_path: &Path, keys: &dyn KeyStore) -> bool {
+    let Ok(Some(key)) = keys.get() else { return false };
+    let Ok(conn) = super::backup_service::open_with_key(db_path, &SecretKey::new(key)) else { return false };
+    conn.query_row("SELECT count(*) FROM users", [], |r| r.get::<_, i64>(0)).is_ok_and(|n| n == 0)
+}
+
+/// Tenta algumas vezes: logo depois de soltar a conexão o Windows ainda pode segurar o arquivo por instantes.
+fn retry<T>(mut action: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let mut last = None;
+    for _ in 0..20 {
+        match action() {
+            Ok(value) => return Ok(value),
+            Err(error) => {
+                last = Some(error);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("sem tentativas")))
+}
+
+fn sidecar(db_path: &Path, suffix: &str) -> std::path::PathBuf {
+    let name = db_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    db_path.with_file_name(format!("{name}{suffix}"))
+}
+
 /// Copia o backup para o lugar do banco (arquivo temporário + renomear).
 fn place_database(backup: &Path, db_path: &Path) -> Result<(), AppError> {
     let fail = || AppError::Validation("Não foi possível gravar o banco de dados neste computador. Nada foi alterado.".into());
@@ -43,10 +70,36 @@ fn place_database(backup: &Path, db_path: &Path) -> Result<(), AppError> {
         let _ = std::fs::remove_file(&temp);
         fail()
     })?;
-    std::fs::rename(&temp, db_path).map_err(|_| {
+    retry(|| std::fs::rename(&temp, db_path)).map_err(|_| {
         let _ = std::fs::remove_file(&temp);
         fail()
     })
+}
+
+/// Em que situação do aplicativo cada comando de recuperação (sem login) pode rodar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Recovery {
+    NewComputer,
+    Corrupted,
+    Unlock,
+}
+
+/// Os comandos de recuperação não têm sessão; por isso só valem quando o aplicativo realmente precisa deles.
+pub fn guard(state: &Result<std::sync::Arc<crate::app::AppState>, AppError>, what: Recovery) -> Result<(), AppError> {
+    match (what, state) {
+        (Recovery::NewComputer, Ok(app)) => {
+            if app.auth.needs_bootstrap()? {
+                Ok(())
+            } else {
+                Err(AppError::Validation("Este computador já tem dados. Use a restauração dentro do sistema (Saúde do sistema).".into()))
+            }
+        }
+        (Recovery::NewComputer, Err(_)) => Ok(()),
+        (Recovery::Corrupted, Err(AppError::IntegrityProblem(_) | AppError::KeyInvalid | AppError::KeyUnavailable | AppError::SchemaTooNew)) => Ok(()),
+        (Recovery::Unlock, Err(AppError::KeyUnavailable | AppError::KeyInvalid)) => Ok(()),
+        (Recovery::Corrupted, _) => Err(AppError::Validation("O banco de dados está funcionando. Use a restauração dentro do sistema (Saúde do sistema).".into())),
+        (Recovery::Unlock, _) => Err(AppError::Validation("A chave guardada neste computador está funcionando.".into())),
+    }
 }
 
 #[derive(Clone)]
@@ -62,10 +115,20 @@ impl RecoveryService {
     /// Troca de computador: sem banco aqui, usa um backup e a chave de recuperação para criar o banco. A chave só
     /// vai para o cofre do Windows depois que o backup abriu com ela e o arquivo foi colocado no lugar.
     pub fn restore_on_new_computer(backup: &Path, recovery_key_text: &str, db_path: &Path, keys: &dyn KeyStore) -> Result<(), AppError> {
-        if db_path.exists() {
-            return Err(AppError::Validation("Já existe um banco de dados neste computador. Use a restauração dentro do sistema.".into()));
+        // Num computador novo a primeira abertura já criou um banco vazio (sem usuários): ele pode ser substituído.
+        // Banco com dados nunca é.
+        let replacing = db_path.exists();
+        if replacing && !is_virgin(db_path, keys) {
+            return Err(AppError::Validation("Já existe um banco de dados com dados neste computador. Use a restauração dentro do sistema.".into()));
         }
         let key = check_backup_with_key(backup, recovery_key_text)?;
+        if replacing {
+            for path in [db_path.to_path_buf(), sidecar(db_path, "-wal"), sidecar(db_path, "-shm")] {
+                if path.exists() {
+                    retry(|| std::fs::remove_file(&path)).map_err(|_| AppError::Validation("Não foi possível substituir o banco vazio deste computador. Feche o sistema e tente de novo.".into()))?;
+                }
+            }
+        }
         place_database(backup, db_path)?;
         if keys.set(&key).is_err() {
             let _ = std::fs::remove_file(db_path);
@@ -101,15 +164,27 @@ impl RecoveryService {
         }
         let parent = db_path.parent().unwrap_or_else(|| Path::new("."));
         let saved = parent.join(format!("boreal-com-problema-{}.db", now_local.format("%Y-%m-%d-%H%M%S")));
-        if db_path.exists() {
-            std::fs::rename(db_path, &saved).map_err(|_| AppError::Validation("Não foi possível guardar uma cópia do banco com problema. Nada foi alterado.".into()))?;
-        }
-        for suffix in ["-wal", "-shm"] {
-            let name = db_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let _ = std::fs::remove_file(db_path.with_file_name(format!("{name}{suffix}")));
+        // O banco com problema vai inteiro para o lado (arquivo e auxiliares do WAL): transações confirmadas que
+        // ainda estavam no WAL não se perdem da cópia guardada.
+        let pairs: Vec<(std::path::PathBuf, std::path::PathBuf)> = [("", ""), ("-wal", "-wal"), ("-shm", "-shm")]
+            .iter()
+            .map(|(from, to)| (sidecar(db_path, from), sidecar(&saved, to)))
+            .filter(|(from, _)| from.exists())
+            .collect();
+        let mut moved = Vec::new();
+        for (from, to) in &pairs {
+            if retry(|| std::fs::rename(from, to)).is_err() {
+                for (a, b) in moved.iter().rev() {
+                    let _ = std::fs::rename(b, a);
+                }
+                return Err(AppError::Validation("Não foi possível guardar uma cópia do banco com problema. Nada foi alterado.".into()));
+            }
+            moved.push((from.clone(), to.clone()));
         }
         if let Err(error) = place_database(backup, db_path) {
-            let _ = std::fs::rename(&saved, db_path);
+            for (a, b) in moved.iter().rev() {
+                let _ = std::fs::rename(b, a);
+            }
             return Err(error);
         }
         if keys.get()?.is_none() {
@@ -288,6 +363,42 @@ mod new_computer_tests {
 
         assert!(matches!(&result, Err(AppError::Validation(m)) if m.contains("Já existe um banco")), "{result:?}");
         assert_eq!(std::fs::read(&w.db_path).unwrap(), before);
+    }
+
+    #[test]
+    fn new_computer_restore_replaces_the_empty_database_the_first_opening_created() {
+        let w = disk_world();
+        let backup = backup_of(&w);
+        let elsewhere = tempfile::tempdir().unwrap();
+        let new_db = elsewhere.path().join("boreal.db");
+        let keys = MemoryKeyStore::empty();
+        // Fluxo real: a primeira abertura cria o banco vazio e uma chave aleatória.
+        drop(crate::app::initialize(&new_db, &keys).unwrap());
+        assert_ne!(keys.get().unwrap().unwrap(), TEST_KEY.to_vec());
+
+        RecoveryService::restore_on_new_computer(&backup, &key_text(), &new_db, &keys).unwrap();
+
+        assert_eq!(keys.get().unwrap().unwrap(), TEST_KEY.to_vec());
+        drop(crate::app::initialize(&new_db, &keys).unwrap());
+        let conn = crate::db::open_database(&new_db, &keys).unwrap();
+        let guests: i64 = conn.query_row("SELECT count(*) FROM guests", [], |r| r.get(0)).unwrap();
+        assert_eq!(guests, 1);
+    }
+
+    #[test]
+    fn the_guard_only_lets_each_recovery_run_in_the_state_that_needs_it() {
+        let broken: Result<std::sync::Arc<crate::app::AppState>, AppError> = Err(AppError::IntegrityProblem("x".into()));
+        let locked: Result<std::sync::Arc<crate::app::AppState>, AppError> = Err(AppError::KeyInvalid);
+        assert!(guard(&broken, Recovery::Corrupted).is_ok());
+        assert!(guard(&broken, Recovery::Unlock).is_err());
+        assert!(guard(&locked, Recovery::Unlock).is_ok());
+        assert!(guard(&locked, Recovery::NewComputer).is_ok());
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut user_made = crate::app::initialize(&dir.path().join("boreal.db"), &MemoryKeyStore::empty()).map(std::sync::Arc::new);
+        let healthy = std::mem::replace(&mut user_made, Err(AppError::KeyInvalid));
+        assert!(guard(&healthy, Recovery::Corrupted).is_err(), "banco saudável não aceita recuperação sem sessão");
+        assert!(guard(&healthy, Recovery::Unlock).is_err());
     }
 
     #[test]

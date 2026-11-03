@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -11,6 +12,7 @@ import { VersionsCard } from "./VersionsCard";
 export default function HealthPage() {
   const isAdmin = useSessionStore((s) => s.user?.role === "admin");
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   if (!isAdmin) {
     return (
@@ -23,6 +25,8 @@ export default function HealthPage() {
   // Depois de restaurar, todas as sessões foram encerradas: volta ao login.
   const afterRestore = () => {
     useSessionStore.getState().clear();
+    // Os dados em memória eram do banco de antes.
+    queryClient.clear();
     navigate("/login", { replace: true });
   };
 

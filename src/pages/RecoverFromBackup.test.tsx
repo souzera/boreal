@@ -113,3 +113,20 @@ describe("banco com problema e chave perdida", () => {
     expect(screen.getByText(/Nenhum dado foi alterado/)).toBeInTheDocument();
   });
 });
+
+describe("recuperação a partir da tela de erro", () => {
+  it("com a chave indisponível dá para trocar entre desbloquear e restaurar um backup", async () => {
+    renderPage(<StartupError message="x" code="key_invalid" />, { path: "/" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Restaurar um backup" }));
+    expect(screen.getByText("Recuperar o banco de dados")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Voltar" }));
+    expect(screen.getByText("Desbloquear com a chave de recuperação")).toBeInTheDocument();
+  });
+
+  it("banco de versão mais nova também oferece restaurar um backup", () => {
+    renderPage(<StartupError message="x" code="schema_too_new" />, { path: "/" });
+    expect(screen.getByText("Recuperar o banco de dados")).toBeInTheDocument();
+  });
+});

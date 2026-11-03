@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import Icon from "@/components/Icon";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,13 @@ export function RestoreDialog({ path, onClose, onRestored }: Props) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Outro arquivo, outra restauração: nada digitado antes vale.
+  useEffect(() => {
+    setConfirmation("");
+    setPassword("");
+    setError(null);
+  }, [path]);
 
   const { data: preview, isError } = useQuery({
     queryKey: ["restore-preview", path],
