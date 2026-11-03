@@ -9,6 +9,7 @@ pub mod dates;
 pub mod late_checkout;
 pub mod maintenance;
 pub mod money;
+pub mod pdf;
 pub mod phone;
 pub mod report;
 pub mod pricing;

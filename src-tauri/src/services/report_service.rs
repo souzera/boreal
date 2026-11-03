@@ -7,7 +7,8 @@ use super::Ctx;
 use crate::auth::permissions::Permission;
 use crate::auth::session::require;
 use crate::domain::dates;
-use crate::domain::report::{br_date, Cell, Column, ColumnKind, Filter, ReportKind, ReportTable};
+use crate::domain::pdf::{PdfColumn, PdfDoc};
+use crate::domain::report::{br_date, cell_text, Cell, Column, ColumnKind, Filter, ReportKind, ReportTable};
 use crate::error::AppError;
 use crate::models::report::ReportQuery;
 use crate::domain::payment::Method;
@@ -51,6 +52,17 @@ impl ReportService {
 
     pub fn run(&self, token: &str, query: ReportQuery) -> Result<ReportTable, AppError> {
         self.run_with_limit(token, query, ROW_LIMIT)
+    }
+
+    /// PDF do relatório: as mesmas linhas, colunas e totais da tela (`run`), com o nome da pousada e a data de emissão.
+    pub fn pdf(&self, token: &str, query: ReportQuery) -> Result<Vec<u8>, AppError> {
+        let table = self.run(token, query)?;
+        let name = {
+            let conn = self.ctx.conn()?;
+            crate::repositories::pousada_repo::get(&conn)?.name
+        };
+        let issued = self.ctx.local_now().format("%d/%m/%Y %H:%M").to_string();
+        Ok(table_pdf(&table, &name, &issued))
     }
 
     pub(crate) fn run_with_limit(&self, token: &str, query: ReportQuery, limit: usize) -> Result<ReportTable, AppError> {
@@ -174,6 +186,40 @@ impl ReportService {
         let totals = if truncated { None } else { totals(&rows) };
         Ok(ReportTable { kind: kind.as_str().into(), title: kind.label().into(), filters, columns, rows, totals, truncated })
     }
+}
+
+/// Pesos das colunas no PDF: texto mais largo que número; números à direita.
+fn pdf_column(column: &Column) -> PdfColumn {
+    let (weight, right) = match column.kind {
+        ColumnKind::Text => (30, false),
+        ColumnKind::Date => (19, false),
+        ColumnKind::Time => (11, false),
+        ColumnKind::Int => (12, true),
+        ColumnKind::Money => (20, true),
+        ColumnKind::Percent => (15, true),
+    };
+    PdfColumn { label: column.label.clone(), weight, right }
+}
+
+/// Desenha uma `ReportTable` em PDF. Mais de 7 colunas usam página em paisagem.
+pub fn table_pdf(table: &ReportTable, pousada: &str, issued_at: &str) -> Vec<u8> {
+    let mut doc = PdfDoc::new(table.columns.len() > 7);
+    doc.heading(pousada);
+    doc.subheading(&table.title);
+    for filter in &table.filters {
+        doc.text(filter);
+    }
+    doc.text(&format!("Emitido em {issued_at}"));
+    doc.spacer(6.0);
+    let columns: Vec<PdfColumn> = table.columns.iter().map(pdf_column).collect();
+    let rows: Vec<Vec<String>> = table.rows.iter().map(|r| r.iter().map(cell_text).collect()).collect();
+    let totals: Option<Vec<String>> = table.totals.as_ref().map(|t| t.iter().map(cell_text).collect());
+    doc.table(&columns, &rows, totals.as_deref());
+    if table.truncated {
+        doc.spacer(6.0);
+        doc.text(crate::domain::csv::TRUNCATED_NOTE);
+    }
+    doc.finish(&format!("{pousada} · Boreal PMS"))
 }
 
 type Built = (Vec<Column>, Rows, Box<dyn Fn(&Rows) -> Option<Vec<Cell>>>);
@@ -664,6 +710,71 @@ mod tests {
         let w = world();
 
         assert!(w.h.reports.run("invalido", ReportQuery::new("occupancy")).is_err());
+    }
+}
+
+#[cfg(test)]
+mod pdf_tests {
+    use chrono::{DateTime, Utc};
+
+    use super::*;
+    use crate::domain::pdf::extract_text;
+    use crate::services::test_support::{admin_token, book, harness, recepcao_token, seed};
+
+    fn at(h: &crate::services::test_support::Harness, rfc3339: &str) {
+        h.utc.set(DateTime::parse_from_rfc3339(rfc3339).unwrap().with_timezone(&Utc));
+    }
+
+    #[test]
+    fn pdf_contains_the_title_filters_and_every_row_of_the_screen() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let seed = seed(&h, &admin, 20_000, 2);
+        book(&h, &admin, &seed, "2026-10-21", "2026-10-23");
+        let query = ReportQuery { from: Some("2026-10-21".into()), to: Some("2026-10-21".into()), ..ReportQuery::new("reservations") };
+
+        let table = h.reports.run(&admin, query.clone()).unwrap();
+        let pdf = h.reports.pdf(&admin, query).unwrap();
+
+        let texts = extract_text(&pdf);
+        assert!(texts.contains(&"Reservas".to_string()), "{texts:?}");
+        assert!(texts.contains(&"Período: 21/10/2026 a 21/10/2026".to_string()));
+        assert!(texts.iter().any(|t| t.starts_with("Emitido em 21/10/2026 09:00")), "{texts:?}");
+        for row in &table.rows {
+            for cell in row {
+                let text = cell_text(cell);
+                if !text.is_empty() {
+                    assert!(texts.contains(&text), "falta {text:?} no PDF");
+                }
+            }
+        }
+        let totals = table.totals.unwrap();
+        assert!(texts.contains(&cell_text(&totals[7])), "o total da tela também está no PDF");
+        assert!(String::from_utf8_lossy(&pdf).contains("/MediaBox [0 0 842 595]"), "8 colunas usam paisagem");
+    }
+
+    #[test]
+    fn pdf_of_a_financial_report_requires_the_permission_and_writes_nothing_else() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let reception = recepcao_token(&h, &admin);
+        at(&h, "2026-10-21T12:00:00Z");
+
+        let result = h.reports.pdf(&reception, ReportQuery::new("receipts"));
+
+        assert!(matches!(result, Err(AppError::Forbidden)), "{result:?}");
+        assert!(h.reports.pdf(&admin, ReportQuery::new("receipts")).is_ok());
+    }
+
+    #[test]
+    fn narrow_reports_stay_in_portrait_and_empty_ones_say_so() {
+        let h = harness();
+        let admin = admin_token(&h);
+
+        let pdf = h.reports.pdf(&admin, ReportQuery::new("balances")).unwrap();
+
+        assert!(String::from_utf8_lossy(&pdf).contains("/MediaBox [0 0 595 842]"));
+        assert!(extract_text(&pdf).contains(&"Nenhum registro no período.".to_string()));
     }
 }
 
