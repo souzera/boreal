@@ -48,7 +48,7 @@ Os mapas de estado em `src/lib/{roomState,reservation,stay,blocks}.ts` e `Payabl
 ## Menu e ações globais
 
 - O menu é dado, não JSX: `src/components/layout/NavItems.ts` (`NAV`, `visibleNav`). Para acrescentar um item, inclua-o em `NAV` com `icon` (nome do símbolo) e `to`; use `admin: true` ou `permission: "..."` para restringir. `NavItems.test.ts` falha se um destino não existir em `appRoutes`, se houver destino repetido ou se um item não tiver ícone.
-- Itens ainda inexistentes ficam com `soon: true` (aparecem desabilitados com "Em breve"): hoje só **Relatórios** (6.4). **Visão gerencial** (`/gerencial`) é `admin: true`.
+- Itens ainda inexistentes ficam com `soon: true` (aparecem desabilitados com "Em breve"): hoje só **Relatórios** (6.4). **Visão gerencial** (`/gerencial`) e **Saúde do sistema** (`/saude`) são `admin: true`.
 - A barra superior (`GlobalActions`) traz **Nova reserva**, **Buscar**, **Check-in**, **Receber pagamento** e **Check-out**, com atalhos de `useGlobalShortcuts`: `Ctrl+K` busca; `Alt+N`, `Alt+C`, `Alt+R` e `Alt+S` abrem nova reserva, check-in, receber pagamento e check-out. Não disparam com diálogo aberto, com a sessão bloqueada, com tecla repetida nem com outros modificadores. As teclas são reconhecidas pelo código físico (`KeyN`…).
 - *Check-in* (`Alt+C`) e *Check-out* (`Alt+S`) abrem as abas **Chegadas** (`/?aba=chegadas`) e **Saídas** (`/?aba=saidas`) da Recepção; *Receber pagamento* (`Alt+R`) leva à lista de **Hospedagens**.
 - **Painel lateral** (`SidePanel`): `aside` não modal para resumos ao lado da agenda; a seleção fica na URL (`?painel=`). Veja [Recepção](recepcao.md).

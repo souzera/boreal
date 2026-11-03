@@ -486,6 +486,27 @@ mod tests {
     }
 
     #[test]
+    fn seed_shows_the_backup_alert_and_it_clears_after_a_backup() {
+        let (dir, app) = fresh();
+        run(&app, "admin", ADMIN, None).unwrap();
+        let token = app.auth.login("admin", ADMIN).unwrap().token;
+        let kinds = |app: &AppState| -> Vec<String> {
+            app.alerts.refresh(&token).unwrap();
+            let query = crate::models::alert::AlertQuery { status: Some("active".into()), kind: None, severity: None, page: 1, page_size: 100 };
+            app.alerts.list(&token, query).unwrap().items.into_iter().map(|a| a.kind).collect()
+        };
+        assert!(kinds(&app).contains(&"backup_missing".to_string()), "o banco de demonstração ainda não tem backup");
+
+        let run = app.backup.run(&token).unwrap();
+
+        assert_eq!(run.status, "ok");
+        assert!(!kinds(&app).contains(&"backup_missing".to_string()), "o alerta some depois do backup");
+        assert!(dir.path().join("backups").join(run.file_name.unwrap()).is_file(), "o backup fica ao lado do banco de demonstração, fora do repositório");
+        let recovery = app.recovery.reveal(&token, ADMIN).unwrap();
+        assert_eq!(recovery.split('-').count(), 9);
+    }
+
+    #[test]
     fn seed_refuses_a_database_that_already_has_rooms() {
         let (_dir, app) = fresh();
         run(&app, "admin", ADMIN, None).unwrap();

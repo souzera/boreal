@@ -26,6 +26,9 @@ Guias passo a passo para a equipe da pousada. Cada guia explica o objetivo, quan
 - [Visão gerencial](visao-gerencial.md) — ocupação, recebimentos, saldos e contas (só administrador).
 - [Relatórios](relatorios.md) — consultar, filtrar e exportar em CSV e PDF.
 - [Documentos internos](documentos.md) — confirmação, comprovante, ficha e demonstrativo, com versões.
+- [Backup e restauração](backup-e-restauracao.md) — backup automático, restaurar e trocar de computador (administrador).
+- [Chave de recuperação](chave-de-recuperacao.md) — o que é, como imprimir e quando usar (administrador).
+- [Saúde do sistema](saude-do-sistema.md) — disco, alertas do administrador, verificação ao abrir e logs.
 - [Alertas](alertas.md) — pendências persistentes, prioridades, como dispensar e abrir o registro.
 - [Busca](busca.md) — encontrar hóspedes, reservas, hospedagens e movimentos.
 

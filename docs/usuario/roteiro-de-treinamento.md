@@ -243,6 +243,23 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 - ⚠ **Provisório:** o conteúdo de cada documento e a ausência do logotipo (Anexo A.8).
 - **Guia:** [Documentos internos](documentos.md).
 
+## Módulo 17 — Backup, restauração e chave de recuperação (25 min)
+
+- **Objetivo:** proteger os dados e saber recuperá-los.
+- **Quem:** administrador (a recepção só precisa saber que existe e que ela continua trabalhando se o backup falhar).
+- **Cenário:** o banco de demonstração do seed (sem backup ainda).
+- **Passo a passo:**
+  1. Entre como administrador. Mostre o alerta crítico **Sem backup válido nas últimas 24 horas** e que a recepção não o vê.
+  2. Abra **Saúde do sistema → Backup**. Escolha uma pasta de backup (um pen drive, se houver) e clique em **Fazer backup agora**. Mostre "Backup concluído", a lista **Últimos backups** (**Válido**) e que o alerta sumiu.
+  3. Em **Chave de recuperação**, clique em **Mostrar chave de recuperação**, digite a senha, mostre os 9 grupos e **Imprimir**. Explique onde guardar a folha. Clique em **Ocultar chave**.
+  4. **Restaurar**: faça uma alteração visível (cadastre um hóspede), clique em **Restaurar o backup de …**, leia a prévia (contagens e o aviso de atividade posterior), digite **RESTAURAR** e a senha. Mostre que todos voltam ao login e que o hóspede novo sumiu; explique a cópia de segurança.
+  5. **Trocar de computador** (demonstração): numa instalação limpa, na tela **Configuração inicial**, **Já tenho um backup**: escolha o arquivo, digite a chave e restaure. Entre com o usuário de sempre.
+  6. Mostre **Espaço em disco** e a verificação de integridade em **Versões e verificação**.
+- **O participante deve ver:** que backup falho não para a recepção, que restaurar exige confirmação digitada e senha, e que sem a chave de recuperação os dados não se recuperam.
+- **Erros comuns:** pen drive desconectado ("A pasta de backup não está acessível"); chave com erro de digitação; tentar restaurar um backup de versão mais nova.
+- ⚠ **Provisório:** os 7 dias de retenção, o limite de espaço (1 GB ou 3× o banco) e os gatilhos de backup (Anexo A.9).
+- **Guias:** [Backup e restauração](backup-e-restauracao.md), [Chave de recuperação](chave-de-recuperacao.md), [Saúde do sistema](saude-do-sistema.md).
+
 ## Fechamento do treinamento (5 min)
 
 - Reforce: o sistema funciona **sem internet**, e cada tela confirma "salvo neste computador".
@@ -251,4 +268,4 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 
 ## Ainda por vir
 
-Entram neste roteiro quando existirem: backup e restauração.
+Entram neste roteiro quando existirem: instalação e implantação (Marco 8).

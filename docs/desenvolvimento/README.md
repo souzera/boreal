@@ -14,6 +14,8 @@ Regras de negócio, decisões técnicas, permissões, auditoria e efeitos no ban
 - [Financeiro (Marco 5)](financeiro.md) — recebimentos divididos, duplicidade, devoluções, contas a pagar e categorias.
 - [Fechamento de caixa (Marco 5)](fechamento-de-caixa.md) — esperado por modalidade, conferência e regras.
 - [Design system (Marco 6.1)](design-system.md) — tokens, contraste, ícones, menu e atalhos.
+- [Backup, restauração e recuperação (Marco 7)](backup-e-recuperacao.md) — formato, validação, retenção, restauração, abertura segura, alertas e logs.
+- [Segurança operacional (Marco 7)](seguranca-operacional.md) — segredos, CSP, permissões e dependências.
 - [Relatórios, CSV e PDF (Marco 6.4)](relatorios.md) — motor único, permissões, datas de referência, CSV, PDF e volume.
 - [Documentos internos (Marco 6.4)](documentos.md) — instantâneo versionado, emissão e reimpressão.
 - [Recepção (Marco 6.3)](recepcao.md) — visão composta do dia, painel lateral, `?abrir=` e atalhos.

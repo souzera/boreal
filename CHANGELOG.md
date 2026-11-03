@@ -51,6 +51,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - **Relatórios** com filtros combinados: Ocupação, Reservas, Hospedagens, Cancelamentos e no-shows (todos veem) e, só para o administrador, Recebimentos e devoluções (débito e crédito separados), Saldos pendentes, Despesas extras dos hóspedes, Despesas da pousada (por competência, com o pago no período), Contas a pagar e Fechamentos de caixa.
 - **Exportação em CSV e PDF** de qualquer relatório, com as mesmas linhas da tela: o CSV abre direto no Excel em português e o PDF tem cabeçalho, filtros, totais e numeração de páginas. O sistema pergunta onde salvar e, se a gravação falhar, permite tentar de novo sem perder a consulta.
 - **Documentos internos** em PDF: Confirmação de reserva, Comprovante de pagamento, Ficha de hospedagem e Demonstrativo final da conta, com versões: o que foi emitido não muda, e emitir de novo depois de uma alteração cria a versão seguinte. Falha ao salvar o PDF não emite nada de novo.
+- **Backup criptografado e validado**: backup automático ao concluir o fechamento de caixa e ao abrir o sistema (se o último passou de 24 horas), além de **Fazer backup agora**. Cada backup é conferido depois de gravado, ficam os 7 últimos dias e os antigos só saem depois de um novo válido. Falha de backup nunca atrapalha a recepção: vira histórico e alerta.
+- **Restauração segura** (só administrador): prévia com a data e as contagens do backup, confirmação digitada (`RESTAURAR`) e senha; antes, uma cópia de segurança do estado atual; depois, todos entram de novo.
+- **Troca de computador**: na primeira abertura, **Já tenho um backup** restaura o backup com a chave de recuperação.
+- **Chave de recuperação**: o administrador vê e imprime a chave (com a senha); ela também reabre o banco quando a credencial do Windows se perde.
+- **Saúde do sistema** (administrador): backups, espaço em disco, chave de recuperação, versões, resultado da verificação feita ao abrir e a pasta dos logs técnicos.
+- **Alertas do administrador**: **Sem backup válido nas últimas 24 horas**, **Pouco espaço em disco** e **Falha na atualização**.
+- **Verificação de integridade** a cada abertura: banco com problema não abre normalmente e oferece restaurar um backup, guardando o arquivo com problema.
+- **Atualização segura**: antes de mudar a estrutura do banco o sistema faz um backup obrigatório; se a atualização falhar, o banco anterior fica intacto.
 
 ### Changed
 - **Novo visual do Boreal**: identidade teal com neutros frios, fonte Onest, ícones Material Symbols (empacotados, funcionam sem internet) e cantos e sombras suaves. Os estados dos quartos, reservas, bloqueios, manutenção e contas continuam combinando cor, ícone e rótulo.
@@ -87,6 +95,10 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Plugin de abertura de links externos, que não era usado.
 
 ### Security
+- A **chave de recuperação** só aparece ao administrador, com a senha digitada de novo, e a auditoria registra apenas que foi mostrada.
+- Backups são criptografados com a chave do banco e não abrem sem ela; logs técnicos não guardam senhas, chaves, caminhos completos nem dados de hóspedes.
+- Política de segurança de conteúdo mais restritiva (`object-src`, `base-uri`, `frame-ancestors` e `form-action`) e permissões do aplicativo travadas por teste.
+- O `shadcn` (ferramenta de desenvolvimento) deixou de ser dependência de produção; `npm audit` de produção sem vulnerabilidades.
 - Senhas guardadas com Argon2id; o banco de dados não abre sem a chave correta.
 - Política de segurança de conteúdo (CSP) ativada na interface.
 - Logotipo enviado é conferido pelo conteúdo do arquivo (PNG/JPEG) e limitado a 512 KB.

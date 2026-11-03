@@ -95,11 +95,11 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
   - `RecoveryService::reveal(&self, token, password) -> Result<String, AppError>` (`ManageSettings` + senha do próprio administrador; audita `settings`/`reveal_recovery_key` sem a chave; erro de senha = `InvalidCredentials` sem contar como tentativa de login).
 - Regras: a chave nunca aparece em `Debug`, auditoria ou erro.
 
-- [ ] **Step 1: Testes** (`recovery_key`): `format` de uma chave conhecida devolve 8 grupos de 8 + conferência de 4; `parse(format(k)) == k`; aceita minúsculas, espaços e sem hífens; troca de um caractere, grupo faltando e tamanho errado dão os dois erros certos; `SecretKey` zera o conteúdo ao soltar (via `zeroize` verificado numa cópia por ponteiro) e `format!("{key:?}")` não contém os bytes. (`recovery_service`): admin com a senha certa recebe a chave igual à da `Ctx`; senha errada ⇒ `InvalidCredentials` e nada é auditado como revelação; recepção ⇒ `Forbidden`; auditoria tem `reveal_recovery_key` e **não** contém a chave; sem sessão ⇒ erro.
-- [ ] **Step 2: Run** `cargo test --lib -- recovery` — Expected: FAIL.
-- [ ] **Step 3: Implement** `SecretKey`, o formato com CRC-16/CCITT, o serviço e o comando `reveal_recovery_key`; `initialize` lê a chave do `KeyStore` e a guarda em `Ctx`.
-- [ ] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 5: Commit** `feat: recovery key and in-memory secret`
+- [x] **Step 1: Testes** (`recovery_key`): `format` de uma chave conhecida devolve 8 grupos de 8 + conferência de 4; `parse(format(k)) == k`; aceita minúsculas, espaços e sem hífens; troca de um caractere, grupo faltando e tamanho errado dão os dois erros certos; `SecretKey` zera o conteúdo ao soltar (via `zeroize` verificado numa cópia por ponteiro) e `format!("{key:?}")` não contém os bytes. (`recovery_service`): admin com a senha certa recebe a chave igual à da `Ctx`; senha errada ⇒ `InvalidCredentials` e nada é auditado como revelação; recepção ⇒ `Forbidden`; auditoria tem `reveal_recovery_key` e **não** contém a chave; sem sessão ⇒ erro.
+- [x] **Step 2: Run** `cargo test --lib -- recovery` — Expected: FAIL.
+- [x] **Step 3: Implement** `SecretKey`, o formato com CRC-16/CCITT, o serviço e o comando `reveal_recovery_key`; `initialize` lê a chave do `KeyStore` e a guarda em `Ctx`.
+- [x] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 5: Commit** `feat: recovery key and in-memory secret`
 
 ---
 
@@ -119,11 +119,11 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
   - `BackupRunView { id, kind, status, finished_at, file_name, bytes, message }`, `BackupFileView { file_name, date, bytes }`.
 - Regras (K2–K5): cópia criptografada com a chave de `Ctx` pela API de backup para `…/nome.bak.partial`; valida (K5); renomeia; grava `backup_runs`; aplica a retenção **depois** de validar; qualquer falha apaga o `.partial`, grava `failed` com mensagem amigável ("A pasta de backup não está acessível.", "Não há espaço suficiente na pasta de backup.") e devolve o erro; `backup_dir` vazio ⇒ `<pasta do banco>/backups`; `run` manual exige `ManageSettings`.
 
-- [ ] **Step 1: Testes** (`domain/backup`): nome local gera `boreal-2026-10-21-143005.bak`; `parse_date` lê o dia; nomes de fora do padrão são ignorados; `retain` mantém o mais novo de cada um dos 7 dias mais recentes e devolve o resto (3 arquivos no mesmo dia ⇒ 2 a apagar; 9 dias ⇒ os 2 mais antigos). (`backup_service`, banco em arquivo numa pasta temporária, `MemoryKeyStore`): `backup_creates_an_encrypted_valid_file_that_opens_only_with_the_key` (cabeçalho não é `SQLite format 3`, abre com a chave, `integrity_check = ok`, mesmos dados; sem a chave/chave errada não abre); `backup_restores_identical_data` (compara tabelas principais linha a linha); `failed_validation_removes_the_partial_file_and_records_the_failure`; `retention_removes_old_files_only_after_a_new_valid_backup` (falha no novo ⇒ nada apagado) e `retention_never_touches_files_outside_the_pattern`; `missing_folder_is_created_and_unwritable_folder_fails_with_a_friendly_message`; `not_enough_space_fails_before_writing` (sonda falsa com pouco espaço, nada criado); `recepcao_cannot_run_a_manual_backup` (`Forbidden`) mas `run_system` não exige sessão; `runs_are_recorded_and_immutable`; migração `0014` cria as tabelas e os gatilhos.
-- [ ] **Step 2: Run** `cargo test --lib -- backup` — Expected: FAIL.
-- [ ] **Step 3: Implement** migração, repositório, funções puras e o serviço; se a API de backup não funcionar com SQLCipher nesta versão, usar `ATTACH … KEY` + `sqlcipher_export` (registrar o desvio).
-- [ ] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 5: Commit** `feat: encrypted validated backups with retention`
+- [x] **Step 1: Testes** (`domain/backup`): nome local gera `boreal-2026-10-21-143005.bak`; `parse_date` lê o dia; nomes de fora do padrão são ignorados; `retain` mantém o mais novo de cada um dos 7 dias mais recentes e devolve o resto (3 arquivos no mesmo dia ⇒ 2 a apagar; 9 dias ⇒ os 2 mais antigos). (`backup_service`, banco em arquivo numa pasta temporária, `MemoryKeyStore`): `backup_creates_an_encrypted_valid_file_that_opens_only_with_the_key` (cabeçalho não é `SQLite format 3`, abre com a chave, `integrity_check = ok`, mesmos dados; sem a chave/chave errada não abre); `backup_restores_identical_data` (compara tabelas principais linha a linha); `failed_validation_removes_the_partial_file_and_records_the_failure`; `retention_removes_old_files_only_after_a_new_valid_backup` (falha no novo ⇒ nada apagado) e `retention_never_touches_files_outside_the_pattern`; `missing_folder_is_created_and_unwritable_folder_fails_with_a_friendly_message`; `not_enough_space_fails_before_writing` (sonda falsa com pouco espaço, nada criado); `recepcao_cannot_run_a_manual_backup` (`Forbidden`) mas `run_system` não exige sessão; `runs_are_recorded_and_immutable`; migração `0014` cria as tabelas e os gatilhos.
+- [x] **Step 2: Run** `cargo test --lib -- backup` — Expected: FAIL.
+- [x] **Step 3: Implement** migração, repositório, funções puras e o serviço; se a API de backup não funcionar com SQLCipher nesta versão, usar `ATTACH … KEY` + `sqlcipher_export` (registrar o desvio).
+- [x] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 5: Commit** `feat: encrypted validated backups with retention`
 
 ---
 
@@ -138,11 +138,11 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
 - Produces: `HealthService::disk_status(token) -> DiskStatus { free_bytes, db_bytes, threshold_bytes, low: bool }`; achados `backup_missing` (chave `backup`), `disk_low` (chave `disk`), `update_failed` (chave `update`); `AppError::from(rusqlite::Error)` traduz `SQLITE_FULL` para `Validation`-like com código `disk_full` e a frase do K10.
 - Regras (K3, K6, K10): `backup_missing` quando não há `backup_runs` `ok` nas últimas 24 h; o detalhe traz a data do último válido ("Último backup válido: 21/10/2026 às 18:05") ou "Nenhum backup válido foi feito ainda." e, se a última tentativa falhou, o motivo; `disk_low` quando livre < max(1 GiB, 3× banco); `update_failed` quando o último `system_events` de tipo `update_failed` não tem `update_ok` depois; os três são críticos, só `ManageSettings` os vê e somem sozinhos; fechar o caixa dispara `run_system("auto")` em segundo plano e **nunca** muda o resultado do fechamento; ao abrir, `run_system("auto")` se o último válido tem mais de 24 h.
 
-- [ ] **Step 1: Testes:** `backup_missing_appears_without_a_recent_valid_run_and_resolves_after_one`; `a_failed_last_run_shows_its_reason_in_the_alert`; `old_valid_backup_over_24h_raises_the_alert`; `disk_low_uses_the_fake_probe_and_the_threshold` (limite 1 GiB, banco de 600 MB ⇒ 1,8 GB); `update_failed_stays_until_update_ok`; `the_three_alerts_are_admin_only_and_not_dismissable` (recepção não vê nem conta; `dismiss` recusa); `closing_succeeds_even_if_the_backup_fails` (pasta inválida ⇒ fechamento ok, alerta depois); `sqlite_full_is_translated_and_nothing_is_saved` (banco com `PRAGMA max_page_count`; inserir muitas linhas numa operação de serviço ⇒ erro `disk_full` e contagem das tabelas inalterada).
-- [ ] **Step 2: Run** `cargo test --lib -- alert_detectors health closing error` — Expected: FAIL.
-- [ ] **Step 3: Implement** os detectores (lendo `backup_repo` e `DiskProbe`), a permissão por tipo, o disparo pós-fechamento (thread separada, sem unir) e o de abertura.
-- [ ] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 5: Commit** `feat: backup alerts, disk monitor and disk-full handling`
+- [x] **Step 1: Testes:** `backup_missing_appears_without_a_recent_valid_run_and_resolves_after_one`; `a_failed_last_run_shows_its_reason_in_the_alert`; `old_valid_backup_over_24h_raises_the_alert`; `disk_low_uses_the_fake_probe_and_the_threshold` (limite 1 GiB, banco de 600 MB ⇒ 1,8 GB); `update_failed_stays_until_update_ok`; `the_three_alerts_are_admin_only_and_not_dismissable` (recepção não vê nem conta; `dismiss` recusa); `closing_succeeds_even_if_the_backup_fails` (pasta inválida ⇒ fechamento ok, alerta depois); `sqlite_full_is_translated_and_nothing_is_saved` (banco com `PRAGMA max_page_count`; inserir muitas linhas numa operação de serviço ⇒ erro `disk_full` e contagem das tabelas inalterada).
+- [x] **Step 2: Run** `cargo test --lib -- alert_detectors health closing error` — Expected: FAIL.
+- [x] **Step 3: Implement** os detectores (lendo `backup_repo` e `DiskProbe`), a permissão por tipo, o disparo pós-fechamento (thread separada, sem unir) e o de abertura.
+- [x] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 5: Commit** `feat: backup alerts, disk monitor and disk-full handling`
 
 ---
 
@@ -156,11 +156,11 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
 - Produces: `health::check_database(conn) -> IntegrityReport { ok: bool, problems: Vec<String> }` (`PRAGMA integrity_check` + `foreign_key_check`, no máximo 20 problemas, mensagens sem dados); `initialize` grava `system_events` `integrity_problem` quando há problema e, com problema, **não** abre o aplicativo normal: devolve `Err(AppError::IntegrityProblem(resumo))`; `HealthService::last_startup(token) -> StartupReport { checked_at, integrity_ok, problems, app_version, schema_version }`.
 - Regras (K9): a verificação roda a cada abertura (banco pequeno) e o resultado fica no relatório; **crash simulado** não corrompe.
 
-- [ ] **Step 1: Testes:** `a_healthy_database_passes_the_startup_check_and_is_reported`; `a_corrupted_file_is_reported_as_an_integrity_problem_and_does_not_open` (altera bytes de páginas internas de uma cópia); `foreign_key_violations_are_listed_without_row_data`; `crash_in_the_middle_of_a_transaction_leaves_the_database_intact` (abre transação, grava, `mem::forget` da conexão, copia `.db` e `-wal` para outra pasta, reabre a cópia: integridade ok e a gravação **não** está lá, a anterior está); `initialize_with_a_wrong_key_still_fails_with_key_invalid_and_does_not_touch_the_file`; `state_can_be_replaced_after_a_recovery` (o novo `App` troca o estado e os comandos passam a usar o novo).
-- [ ] **Step 2: Run** `cargo test --lib -- health app` — Expected: FAIL.
-- [ ] **Step 3: Implement** a verificação, o relatório, `IntegrityProblem` e a troca de `App` para `RwLock<…Arc…>`; ajustar os comandos que não compilarem.
-- [ ] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` e, **sem** `boreal-pms.exe` aberto, `cargo test --test startup` — Expected: PASS / limpo.
-- [ ] **Step 5: Commit** `feat: startup integrity check and recovery mode state`
+- [x] **Step 1: Testes:** `a_healthy_database_passes_the_startup_check_and_is_reported`; `a_corrupted_file_is_reported_as_an_integrity_problem_and_does_not_open` (altera bytes de páginas internas de uma cópia); `foreign_key_violations_are_listed_without_row_data`; `crash_in_the_middle_of_a_transaction_leaves_the_database_intact` (abre transação, grava, `mem::forget` da conexão, copia `.db` e `-wal` para outra pasta, reabre a cópia: integridade ok e a gravação **não** está lá, a anterior está); `initialize_with_a_wrong_key_still_fails_with_key_invalid_and_does_not_touch_the_file`; `state_can_be_replaced_after_a_recovery` (o novo `App` troca o estado e os comandos passam a usar o novo).
+- [x] **Step 2: Run** `cargo test --lib -- health app` — Expected: FAIL.
+- [x] **Step 3: Implement** a verificação, o relatório, `IntegrityProblem` e a troca de `App` para `RwLock<…Arc…>`; ajustar os comandos que não compilarem.
+- [x] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` e, **sem** `boreal-pms.exe` aberto, `cargo test --test startup` — Expected: PASS / limpo.
+- [x] **Step 5: Commit** `feat: startup integrity check and recovery mode state`
 
 ---
 
@@ -178,11 +178,11 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
   - `RecoveryService::recover_corrupted(backup_path, recovery_key_text, confirmation, db_path, keys) -> Result<(), AppError>`; comandos `preview_restore`, `restore_backup`, `restore_on_new_computer`, `recover_corrupted` (os dois últimos sem sessão e que reinicializam o estado).
 - Regras (K7–K9): confirmação exata `RESTAURAR` (senão `Validation`), senha do administrador conferida, backup inválido/de esquema mais novo recusado **antes** de qualquer escrita; cópia de segurança obrigatória (`pre_restore`); restaura pela API de backup para dentro da conexão; reaplica migrações; confere a integridade; encerra todas as sessões; registra `system_events` `restore` e a auditoria no banco restaurado (usuário nulo, nome no texto); chave errada ⇒ `KeyInvalid` sem alterar nada; nova máquina grava a chave no cofre **somente depois** de o backup abrir com ela.
 
-- [ ] **Step 1: Testes:** `restore_brings_back_exactly_the_backed_up_data` (cria dados, backup, altera, restaura, compara); `restore_makes_a_safety_copy_first_and_fails_without_it`; `invalid_or_newer_schema_backups_are_refused_without_touching_the_database`; `wrong_confirmation_or_wrong_password_changes_nothing`; `reception_cannot_preview_or_restore` (`Forbidden`); `restore_ends_all_sessions_and_audits_in_the_restored_database`; `restoring_an_older_schema_backup_migrates_it_forward`; `new_computer_restore_end_to_end` (banco A + backup → chave de recuperação → pasta vazia B com cofre vazio: nova máquina restaura, a chave vai ao cofre, o app abre e os dados batem; com chave errada nada é criado nem gravado no cofre); `new_computer_restore_refuses_when_a_database_already_exists`; `corrupted_database_can_be_recovered_with_key_and_typed_confirmation` (guarda a cópia `boreal-com-problema-…`).
-- [ ] **Step 2: Run** `cargo test --lib -- restore recovery` — Expected: FAIL.
-- [ ] **Step 3: Implement** prévia, restauração, nova máquina e recuperação, e os comandos.
-- [ ] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 5: Commit** `feat: safe restore, new computer restore and corrupted database recovery`
+- [x] **Step 1: Testes:** `restore_brings_back_exactly_the_backed_up_data` (cria dados, backup, altera, restaura, compara); `restore_makes_a_safety_copy_first_and_fails_without_it`; `invalid_or_newer_schema_backups_are_refused_without_touching_the_database`; `wrong_confirmation_or_wrong_password_changes_nothing`; `reception_cannot_preview_or_restore` (`Forbidden`); `restore_ends_all_sessions_and_audits_in_the_restored_database`; `restoring_an_older_schema_backup_migrates_it_forward`; `new_computer_restore_end_to_end` (banco A + backup → chave de recuperação → pasta vazia B com cofre vazio: nova máquina restaura, a chave vai ao cofre, o app abre e os dados batem; com chave errada nada é criado nem gravado no cofre); `new_computer_restore_refuses_when_a_database_already_exists`; `corrupted_database_can_be_recovered_with_key_and_typed_confirmation` (guarda a cópia `boreal-com-problema-…`).
+- [x] **Step 2: Run** `cargo test --lib -- restore recovery` — Expected: FAIL.
+- [x] **Step 3: Implement** prévia, restauração, nova máquina e recuperação, e os comandos.
+- [x] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 5: Commit** `feat: safe restore, new computer restore and corrupted database recovery`
 
 ---
 
@@ -196,11 +196,11 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
 - Produces: `migrations::pending(conn) -> usize`; `initialize` com a ordem **abrir → verificar integridade → (pendentes e dados?) backup `pre_migration` → migrar → registrar `update_ok`**; falha de backup ⇒ `Err(AppError::MigrationBackupFailed)` com texto "Não foi possível fazer o backup antes de atualizar o banco. Seus dados estão intactos…" e **nenhuma** migração aplicada; falha de migração ⇒ `startup-status.json` (`{ "failed_at", "message" }`, sem dados) e erro claro; na abertura seguinte bem-sucedida, o evento `update_failed` entra em `system_events`.
 - Regras (K11, K12): banco novo (sem dados) migra sem backup; `SchemaTooNew` mantém a recusa com texto "Este banco foi criado por uma versão mais nova do Boreal…"; Configurações → Sobre mostra versão do app, do esquema, última atualização e último backup válido.
 
-- [ ] **Step 1: Testes:** `pending_migrations_with_data_make_a_backup_first` (banco no esquema 12 com dados; `initialize` ⇒ arquivo `.bak` válido existe e o esquema vai a 14); `a_fresh_database_migrates_without_a_backup`; `if_the_pre_migration_backup_fails_nothing_is_migrated` (pasta de backup impossível ⇒ erro e `schema_migrations` intacto); `a_failing_migration_leaves_the_previous_database_intact_and_writes_the_status_file`; `next_successful_start_records_update_failed_and_the_alert_resolves_after_update_ok`; `a_newer_database_is_refused_with_a_plain_message_and_untouched`; `about_info_includes_the_last_valid_backup`.
-- [ ] **Step 2: Run** `cargo test --lib -- app migrations` — Expected: FAIL.
-- [ ] **Step 3: Implement** o fluxo de `initialize`, o arquivo auxiliar e os eventos; front: `AboutCard` e o texto da `StartupError`.
-- [ ] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings`, `npx vitest run src/pages/settings`, `npx tsc --noEmit` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: backup before migrating and update failure tracking`
+- [x] **Step 1: Testes:** `pending_migrations_with_data_make_a_backup_first` (banco no esquema 12 com dados; `initialize` ⇒ arquivo `.bak` válido existe e o esquema vai a 14); `a_fresh_database_migrates_without_a_backup`; `if_the_pre_migration_backup_fails_nothing_is_migrated` (pasta de backup impossível ⇒ erro e `schema_migrations` intacto); `a_failing_migration_leaves_the_previous_database_intact_and_writes_the_status_file`; `next_successful_start_records_update_failed_and_the_alert_resolves_after_update_ok`; `a_newer_database_is_refused_with_a_plain_message_and_untouched`; `about_info_includes_the_last_valid_backup`.
+- [x] **Step 2: Run** `cargo test --lib -- app migrations` — Expected: FAIL.
+- [x] **Step 3: Implement** o fluxo de `initialize`, o arquivo auxiliar e os eventos; front: `AboutCard` e o texto da `StartupError`.
+- [x] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings`, `npx vitest run src/pages/settings`, `npx tsc --noEmit` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: backup before migrating and update failure tracking`
 
 ---
 
@@ -215,11 +215,11 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
 - Produces: `logging::{init(dir: &Path), event(level: Level, name: &str, message: &str), rotate(dir, today, keep_days)}`; formato `2026-10-21T18:05:00-03:00 INFO backup.ok mensagem`; `logging::scrub(message) -> String` remove caminhos completos (mantém só o nome do arquivo), sequências de 64 caracteres hexadecimais e qualquer texto depois de `senha=`/`password=`.
 - Regras (K13): arquivos diários, 14 dias; linha com no máximo 500 caracteres; falha ao escrever o log **nunca** propaga.
 
-- [ ] **Step 1: Testes:** `writes_one_line_per_event_in_the_daily_file`; `rotation_keeps_the_last_14_days_and_ignores_other_files`; `scrub_removes_full_paths_hex_keys_and_passwords`; `a_log_failure_never_breaks_the_caller` (pasta somente leitura simulada); `backup_and_restore_log_events_without_secrets` (executa um backup e uma restauração com chave conhecida e confere que nenhum arquivo de log contém a chave, a senha ou o caminho completo).
-- [ ] **Step 2: Run** `cargo test --lib -- logging` — Expected: FAIL.
-- [ ] **Step 3: Implement** o módulo e ligar os eventos (backup ok/falha, restauração, integridade, migração).
-- [ ] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 5: Commit** `feat: technical logs without secrets`
+- [x] **Step 1: Testes:** `writes_one_line_per_event_in_the_daily_file`; `rotation_keeps_the_last_14_days_and_ignores_other_files`; `scrub_removes_full_paths_hex_keys_and_passwords`; `a_log_failure_never_breaks_the_caller` (pasta somente leitura simulada); `backup_and_restore_log_events_without_secrets` (executa um backup e uma restauração com chave conhecida e confere que nenhum arquivo de log contém a chave, a senha ou o caminho completo).
+- [x] **Step 2: Run** `cargo test --lib -- logging` — Expected: FAIL.
+- [x] **Step 3: Implement** o módulo e ligar os eventos (backup ok/falha, restauração, integridade, migração).
+- [x] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 5: Commit** `feat: technical logs without secrets`
 
 ---
 
@@ -233,11 +233,11 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
 - Produces (cliente): `listBackupFiles`, `recentBackupRuns`, `runBackup`, `diskStatus`, `lastStartup`, `revealRecoveryKey`, `previewRestore`, `restoreBackup`, `restoreOnNewComputer`, `recoverCorrupted` e os tipos `BackupRunView`, `BackupFileView`, `DiskStatus`, `StartupReport`, `RestorePreview`; `HealthPage` com: **Backup** (pasta atual, **Fazer backup agora**, lista dos últimos backups com data, tamanho e situação em texto, mensagem do último erro), **Restaurar** (escolher da lista ou **Escolher outro arquivo**; `RestoreDialog` mostra a **prévia** em texto, exige digitar `RESTAURAR` e a senha, botão **Restaurar este backup**; depois do sucesso volta ao login), **Chave de recuperação** (`RecoveryKeyCard`: **Mostrar chave** pede a senha, mostra os 9 grupos, **Imprimir** e aviso "guarde fora do computador; sem ela e sem este computador os dados não podem ser recuperados"), **Espaço em disco** (livre, limite, situação em texto e ícone), **Versões e verificação** (aplicativo, esquema, última verificação de integridade, pasta de logs).
 - Regras: só o administrador vê o item e a tela (os comandos recusam a recepção); tudo com texto, não só cor; erros em linguagem simples; a senha nunca fica no estado depois do envio.
 
-- [ ] **Step 1: Testes:** `NavItems`/`Sidebar` (item só para o administrador; destino `/saude` existe); `HealthPage` (recepção vê o aviso e nada é consultado; administrador vê as cinco áreas); `BackupCard` (**Fazer backup agora** chama `runBackup` e mostra "Backup concluído: boreal-….bak"; falha mostra a mensagem do backend e a lista continua; estados vazio e carregando); `RestoreDialog` (prévia em texto; botão desabilitado até digitar `RESTAURAR` e a senha; cancelar não chama a API; sucesso chama `restoreBackup` e leva a `/login`; senha errada mostra o erro e **mantém** o diálogo; backup de esquema mais novo mostra a recusa); `RecoveryKeyCard` (pede a senha antes; mostra 9 grupos; senha errada não mostra nada; **Imprimir** chama `window.print`); `DiskCard` (limite e situação em texto, "Pouco espaço" com ícone); `FirstRun` (link **Já tenho um backup** abre `RecoverFromBackup`; chave inválida mostra o erro e nada é criado; sucesso recarrega); `StartupError` com problema de integridade oferece a recuperação; `SystemForm` (pasta de backup com **Escolher pasta**).
-- [ ] **Step 2: Run** `npx vitest run src/pages/health src/pages src/components/layout` — Expected: FAIL.
-- [ ] **Step 3: Implement** as telas e as chamadas; no Rust, completar `commands/health.rs`.
-- [ ] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings`, `cargo check`, `npx vitest run`, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: system health screen with backup, restore and recovery key`
+- [x] **Step 1: Testes:** `NavItems`/`Sidebar` (item só para o administrador; destino `/saude` existe); `HealthPage` (recepção vê o aviso e nada é consultado; administrador vê as cinco áreas); `BackupCard` (**Fazer backup agora** chama `runBackup` e mostra "Backup concluído: boreal-….bak"; falha mostra a mensagem do backend e a lista continua; estados vazio e carregando); `RestoreDialog` (prévia em texto; botão desabilitado até digitar `RESTAURAR` e a senha; cancelar não chama a API; sucesso chama `restoreBackup` e leva a `/login`; senha errada mostra o erro e **mantém** o diálogo; backup de esquema mais novo mostra a recusa); `RecoveryKeyCard` (pede a senha antes; mostra 9 grupos; senha errada não mostra nada; **Imprimir** chama `window.print`); `DiskCard` (limite e situação em texto, "Pouco espaço" com ícone); `FirstRun` (link **Já tenho um backup** abre `RecoverFromBackup`; chave inválida mostra o erro e nada é criado; sucesso recarrega); `StartupError` com problema de integridade oferece a recuperação; `SystemForm` (pasta de backup com **Escolher pasta**).
+- [x] **Step 2: Run** `npx vitest run src/pages/health src/pages src/components/layout` — Expected: FAIL.
+- [x] **Step 3: Implement** as telas e as chamadas; no Rust, completar `commands/health.rs`.
+- [x] **Step 4: Run** `cargo test --lib`, `cargo clippy --all-targets -- -D warnings`, `cargo check`, `npx vitest run`, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: system health screen with backup, restore and recovery key`
 
 ---
 
@@ -247,11 +247,11 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
 - Modify: `src-tauri/tauri.conf.json` (CSP), `capabilities/default.json` (revisão), `Cargo.toml`/`package.json` (somente se uma atualização segura for trivial e testada), `docs/desenvolvimento/seguranca-operacional.md`
 - Test: `src/lib/csp.test.ts` (novo), `tests/`
 
-- [ ] **Step 1: Testes:** `csp.test.ts` lê `tauri.conf.json` e afirma `default-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`, `form-action 'self'`, ausência de `unsafe-eval` e de `*`; `capabilities.test.ts` afirma que só as permissões **listadas** existem (lista fechada no teste: `core:default`, as `core:window:allow-*` da barra de título, `dialog:allow-save`, `dialog:allow-open`) — acrescentar uma permissão exige mudar o teste de propósito; Rust: `secret_key_is_zeroed_on_drop` (se ainda não coberto) e `debug_output_never_shows_secrets` para `SecretKey`, `LogoChange` e as entradas de senha.
-- [ ] **Step 2: Run** `npx vitest run src/lib` — Expected: FAIL.
-- [ ] **Step 3: Implement** a CSP, a revisão das permissões e rodar `npm audit` e `cargo audit` (instalar a ferramenta se faltar; se não for possível, registrar como pendência); documentar cada achado em `seguranca-operacional.md` com decisão (corrigido, aceito com justificativa ou aguardando).
-- [ ] **Step 4: Run** `npx vitest run`, `npm run build`, `cargo check` (valida a CSP e as permissões) — Expected: PASS.
-- [ ] **Step 5: Commit** `chore: tighten csp and review permissions and dependencies`
+- [x] **Step 1: Testes:** `csp.test.ts` lê `tauri.conf.json` e afirma `default-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`, `form-action 'self'`, ausência de `unsafe-eval` e de `*`; `capabilities.test.ts` afirma que só as permissões **listadas** existem (lista fechada no teste: `core:default`, as `core:window:allow-*` da barra de título, `dialog:allow-save`, `dialog:allow-open`) — acrescentar uma permissão exige mudar o teste de propósito; Rust: `secret_key_is_zeroed_on_drop` (se ainda não coberto) e `debug_output_never_shows_secrets` para `SecretKey`, `LogoChange` e as entradas de senha.
+- [x] **Step 2: Run** `npx vitest run src/lib` — Expected: FAIL.
+- [x] **Step 3: Implement** a CSP, a revisão das permissões e rodar `npm audit` e `cargo audit` (instalar a ferramenta se faltar; se não for possível, registrar como pendência); documentar cada achado em `seguranca-operacional.md` com decisão (corrigido, aceito com justificativa ou aguardando).
+- [x] **Step 4: Run** `npx vitest run`, `npm run build`, `cargo check` (valida a CSP e as permissões) — Expected: PASS.
+- [x] **Step 5: Commit** `chore: tighten csp and review permissions and dependencies`
 
 ---
 
@@ -261,18 +261,36 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
 - Modify: `seed.rs` (+ teste), `docs/desenvolvimento/seed.md`, `CHANGELOG.md`, `docs/usuario/README.md`, `docs/usuario/roteiro-de-treinamento.md`, `docs/desenvolvimento/README.md`, `local/plano-completo.md`, `local/spec.md` (Anexo A.9 com K1–K15), este plano
 - Create: `docs/usuario/{backup-e-restauracao,chave-de-recuperacao,saude-do-sistema}.md`, `docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md`
 
-- [ ] **Step 1: Seed:** o cenário de desenvolvimento cria uma pasta de backup de demonstração **fora do repositório** (a do banco de demonstração) e o teste afirma que `backup.run_system("manual")` funciona e que o alerta de backup some depois dele.
-- [ ] **Step 2: Docs:** guias de usuário (fazer e conferir backup, restaurar, **trocar de computador** passo a passo, guardar a chave de recuperação, o que fazer quando aparece cada alerta, banco com problema), de desenvolvimento (formato do backup, validação, retenção, restauração por dentro da conexão, ordem do `initialize`, arquivo auxiliar, logs, procedimento de **reversão de migração** com o backup `pre_migration`, limitações), `CHANGELOG.md`, roteiro (módulos de Backup e restauração e de Saúde do sistema, com ⚠ nos limites provisórios), Anexo A.9, `plano-completo.md`.
-- [ ] **Step 3: Verificação completa:** `cargo test --features dev-seed --lib` (e `--test startup` com o aplicativo fechado), `cargo clippy --all-targets --features dev-seed -- -D warnings`, `npx vitest run`, `npx tsc --noEmit`, `npm run build`; registrar contagens e tempos (backup e restauração de um banco com 5 anos de dados fictícios) no Status.
-- [ ] **Step 4:** `graphify update .`; anotar no Status.
-- [ ] **Step 5:** Revisão final por revisor independente (modelo mais capaz) com o Review Focus; corrigir Críticos/Importantes (TDD); registrar menores adiados; atualizar Status, desvios e pendências.
-- [ ] **Step 6: Commit** `docs: close marco 7`
+- [x] **Step 1: Seed:** o cenário de desenvolvimento cria uma pasta de backup de demonstração **fora do repositório** (a do banco de demonstração) e o teste afirma que `backup.run_system("manual")` funciona e que o alerta de backup some depois dele.
+- [x] **Step 2: Docs:** guias de usuário (fazer e conferir backup, restaurar, **trocar de computador** passo a passo, guardar a chave de recuperação, o que fazer quando aparece cada alerta, banco com problema), de desenvolvimento (formato do backup, validação, retenção, restauração por dentro da conexão, ordem do `initialize`, arquivo auxiliar, logs, procedimento de **reversão de migração** com o backup `pre_migration`, limitações), `CHANGELOG.md`, roteiro (módulos de Backup e restauração e de Saúde do sistema, com ⚠ nos limites provisórios), Anexo A.9, `plano-completo.md`.
+- [x] **Step 3: Verificação completa:** `cargo test --features dev-seed --lib` (e `--test startup` com o aplicativo fechado), `cargo clippy --all-targets --features dev-seed -- -D warnings`, `npx vitest run`, `npx tsc --noEmit`, `npm run build`; registrar contagens e tempos (backup e restauração de um banco com 5 anos de dados fictícios) no Status.
+- [x] **Step 4:** `graphify update .`; anotar no Status.
+- [x] **Step 5:** Revisão final por revisor independente (modelo mais capaz) com o Review Focus; corrigir Críticos/Importantes (TDD); registrar menores adiados; atualizar Status, desvios e pendências.
+- [x] **Step 6: Commit** `docs: close marco 7`
 
 ---
 
 ## Status
 
-**Não iniciado.** Plano escrito em 03/11/2026.
+**Implementado, aguardando revisão final** na branch `marco-7-backup` (a partir de `marco-6-4-relatorios`). T1 a T10 concluídas; migração `0014`.
+
+- **Testes (última execução completa):** `cargo test --features dev-seed --lib` 686 testes; `cargo test --test startup` 7 (os 4 de antes e 3 novos, agora executados com o aplicativo fechado); `cargo clippy --all-targets --features dev-seed -- -D warnings` limpo; `npx vitest run` 572 testes em 70 arquivos (`RatesPage` e outros testes por tempo falham só sob carga total e passam sozinhos); `npx tsc --noEmit`, `npm run build` e `cargo check` (valida CSP e permissões) limpos; `graphify update .` executado.
+- **Auditoria:** `npm audit --omit=dev` 0 vulnerabilidades (o `shadcn` passou a `devDependencies`); `cargo audit` achou 1 vulnerabilidade em `ctutils` (do `argon2`), corrigida com `cargo update -p ctutils`; 6 avisos de crates sem manutenção/unsound de dependências Linux do Tauri aceitos (ver `docs/desenvolvimento/seguranca-operacional.md`).
+- **Pendências de verificação (manuais, `npm run tauri dev` com o aplicativo real):** escolher a pasta de backup com o seletor; backup num pen drive; restaurar e voltar ao login; **trocar de computador** de ponta a ponta numa instalação limpa (cofre do Windows de verdade: gravar a chave, abrir o banco restaurado); modo de recuperação com um banco realmente corrompido; imprimir a chave de recuperação; antivírus de terceiros com os arquivos `.partial`; tempo de backup e de restauração com meses de dados.
+
+## Desvios e decisões da execução
+
+- A **pasta de backup** ficou no cartão Backup da tela Saúde do sistema (não no formulário de Configurações), para não mexer em `AppSettings` e seus testes; a configuração é a chave `backup_dir` em `settings`.
+- Os testes de "fechamento não falha se o backup falhar" cobrem `spawn_auto` e o alerta (o disparo fica no comando `close_cash`, que ignora o resultado), não o serviço de fechamento.
+- `reveal` com senha errada devolve `Validation("A senha está incorreta.")`, igual a `change_own_password` (o plano previa `InvalidCredentials`).
+- **Defeito de desenho achado na execução:** a cópia de segurança pré-restauração usava o mesmo nome e a mesma **retenção diária** dos backups e, no mesmo dia, apagava o backup que estava sendo restaurado. Passou a ter nome próprio (`boreal-seguranca-…bak`), retenção própria (5) e fora da retenção diária.
+- Restaurar troca o banco inteiro, então o histórico de backups voltava ao do backup; a cópia de segurança é registrada no banco restaurado (e conta como backup válido).
+- `Ctx::production` lia uma configuração que só existe depois de migrar; passou a usar o padrão e `initialize` relê o tempo de inatividade depois das migrações.
+- `unlock_with_recovery_key` (chave perdida com o banco existente) não estava no plano; entrou por causa de "perda de credencial do SO" (7.1).
+- `PRAGMA page_size` volta como texto no SQLCipher; o tamanho do banco usa o arquivo (backup) ou trata os dois tipos (saúde).
+- A API de backup do SQLite funcionou com SQLCipher nos dois sentidos; não foi preciso `sqlcipher_export`.
+- Sem registro em `system_events` de integridade (o banco com problema não é confiável); fica só o log técnico.
+
 
 ## Marcos seguintes
 

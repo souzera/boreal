@@ -44,6 +44,8 @@ O mesmo cenário alimenta a **Recepção** (chegada de hoje no 201, conflito de 
 
 O cenário também alimenta os **relatórios** (recebimentos de hoje, ocupação, contas) e permite emitir os quatro **documentos internos**; `seed_feeds_the_reports_and_the_internal_documents` confere isso.
 
+O banco de demonstração **não** tem backup: o alerta **Sem backup válido** aparece e some depois de **Fazer backup agora** (o backup fica na pasta `backups` ao lado do banco de demonstração, fora do repositório); `seed_shows_the_backup_alert_and_it_clears_after_a_backup` confere isso e a chave de recuperação.
+
 ## Banco de demonstração à parte
 
 O seed recusa banco com quartos. Para não mexer no banco que você já usa, aponte `--db` para um arquivo novo (a chave do cofre é reaproveitada e o arquivo nasce cifrado), por exemplo `%APPDATA%\br.com.boreal.pms\demo\boreal.db`. O aplicativo só abre `%APPDATA%\br.com.boreal.pms\boreal.db`: para ver a demonstração nele, feche o app, guarde o banco atual e coloque o arquivo da demonstração no lugar.
