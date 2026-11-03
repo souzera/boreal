@@ -136,6 +136,27 @@ describe("ReportsPage", () => {
     expect(screen.getByText("Período: 25/09/2099 a 24/10/2099")).toBeInTheDocument();
   });
 
+  it("Gerar relatório de novo com os mesmos filtros consulta de novo (dados novos)", async () => {
+    open("?tipo=receipts&de=2099-09-25&ate=2099-10-24");
+    await screen.findByRole("region", { name: "Resultado" });
+    expect(api.runReport).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Gerar relatório" }));
+
+    await waitFor(() => expect(api.runReport).toHaveBeenCalledTimes(2));
+  });
+
+  it("falha do diálogo Salvar como mostra a mensagem em vez de quebrar", async () => {
+    save.mockRejectedValue(new Error("boom"));
+    open("?tipo=receipts");
+    await screen.findByRole("region", { name: "Resultado" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Exportar CSV" }));
+
+    expect(await screen.findByText("Não foi possível abrir a janela de salvar. Tente de novo.")).toBeInTheDocument();
+    expect(api.exportReportCsv).not.toHaveBeenCalled();
+  });
+
   it("vazio explica e truncado avisa", async () => {
     vi.mocked(api.runReport).mockResolvedValue(table({ rows: [], totals: null }));
     open("?tipo=receipts");

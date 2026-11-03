@@ -19,7 +19,7 @@ Qualquer sessão válida emite e lista. Confirmação só para reserva `pending|
 
 ## Conteúdo (D11, provisório ⚠)
 
-O instantâneo não inclui CPF, e-mail, observações internas nem justificativas. Confirmação: reserva, hóspede e telefone, quarto e categoria, datas e horários, ocupantes, diárias, valores e sinal. Comprovante: número, data e hora locais, quem recebeu, referência e componentes por forma de pagamento. Ficha: ocupantes com o documento informado e linha de assinatura. Demonstrativo: lançamentos, recebimentos, devoluções e situação final em palavras.
+O instantâneo não inclui o CPF cadastrado do hóspede, e-mail, observações internas nem justificativas. **Exceção:** a ficha grava o "documento" que o ocupante informou, que é texto livre e pode ser um CPF completo; o teste de ausência de CPF cobre a confirmação. Confirmação: reserva, hóspede e telefone, quarto e categoria, datas e horários, ocupantes, diárias, valores e sinal. Comprovante: número, data e hora locais, quem recebeu, referência e componentes por forma de pagamento. Ficha: ocupantes com o documento informado e linha de assinatura. Demonstrativo: lançamentos, recebimentos, devoluções e situação final em palavras.
 
 ## Frontend
 
@@ -28,6 +28,7 @@ O instantâneo não inclui CPF, e-mail, observações internas nem justificativa
 ## Limitações
 
 - Sem logotipo nos PDFs (v1) e sem assinatura digital.
+- O instantâneo guarda só o que o PDF mostra (a ficha não guarda a situação da hospedagem, para não criar versão sem mudança visível).
 - O instantâneo só muda quando os dados exibidos mudam; mudanças que não aparecem no documento (por exemplo, observações) não criam versão.
 - O backup do Marco 7 deve incluir a tabela `documents`.
 

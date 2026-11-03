@@ -121,6 +121,17 @@ describe("DocumentActions", () => {
     expect(api.issueDocument).not.toHaveBeenCalled();
   });
 
+  it("falha do diálogo Salvar como mostra a mensagem e não grava nada", async () => {
+    vi.mocked(api.listDocuments).mockResolvedValue([doc(1, true)]);
+    save.mockRejectedValue(new Error("boom"));
+    show();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Salvar PDF da versão 1" }));
+
+    expect(await screen.findByText("Não foi possível abrir a janela de salvar. Tente de novo.")).toBeInTheDocument();
+    expect(api.saveDocumentPdf).not.toHaveBeenCalled();
+  });
+
   it("erro ao emitir mostra a mensagem do backend", async () => {
     vi.mocked(api.issueDocument).mockRejectedValue({ code: "validation", message: "O demonstrativo final só pode ser emitido depois do check-out." });
     show();

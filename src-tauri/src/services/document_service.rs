@@ -163,7 +163,6 @@ impl DocumentService {
         Ok(json!({
             "pousada": Self::pousada(conn)?,
             "code": p.code,
-            "kind": p.kind,
             "received_at": self.local_text(&p.received_at),
             "received_by": p.received_by_name,
             "guest_name": p.guest_name,
@@ -185,7 +184,6 @@ impl DocumentService {
         Ok(json!({
             "pousada": Self::pousada(conn)?,
             "code": s.code,
-            "status": s.status,
             "guest_name": s.guest_name,
             "room_code": s.room_code,
             "category": document_repo::category_name(conn, room_id)?,

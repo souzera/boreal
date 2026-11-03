@@ -87,7 +87,7 @@ impl ReportService {
         self.ctx.sessions.touch(token, self.ctx.clock.now())?;
         let target = std::path::Path::new(path);
         let ext_ok = target.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("pdf") || e.eq_ignore_ascii_case("csv"));
-        if !ext_ok || !target.is_file() {
+        if !ext_ok || !target.is_absolute() || !target.is_file() {
             return Err(invalid("Arquivo não encontrado. Exporte de novo."));
         }
         Ok(())
@@ -224,12 +224,21 @@ pub(crate) fn write_export(path: &str, ext: &str, bytes: &[u8]) -> Result<Export
     if !ext_ok {
         return Err(invalid(format!("O arquivo precisa terminar em .{ext}.")));
     }
+    if !target.is_absolute() {
+        return Err(invalid("Escolha o local do arquivo no diálogo Salvar como."));
+    }
     let name = target.file_name().and_then(|n| n.to_str()).ok_or_else(|| invalid("Caminho inválido."))?;
     let temp = target.with_file_name(format!("{name}.boreal-tmp"));
     let written = std::fs::write(&temp, bytes).and_then(|()| std::fs::rename(&temp, target));
-    if written.is_err() {
+    if let Err(e) = written {
         let _ = std::fs::remove_file(&temp);
-        return Err(invalid("Não foi possível gravar neste local. Escolha outra pasta e tente de novo."));
+        // Arquivo aberto em outro programa (leitor de PDF, Excel): a pasta está certa, o arquivo é que está em uso.
+        let in_use = e.kind() == std::io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(32);
+        return Err(invalid(if in_use {
+            "Não foi possível gravar: o arquivo pode estar aberto em outro programa. Feche-o e tente de novo, ou escolha outro nome."
+        } else {
+            "Não foi possível gravar neste local. Escolha outra pasta e tente de novo."
+        }));
     }
     Ok(ExportResult { path: path.to_string(), bytes: bytes.len() as u64 })
 }
@@ -260,7 +269,7 @@ pub fn table_pdf(table: &ReportTable, pousada: &str, issued_at: &str) -> Vec<u8>
     let columns: Vec<PdfColumn> = table.columns.iter().map(pdf_column).collect();
     let rows: Vec<Vec<String>> = table.rows.iter().map(|r| r.iter().map(cell_text).collect()).collect();
     let totals: Option<Vec<String>> = table.totals.as_ref().map(|t| t.iter().map(cell_text).collect());
-    doc.table(&columns, &rows, totals.as_deref());
+    doc.table_or(&columns, &rows, totals.as_deref(), "Nenhum registro para estes filtros.");
     if table.truncated {
         doc.spacer(6.0);
         doc.text(crate::domain::csv::TRUNCATED_NOTE);
@@ -304,7 +313,7 @@ fn occupancy(conn: &rusqlite::Connection, scope: &Scope) -> Result<Built, AppErr
             let rooms = sum_int(rows, 1);
             let occupied = sum_int(rows, 2);
             let rate = if rooms == 0 { 0 } else { (occupied * 20_000 + rooms) / (2 * rooms) };
-            Some(vec![Cell::text("Média do período"), Cell::Empty, Cell::Int(occupied), Cell::Empty, Cell::Percent(rate)])
+            Some(vec![Cell::text("Média do período"), Cell::Empty, Cell::Empty, Cell::Empty, Cell::Percent(rate)])
         }),
     ))
 }
@@ -324,7 +333,18 @@ fn reservations(conn: &rusqlite::Connection, scope: &Scope) -> Result<Built, App
         ],
         rows,
         Box::new(|rows| {
-            Some(vec![total_label(), Cell::Empty, Cell::Empty, Cell::Empty, Cell::Empty, Cell::Int(sum_int(rows, 5)), Cell::Empty, Cell::Money(sum_money(rows, 7))])
+            // Canceladas e no-shows não entram nos totais (inflariam o valor combinado).
+            let active: Rows = rows.iter().filter(|r| !matches!(r.get(6), Some(Cell::Text(s)) if s == "Cancelada" || s == "No-show")).cloned().collect();
+            Some(vec![
+                Cell::text("Total (sem canceladas e no-shows)"),
+                Cell::Empty,
+                Cell::Empty,
+                Cell::Empty,
+                Cell::Empty,
+                Cell::Int(sum_int(&active, 5)),
+                Cell::Empty,
+                Cell::Money(sum_money(&active, 7)),
+            ])
         }),
     ))
 }
@@ -638,6 +658,23 @@ mod tests {
     }
 
     #[test]
+    fn reservation_totals_leave_out_cancelled_and_no_show() {
+        let w = world();
+        let room2 = room(&w, "102");
+        book(&w.h, &w.admin, &w.seed, "2026-10-21", "2026-10-23");
+        let cancelled = book_in(&w, room2, w.seed.guest_id, "2026-10-21", "2026-10-23");
+        let version = w.h.reservations.get(&w.admin, cancelled).unwrap().reservation.version;
+        w.h.reservations.cancel(&w.admin, cancelled, version, None).unwrap();
+
+        let table = run(&w, query("reservations", "2026-10-21", "2026-10-21"));
+
+        assert_eq!(table.rows.len(), 2, "a cancelada continua na lista");
+        let totals = table.totals.unwrap();
+        assert_eq!(totals[7], Cell::Money(40_000), "só a reserva ativa soma");
+        assert_eq!(totals[0], Cell::text("Total (sem canceladas e no-shows)"));
+    }
+
+    #[test]
     fn reservations_use_the_arrival_date() {
         let w = world();
         let room2 = room(&w, "102");
@@ -866,6 +903,18 @@ mod export_tests {
     }
 
     #[test]
+    fn relative_paths_are_refused_for_export_and_for_opening() {
+        let h = harness();
+        let admin = admin_token(&h);
+
+        let export = h.reports.export_csv(&admin, day("occupancy"), ";", "relatorio.csv");
+        let open = h.reports.check_openable(&admin, "relatorio.csv");
+
+        assert!(matches!(export, Err(AppError::Validation(_))) && open.is_err());
+        assert!(!std::path::Path::new("relatorio.csv").exists());
+    }
+
+    #[test]
     fn only_existing_pdf_or_csv_files_can_be_opened() {
         let h = harness();
         let admin = admin_token(&h);
@@ -943,7 +992,7 @@ mod pdf_tests {
         let pdf = h.reports.pdf(&admin, ReportQuery::new("balances")).unwrap();
 
         assert!(String::from_utf8_lossy(&pdf).contains("/MediaBox [0 0 595 842]"));
-        assert!(extract_text(&pdf).contains(&"Nenhum registro no período.".to_string()));
+        assert!(extract_text(&pdf).contains(&"Nenhum registro para estes filtros.".to_string()));
     }
 }
 
@@ -1216,6 +1265,30 @@ mod finance_tests {
         assert_eq!(texts(&cash)[7], "Troco devolvido");
         assert_eq!(table.totals.unwrap()[6], Cell::Money(-1_000));
         assert_eq!(cash_only.rows.len(), 1);
+    }
+
+    #[test]
+    fn paid_in_period_follows_the_text_and_status_filters_too() {
+        let w = world();
+        let energy = category(&w, "Energia do mês");
+        let mut copel = bill(energy, 50_000, "2026-10-15", "2026-11-10");
+        copel.supplier = "Copel".into();
+        let mut sanepar = bill(energy, 30_000, "2026-10-15", "2026-11-10");
+        sanepar.supplier = "Sanepar".into();
+        let a = w.h.payables.create(&w.admin, copel).unwrap();
+        let b = w.h.payables.create(&w.admin, sanepar).unwrap();
+        for (id, cents) in [(a, 20_000), (b, 5_000)] {
+            let version = w.h.payables.get(&w.admin, id).unwrap().payable.version;
+            w.h.payables.pay(&w.admin, id, PayInput { amount_cents: cents, method: "pix".into(), note: String::new() }, version).unwrap();
+        }
+
+        let by_text = run(&w, ReportQuery { text: Some("copel".into()), ..query("property_expenses", "2026-10-01", "2026-10-31") });
+        let everything = run(&w, query("property_expenses", "2026-10-01", "2026-10-31"));
+        let by_status = run(&w, ReportQuery { status: Some("paid".into()), ..query("property_expenses", "2026-10-01", "2026-10-31") });
+
+        assert!(by_text.filters.contains(&"Pago no período (data efetiva): R$ 200,00".to_string()), "{:?}", by_text.filters);
+        assert!(everything.filters.contains(&"Pago no período (data efetiva): R$ 250,00".to_string()), "{:?}", everything.filters);
+        assert!(by_status.filters.contains(&"Pago no período (data efetiva): R$ 0,00".to_string()), "nenhuma conta está paga por inteiro: {:?}", by_status.filters);
     }
 
     #[test]

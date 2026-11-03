@@ -45,6 +45,9 @@ function queryFromParams(params: URLSearchParams, kind: ReportKind, period: bool
   return query;
 }
 
+const canonical = (p: URLSearchParams) =>
+  [...p.entries()].map(([k, v]) => `${k}=${v}`).sort().join("&");
+
 type Outcome = { kind: "saved"; path: string } | { kind: "error"; message: string; retry: () => void };
 
 export default function ReportsPage() {
@@ -74,7 +77,7 @@ export default function ReportsPage() {
   const [busy, setBusy] = useState(false);
 
   const info = reportInfo(kind) ?? allowed[0];
-  const { data: table, error: queryError, isFetching } = useQuery({
+  const { data: table, error: queryError, isFetching, refetch } = useQuery({
     queryKey: ["report", applied],
     queryFn: () => runReport(token, applied as ReportQuery),
     enabled: !!token && !!applied,
@@ -109,7 +112,9 @@ export default function ReportsPage() {
     if (info.filters.includes("method")) put("forma", draft.method);
     if (info.filters.includes("category")) put("categoria", draft.category);
     if (info.filters.includes("text")) put("texto", draft.text.trim());
-    setParams(next);
+    // Mesmos filtros: a URL não muda e a consulta não se refaz sozinha; gerar de novo deve trazer dados novos.
+    if (canonical(next) === canonical(params)) void refetch();
+    else setParams(next);
   };
 
   const attempt = async (write: (path: string) => Promise<{ path: string }>, path: string) => {
@@ -127,10 +132,16 @@ export default function ReportsPage() {
   /** Exporta a consulta **aplicada** (a que está na tela), não o que está sendo digitado. */
   const exportAs = async (extension: "csv" | "pdf") => {
     if (!applied) return;
-    const path = await save({
-      defaultPath: suggestedFileName(applied.kind, extension, today),
-      filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
-    });
+    let path: string | null;
+    try {
+      path = await save({
+        defaultPath: suggestedFileName(applied.kind, extension, today),
+        filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
+      });
+    } catch {
+      setOutcome({ kind: "error", message: "Não foi possível abrir a janela de salvar. Tente de novo.", retry: () => void exportAs(extension) });
+      return;
+    }
     if (!path) return;
     const write = (target: string) => (extension === "csv" ? exportReportCsv(token, applied, delimiter, target) : exportReportPdf(token, applied, target));
     await attempt(write, path);

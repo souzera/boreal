@@ -214,12 +214,24 @@ fn payables_rows(conn: &Connection, scope: &Scope, date_column: &str, by_due: bo
     Ok(rows)
 }
 
-/// Total pago a fornecedores no período, pela data **efetiva** do pagamento (dia local).
+/// Total pago a fornecedores no período, pela data **efetiva** do pagamento (dia local), com os mesmos filtros de
+/// categoria, situação e texto da lista de despesas.
 pub fn paid_in_period(conn: &Connection, scope: &Scope) -> Result<i64, AppError> {
     Ok(conn.query_row(
-        "SELECT COALESCE(SUM(x.amount_cents), 0) FROM payable_payments x JOIN payables p ON p.id = x.payable_id
-         WHERE x.paid_at >= :start AND x.paid_at < :end AND (:category IS NULL OR p.category_id = :category)",
-        named_params! { ":start": scope.start, ":end": scope.end, ":category": scope.category_id },
+        &format!(
+            "SELECT COALESCE(SUM(x.amount_cents), 0)
+             FROM payable_payments x
+             JOIN (SELECT p.*, (SELECT COALESCE(SUM(y.amount_cents), 0) FROM payable_payments y WHERE y.payable_id = p.id) AS paid FROM payables p) p
+               ON p.id = x.payable_id
+             WHERE x.paid_at >= :start AND x.paid_at < :end
+               AND (:category IS NULL OR p.category_id = :category)
+               AND (:status IS NULL OR {PAYABLE_STATUS} = :status)
+               AND (:code IS NULL OR p.code LIKE :code ESCAPE '\\' OR p.supplier LIKE :code ESCAPE '\\' OR p.description LIKE :code ESCAPE '\\')"
+        ),
+        named_params! {
+            ":start": scope.start, ":end": scope.end, ":category": scope.category_id, ":status": scope.status,
+            ":today": scope.today, ":code": scope.code_pattern()
+        },
         |r| r.get(0),
     )?)
 }

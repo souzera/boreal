@@ -61,8 +61,12 @@ export default function DocumentActions({ kind, sourceId, label, fileStem }: Pro
   };
 
   const savePdf = async (documentId: number, version: number) => {
-    const path = await save({ defaultPath: `${fileStem}-v${version}.pdf`, filters: [{ name: "PDF", extensions: ["pdf"] }] });
-    if (path) await write(documentId, path);
+    try {
+      const path = await save({ defaultPath: `${fileStem}-v${version}.pdf`, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+      if (path) await write(documentId, path);
+    } catch {
+      setOutcome({ kind: "error", message: "Não foi possível abrir a janela de salvar. Tente de novo.", retry: () => void savePdf(documentId, version) });
+    }
   };
 
   const open = async (path: string) => {

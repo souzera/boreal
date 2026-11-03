@@ -245,9 +245,9 @@ docs/usuario/{relatorios,documentos}.md   docs/desenvolvimento/{relatorios,docum
 
 ## Status
 
-**Implementado, aguardando revisão final** na branch `marco-6-4-relatorios` (a partir de `identidade-visual`). T1 a T8 concluídas; migração `0013`.
+**Implementado e revisado** na branch `marco-6-4-relatorios` (a partir de `identidade-visual`). T1 a T8 concluídas; migração `0013`.
 
-- **Testes (última execução completa):** `cargo test --features dev-seed --lib` 608 testes; `cargo clippy --all-targets --features dev-seed -- -D warnings` limpo; `npx vitest run` 534 testes em 67 arquivos; `npx tsc --noEmit` e `npm run build` limpos; `graphify update .` executado.
+- **Testes (última execução completa):** `cargo test --features dev-seed --lib` 611 testes; `cargo clippy --all-targets --features dev-seed -- -D warnings` limpo; `npx vitest run` 537 testes em 67 arquivos; `npx tsc --noEmit` e `npm run build` limpos; `graphify update .` executado.
 - **Pendências de verificação:** (1) os 4 testes de integração `tests/startup.rs` não foram reexecutados nesta rodada porque um `boreal-pms.exe` (provavelmente `npm run tauri dev`) estava aberto e impedia o cargo de recompilar o binário; nada neste marco toca esse caminho. (2) Manual em `npm run tauri dev`: diálogo "Salvar como", abrir o PDF no leitor padrão, aparência dos PDFs impressos, CSV no Excel. (3) `search_over_five_years_of_data_stays_fast` é sensível a tempo sob carga paralela (passa isolado).
 
 ## Medição de volume
@@ -276,3 +276,13 @@ Cenário: 5 anos (14.600 reservas com noites, hospedagens, cobranças, recebimen
 - **Migração:** `0013` (`documents`); contagem de migrações do teste existente sobe de 12 para 13.
 - **Proporção:** corpos de função ficam com o implementador; os testes trazem valores exatos (366 dias, 23:30/02:30Z, 5.000 linhas, 7 colunas, 2 s).
 - **Fora deste plano:** logotipo no PDF (v1 só texto), assinatura digital, envio por e-mail, relatórios agendados, gráficos nos relatórios.
+
+## Revisão final
+
+Revisor independente (modelo mais capaz). Nenhum Crítico. Corrigidos com teste:
+
+- **Importante** — "Pago no período" (Despesas da pousada) ignorava os filtros de texto e situação, mostrando um número que contradizia os filtros exibidos; agora usa os mesmos (`paid_in_period_follows_the_text_and_status_filters_too`).
+- **Importante** — clicar de novo em **Gerar relatório** com os mesmos filtros não consultava de novo (a URL não mudava), e o CSV/PDF passavam a divergir da tela; agora refaz a consulta.
+- **Menores corrigidos:** total de Reservas sem canceladas e no-shows; rodapé de Ocupação só com a média; ficha e comprovante sem campos que o PDF não mostra (reemitir não cria versão sem mudança visível); frase de vazio do PDF por contexto ("Nenhum registro para estes filtros."); larguras de texto mais conservadoras no PDF (negrito e acentos); mensagem própria para arquivo aberto em outro programa; caminhos relativos recusados na exportação e na abertura; falha do diálogo "Salvar como" vira mensagem; documentação ajustada (exceção do documento do ocupante na ficha).
+
+**Menores adiados:** busca por texto sem acento em fornecedor/descrição/código (documentado); mensagem "Documento emitido" pode errar se a lista de versões não carregou (o backend poderia devolver `created`); `fit` do PDF é O(n²) em descrições muito longas; mensagem de truncamento da tela, do CSV e do PDF tem textos diferentes; o plano previa **Abrir** em cada versão (hoje só **Abrir arquivo** depois de salvar).

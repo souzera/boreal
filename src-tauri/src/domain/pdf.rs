@@ -50,10 +50,10 @@ fn text_width(text: &str, size: f32, bold: bool) -> f32 {
         .map(|c| match c {
             ' '..='~' => f32::from(WIDTHS[(c as u8 - b' ') as usize]),
             '…' => 1000.0,
-            _ => 600.0,
+            _ => 700.0,
         })
         .sum();
-    units * size / 1000.0 * if bold { 1.1 } else { 1.0 }
+    units * size / 1000.0 * if bold { 1.2 } else { 1.0 }
 }
 
 /// Texto como literal de PDF: bytes WinAnsi, com `(`, `)`, `\` e tudo fora do ASCII visível em octal.
@@ -197,8 +197,13 @@ impl PdfDoc {
     }
 
     pub fn table(&mut self, columns: &[PdfColumn], rows: &[Vec<String>], totals: Option<&[String]>) {
+        self.table_or(columns, rows, totals, "Nenhum registro.");
+    }
+
+    /// Como `table`, com a frase que aparece quando não há linhas (cada relatório diz a sua).
+    pub fn table_or(&mut self, columns: &[PdfColumn], rows: &[Vec<String>], totals: Option<&[String]>, empty: &str) {
         if rows.is_empty() {
-            self.text("Nenhum registro no período.");
+            self.text(empty);
             return;
         }
         let size = if columns.len() > 7 { 8.0 } else { 9.0 };
@@ -429,7 +434,7 @@ mod tests {
         doc.table(&cols(), &[], None);
         let pdf = doc.finish("x");
 
-        assert!(extract_text(&pdf).contains(&"Nenhum registro no período.".to_string()));
+        assert!(extract_text(&pdf).contains(&"Nenhum registro.".to_string()));
         assert!(String::from_utf8_lossy(&pdf).trim_end().ends_with("%%EOF"));
     }
 

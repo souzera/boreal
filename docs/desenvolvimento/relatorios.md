@@ -44,6 +44,11 @@ UTF-8 com BOM, separador `;` (ou `,` por parâmetro), `\r\n`, aspas com escape, 
 
 ## Limitações
 
+- O filtro de **texto** usa `LIKE` do SQLite, que ignora maiúsculas só em ASCII: "agua" não encontra "Água" em fornecedor, descrição e código (o nome do hóspede usa a coluna normalizada e não tem esse problema). Melhoria futura: coluna normalizada nessas tabelas.
+- Totais: o de Reservas **não soma canceladas e no-shows** (a linha aparece na lista, mas fica fora do rodapé); o de Ocupação mostra só a taxa média.
+- "Pago no período" em Despesas da pousada segue os mesmos filtros de categoria, situação e texto da lista.
+- Só caminhos absolutos escolhidos no diálogo são gravados ou abertos; arquivo aberto em outro programa gera uma mensagem própria.
+
 - Ocupação usa os quartos ativos de hoje (como a visão gerencial).
 - Sem logotipo nos PDFs; fonte única (Helvetica).
 - Saldos pendentes considera só hospedagens em andamento.
