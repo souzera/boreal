@@ -6,6 +6,11 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
 import {
+  type ReportQuery,
+  exportReportCsv,
+  exportReportPdf,
+  openExportedFile,
+  runReport,
   managementDashboard,
   receptionOverview,
   alertHistory,
@@ -243,5 +248,25 @@ describe("recepção e visão gerencial", () => {
 
     await managementDashboard("t", "2026-10-21", "2026-10-28");
     expect(invoke).toHaveBeenLastCalledWith("management_dashboard", { token: "t", from: "2026-10-21", to: "2026-10-28" });
+  });
+});
+
+describe("relatórios", () => {
+  const query: ReportQuery = { kind: "receipts", from: "2026-10-01", to: "2026-10-31", method: "pix" };
+
+  it("run_report, exportações e abrir arquivo chamam os comandos certos", async () => {
+    invoke.mockResolvedValue(null);
+
+    await runReport("t", query);
+    expect(invoke).toHaveBeenLastCalledWith("run_report", { token: "t", query });
+
+    await exportReportCsv("t", query, ";", "C:/x/r.csv");
+    expect(invoke).toHaveBeenLastCalledWith("export_report_csv", { token: "t", query, delimiter: ";", path: "C:/x/r.csv" });
+
+    await exportReportPdf("t", query, "C:/x/r.pdf");
+    expect(invoke).toHaveBeenLastCalledWith("export_report_pdf", { token: "t", query, path: "C:/x/r.pdf" });
+
+    await openExportedFile("t", "C:/x/r.pdf");
+    expect(invoke).toHaveBeenLastCalledWith("open_exported_file", { token: "t", path: "C:/x/r.pdf" });
   });
 });

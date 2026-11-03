@@ -10,7 +10,7 @@ use crate::domain::dates;
 use crate::domain::pdf::{PdfColumn, PdfDoc};
 use crate::domain::report::{br_date, cell_text, Cell, Column, ColumnKind, Filter, ReportKind, ReportTable};
 use crate::error::AppError;
-use crate::models::report::ReportQuery;
+use crate::models::report::{ExportResult, ReportQuery};
 use crate::domain::payment::Method;
 use crate::repositories::report_finance_repo as finance;
 use crate::repositories::report_repo::{self, Rows, Scope, RESERVATION_STATUS_LABEL};
@@ -63,6 +63,34 @@ impl ReportService {
         };
         let issued = self.ctx.local_now().format("%d/%m/%Y %H:%M").to_string();
         Ok(table_pdf(&table, &name, &issued))
+    }
+
+    /// Exporta o relatório em CSV para o caminho escolhido (mesmas linhas da tela). Falha ao gravar não deixa arquivo.
+    pub fn export_csv(&self, token: &str, query: ReportQuery, delimiter: &str, path: &str) -> Result<ExportResult, AppError> {
+        let delimiter = match delimiter {
+            ";" => ';',
+            "," => ',',
+            _ => return Err(invalid("Separador inválido: use ponto e vírgula ou vírgula.")),
+        };
+        let table = self.run(token, query)?;
+        write_export(path, "csv", &crate::domain::csv::render(&table, delimiter))
+    }
+
+    /// Exporta o relatório em PDF para o caminho escolhido.
+    pub fn export_pdf(&self, token: &str, query: ReportQuery, path: &str) -> Result<ExportResult, AppError> {
+        let bytes = self.pdf(token, query)?;
+        write_export(path, "pdf", &bytes)
+    }
+
+    /// Confere se um arquivo exportado pode ser aberto pelo leitor padrão (sessão válida, `.pdf` ou `.csv`, existe).
+    pub fn check_openable(&self, token: &str, path: &str) -> Result<(), AppError> {
+        self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        let target = std::path::Path::new(path);
+        let ext_ok = target.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("pdf") || e.eq_ignore_ascii_case("csv"));
+        if !ext_ok || !target.is_file() {
+            return Err(invalid("Arquivo não encontrado. Exporte de novo."));
+        }
+        Ok(())
     }
 
     pub(crate) fn run_with_limit(&self, token: &str, query: ReportQuery, limit: usize) -> Result<ReportTable, AppError> {
@@ -186,6 +214,24 @@ impl ReportService {
         let totals = if truncated { None } else { totals(&rows) };
         Ok(ReportTable { kind: kind.as_str().into(), title: kind.label().into(), filters, columns, rows, totals, truncated })
     }
+}
+
+/// Grava o arquivo de forma atômica (temporário ao lado + renomear). A extensão é obrigatória; falha de gravação
+/// devolve uma mensagem simples e não deixa arquivo pela metade. O caminho nunca vai para log.
+pub(crate) fn write_export(path: &str, ext: &str, bytes: &[u8]) -> Result<ExportResult, AppError> {
+    let target = std::path::Path::new(path);
+    let ext_ok = target.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case(ext));
+    if !ext_ok {
+        return Err(invalid(format!("O arquivo precisa terminar em .{ext}.")));
+    }
+    let name = target.file_name().and_then(|n| n.to_str()).ok_or_else(|| invalid("Caminho inválido."))?;
+    let temp = target.with_file_name(format!("{name}.boreal-tmp"));
+    let written = std::fs::write(&temp, bytes).and_then(|()| std::fs::rename(&temp, target));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
+        return Err(invalid("Não foi possível gravar neste local. Escolha outra pasta e tente de novo."));
+    }
+    Ok(ExportResult { path: path.to_string(), bytes: bytes.len() as u64 })
 }
 
 /// Pesos das colunas no PDF: texto mais largo que número; números à direita.
@@ -710,6 +756,129 @@ mod tests {
         let w = world();
 
         assert!(w.h.reports.run("invalido", ReportQuery::new("occupancy")).is_err());
+    }
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+    use crate::services::test_support::{admin_token, book, harness, recepcao_token, seed};
+
+    fn scratch_dir(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("boreal-export-{name}-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn files(dir: &std::path::Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+        names.sort();
+        names
+    }
+
+    fn day(kind: &str) -> ReportQuery {
+        ReportQuery { from: Some("2026-10-21".into()), to: Some("2026-10-21".into()), ..ReportQuery::new(kind) }
+    }
+
+    #[test]
+    fn csv_export_writes_exactly_the_screen_rows_atomically() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let seed = seed(&h, &admin, 20_000, 2);
+        book(&h, &admin, &seed, "2026-10-21", "2026-10-23");
+        let dir = scratch_dir("csv");
+        let path = dir.join("reservas.csv");
+
+        let result = h.reports.export_csv(&admin, day("reservations"), ";", path.to_str().unwrap()).unwrap();
+
+        let table = h.reports.run(&admin, day("reservations")).unwrap();
+        let expected = crate::domain::csv::render(&table, ';');
+        assert_eq!(std::fs::read(&path).unwrap(), expected, "o arquivo é o CSV da tela");
+        assert_eq!(result.bytes, expected.len() as u64);
+        assert_eq!(files(&dir), ["reservas.csv"], "nenhum temporário sobra");
+        let comma = dir.join("virgula.csv");
+        h.reports.export_csv(&admin, day("reservations"), ",", comma.to_str().unwrap()).unwrap();
+        assert!(String::from_utf8_lossy(&std::fs::read(&comma).unwrap()).contains("Código,Hóspede,Quarto"), "separador vírgula");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn pdf_export_writes_a_pdf_file() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let dir = scratch_dir("pdf");
+        let path = dir.join("ocupacao.pdf");
+
+        h.reports.export_pdf(&admin, day("occupancy"), path.to_str().unwrap()).unwrap();
+
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(bytes.starts_with(b"%PDF-1.4") && String::from_utf8_lossy(&bytes).trim_end().ends_with("%%EOF"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn wrong_extension_and_invalid_delimiter_are_refused_without_writing() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let dir = scratch_dir("ext");
+
+        let wrong = h.reports.export_csv(&admin, day("occupancy"), ";", dir.join("x.txt").to_str().unwrap());
+        let pdf_as_csv = h.reports.export_pdf(&admin, day("occupancy"), dir.join("x.csv").to_str().unwrap());
+        let delimiter = h.reports.export_csv(&admin, day("occupancy"), "|", dir.join("x.csv").to_str().unwrap());
+
+        assert!(matches!(wrong, Err(AppError::Validation(_))));
+        assert!(matches!(pdf_as_csv, Err(AppError::Validation(_))));
+        assert!(matches!(delimiter, Err(AppError::Validation(_))));
+        assert!(files(&dir).is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_missing_folder_gives_a_friendly_error_and_leaves_nothing() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let dir = scratch_dir("missing");
+        let path = dir.join("nao-existe").join("r.csv");
+
+        let result = h.reports.export_csv(&admin, day("occupancy"), ";", path.to_str().unwrap());
+
+        let error = result.unwrap_err();
+        assert!(matches!(&error, AppError::Validation(m) if m.contains("Escolha outra pasta")), "{error:?}");
+        assert!(files(&dir).is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn reception_cannot_export_a_financial_report_and_no_file_is_created() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let reception = recepcao_token(&h, &admin);
+        let dir = scratch_dir("forbidden");
+
+        let csv = h.reports.export_csv(&reception, day("receipts"), ";", dir.join("r.csv").to_str().unwrap());
+        let pdf = h.reports.export_pdf(&reception, day("receipts"), dir.join("r.pdf").to_str().unwrap());
+
+        assert!(matches!(csv, Err(AppError::Forbidden)) && matches!(pdf, Err(AppError::Forbidden)));
+        assert!(files(&dir).is_empty());
+        assert!(h.reports.export_csv(&reception, day("occupancy"), ";", dir.join("ok.csv").to_str().unwrap()).is_ok(), "operacional pode");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn only_existing_pdf_or_csv_files_can_be_opened() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let dir = scratch_dir("open");
+        let pdf = dir.join("a.pdf");
+        h.reports.export_pdf(&admin, day("occupancy"), pdf.to_str().unwrap()).unwrap();
+        std::fs::write(dir.join("a.exe"), b"x").unwrap();
+
+        assert!(h.reports.check_openable(&admin, pdf.to_str().unwrap()).is_ok());
+        assert!(h.reports.check_openable(&admin, dir.join("a.exe").to_str().unwrap()).is_err());
+        assert!(h.reports.check_openable(&admin, dir.join("sumiu.pdf").to_str().unwrap()).is_err());
+        assert!(h.reports.check_openable("invalido", pdf.to_str().unwrap()).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
 

@@ -19,6 +19,8 @@ use crate::db::keystore::OsKeyStore;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|tauri_app| {
             let dir = tauri_app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -143,6 +145,10 @@ pub fn run() {
             commands::search::global_search,
             commands::reception::reception_overview,
             commands::management::management_dashboard,
+            commands::reports::run_report,
+            commands::reports::export_report_csv,
+            commands::reports::export_report_pdf,
+            commands::reports::open_exported_file,
             commands::stays::preview_stay_checkout,
             commands::stays::checkout_stay,
             commands::stays::set_stay_late_tolerance,

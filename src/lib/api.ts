@@ -1449,3 +1449,66 @@ export interface ManagementDashboard {
 
 export const managementDashboard = (token: string, from: string, to: string) =>
   call<ManagementDashboard>("management_dashboard", { token, from, to });
+
+// ---- Relatórios ----
+
+export type ReportKind =
+  | "occupancy"
+  | "reservations"
+  | "stays"
+  | "cancellations"
+  | "receipts"
+  | "balances"
+  | "guest_expenses"
+  | "property_expenses"
+  | "payables"
+  | "closings";
+
+export interface ReportQuery {
+  kind: ReportKind;
+  from?: string;
+  to?: string;
+  status?: string;
+  room_id?: number;
+  method?: string;
+  category_id?: number;
+  text?: string;
+}
+
+export type ReportColumnKind = "text" | "date" | "time" | "int" | "money" | "percent";
+
+export interface ReportColumn {
+  key: string;
+  label: string;
+  kind: ReportColumnKind;
+}
+
+/** Dinheiro em centavos; percentual em pontos-base (10000 = 100%). */
+export type ReportCell =
+  | { kind: "text"; value: string }
+  | { kind: "int"; value: number }
+  | { kind: "money"; value: number }
+  | { kind: "percent"; value: number }
+  | { kind: "empty" };
+
+export interface ReportTable {
+  kind: ReportKind;
+  title: string;
+  filters: string[];
+  columns: ReportColumn[];
+  rows: ReportCell[][];
+  totals: ReportCell[] | null;
+  truncated: boolean;
+}
+
+export interface ExportResult {
+  path: string;
+  bytes: number;
+}
+
+export const runReport = (token: string, query: ReportQuery) => call<ReportTable>("run_report", { token, query });
+export const exportReportCsv = (token: string, query: ReportQuery, delimiter: ";" | ",", path: string) =>
+  call<ExportResult>("export_report_csv", { token, query, delimiter, path });
+export const exportReportPdf = (token: string, query: ReportQuery, path: string) =>
+  call<ExportResult>("export_report_pdf", { token, query, path });
+export const openExportedFile = (token: string, path: string) => call<null>("open_exported_file", { token, path });

@@ -10,6 +10,7 @@ pub mod closing;
 pub mod room_status;
 pub mod management;
 pub mod reception;
+pub mod reports;
 pub mod search;
 pub mod auth;
 pub mod catalog;
