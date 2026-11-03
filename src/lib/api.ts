@@ -1512,3 +1512,24 @@ export const exportReportCsv = (token: string, query: ReportQuery, delimiter: ";
 export const exportReportPdf = (token: string, query: ReportQuery, path: string) =>
   call<ExportResult>("export_report_pdf", { token, query, path });
 export const openExportedFile = (token: string, path: string) => call<null>("open_exported_file", { token, path });
+
+// ---- Documentos internos ----
+
+export type DocumentKind = "reservation_confirmation" | "payment_receipt" | "stay_record" | "final_statement";
+
+export interface DocumentView {
+  id: number;
+  kind: DocumentKind;
+  kind_label: string;
+  source_id: number;
+  version: number;
+  /** Instante UTC da emissão. */
+  issued_at: string;
+  issued_by_name: string;
+  /** A versão mais nova. */
+  current: boolean;
+}
+
+export const issueDocument = (token: string, kind: DocumentKind, sourceId: number) => call<DocumentView>("issue_document", { token, kind, sourceId });
+export const listDocuments = (token: string, kind: DocumentKind, sourceId: number) => call<DocumentView[]>("list_documents", { token, kind, sourceId });
+export const saveDocumentPdf = (token: string, documentId: number, path: string) => call<ExportResult>("save_document_pdf", { token, documentId, path });

@@ -8,7 +8,7 @@ import StayPage from "./StayPage";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return { ...actual, getStay: vi.fn(), myPermissions: vi.fn(), setStayLateTolerance: vi.fn(), recordRefund: vi.fn() };
+  return { ...actual, getStay: vi.fn(), listDocuments: vi.fn().mockResolvedValue([]), myPermissions: vi.fn(), setStayLateTolerance: vi.fn(), recordRefund: vi.fn() };
 });
 
 const stay: api.Stay = {
@@ -93,6 +93,22 @@ describe("StayPage", () => {
 
     expect(await screen.findByText(/Esta ação não está mais disponível/)).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("em andamento oferece a ficha e o comprovante, mas não o demonstrativo final", async () => {
+    open();
+
+    expect(await screen.findByRole("button", { name: "Emitir ficha de hospedagem" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Emitir comprovante" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Emitir demonstrativo final" })).toBeNull();
+  });
+
+  it("depois do check-out oferece também o demonstrativo final", async () => {
+    vi.mocked(api.getStay).mockResolvedValue(detail({}, { status: "checked_out", checked_out_at: "2026-10-23T15:00:00Z" }));
+    open();
+
+    expect(await screen.findByRole("button", { name: "Emitir demonstrativo final" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Emitir ficha de hospedagem" })).toBeInTheDocument();
   });
 
   it("mostra o recebimento dividido em cada forma de pagamento", async () => {

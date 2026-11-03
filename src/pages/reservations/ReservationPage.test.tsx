@@ -11,6 +11,7 @@ vi.mock("@/lib/api", async () => {
   return {
     ...actual,
     getReservation: vi.fn(),
+    listDocuments: vi.fn().mockResolvedValue([]),
     listRooms: vi.fn(),
     myPermissions: vi.fn(),
     previewReservationChange: vi.fn(),
@@ -184,6 +185,20 @@ describe("ReservationPage — dados", () => {
   it("?abrir= desconhecido não abre nada", async () => {
     await open(undefined, "?abrir=lixo");
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("oferece emitir a confirmação de reserva e o comprovante de cada recebimento", async () => {
+    await open();
+
+    expect(screen.getByRole("button", { name: "Emitir confirmação de reserva" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Emitir comprovante" })).toBeInTheDocument();
+  });
+
+  it("não oferece a confirmação de reserva para reserva cancelada", async () => {
+    vi.mocked(api.getReservation).mockResolvedValue({ ...detail, reservation: { ...reservation, status: "cancelled" } });
+    await open();
+
+    expect(screen.queryByRole("button", { name: "Emitir confirmação de reserva" })).toBeNull();
   });
 
   it("reserva já hospedada leva à hospedagem e não oferece novo check-in", async () => {

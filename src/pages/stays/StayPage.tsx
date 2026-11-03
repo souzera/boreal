@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOpenFromQuery } from "@/hooks/useOpenFromQuery";
+import DocumentActions from "@/components/DocumentActions";
 import { usePermissions } from "@/hooks/usePermissions";
 import { getStay, setStayLateTolerance, type ApiError, type PaymentLine } from "@/lib/api";
 import { formatDate, formatInstant, formatMoney } from "@/lib/format";
@@ -226,6 +227,14 @@ export default function StayPage() {
         </Table>
       </section>
 
+      <section aria-label="Documentos" className="grid gap-3">
+        <h2 className="text-base font-semibold">Documentos</h2>
+        <DocumentActions kind="stay_record" sourceId={stay.id} label="Emitir ficha de hospedagem" fileStem={`ficha-${stay.code}`} />
+        {!inHouse && (
+          <DocumentActions kind="final_statement" sourceId={stay.id} label="Emitir demonstrativo final" fileStem={`demonstrativo-${stay.code}`} />
+        )}
+      </section>
+
       <section aria-label="Recebimentos">
         <h2 className="mb-2 text-base font-semibold">Recebimentos e devoluções</h2>
         {account.payments.length === 0 && account.refunds.length === 0 ? (
@@ -244,6 +253,9 @@ export default function StayPage() {
                     Registrar devolução
                   </Button>
                 )}
+                <div className="basis-full pl-3">
+                  <DocumentActions kind="payment_receipt" sourceId={p.id} label="Emitir comprovante" fileStem={`comprovante-${p.code}`} />
+                </div>
               </li>
             ))}
             {account.refunds.map((f) => (

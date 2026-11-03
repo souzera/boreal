@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import DocumentActions from "@/components/DocumentActions";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -239,6 +240,13 @@ export default function ReservationPage() {
         </Table>
       </section>
 
+      {["pending", "confirmed", "checked_in", "completed"].includes(r.status) && (
+        <section aria-label="Documentos">
+          <h2 className="mb-2 text-base font-semibold">Documentos</h2>
+          <DocumentActions kind="reservation_confirmation" sourceId={r.id} label="Emitir confirmação de reserva" fileStem={`confirmacao-${r.code}`} />
+        </section>
+      )}
+
       <section aria-label="Recebimentos">
         <h2 className="mb-2 text-base font-semibold">Recebimentos</h2>
         {payments.length === 0 ? (
@@ -257,6 +265,9 @@ export default function ReservationPage() {
                     Registrar devolução
                   </Button>
                 )}
+                <div className="basis-full pl-3">
+                  <DocumentActions kind="payment_receipt" sourceId={p.id} label="Emitir comprovante" fileStem={`comprovante-${p.code}`} />
+                </div>
               </li>
             ))}
           </ul>

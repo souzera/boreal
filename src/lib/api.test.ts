@@ -6,6 +6,9 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
 import {
+  issueDocument,
+  listDocuments,
+  saveDocumentPdf,
   type ReportQuery,
   exportReportCsv,
   exportReportPdf,
@@ -268,5 +271,20 @@ describe("relatórios", () => {
 
     await openExportedFile("t", "C:/x/r.pdf");
     expect(invoke).toHaveBeenLastCalledWith("open_exported_file", { token: "t", path: "C:/x/r.pdf" });
+  });
+});
+
+describe("documentos internos", () => {
+  it("issue_document, list_documents e save_document_pdf chamam os comandos certos", async () => {
+    invoke.mockResolvedValue(null);
+
+    await issueDocument("t", "payment_receipt", 9);
+    expect(invoke).toHaveBeenLastCalledWith("issue_document", { token: "t", kind: "payment_receipt", sourceId: 9 });
+
+    await listDocuments("t", "stay_record", 3);
+    expect(invoke).toHaveBeenLastCalledWith("list_documents", { token: "t", kind: "stay_record", sourceId: 3 });
+
+    await saveDocumentPdf("t", 12, "C:/x/d.pdf");
+    expect(invoke).toHaveBeenLastCalledWith("save_document_pdf", { token: "t", documentId: 12, path: "C:/x/d.pdf" });
   });
 });
