@@ -93,12 +93,12 @@ docs/usuario/{relatorios,documentos}.md   docs/desenvolvimento/{relatorios,docum
   - **Stays** (check-in no período): `Código`, `Hóspede`, `Quarto`, `Entrada`, `Saída prevista`, `Situação`, `Saldo`; filtros `status` (`in_house`/`checked_out`), `room_id`, `text`.
   - **Cancellations** (cancelamento ou no-show no período): `Código`, `Hóspede`, `Quarto`, `Tipo` (Cancelamento/No-show), `Data`, `Valor retido`, `Devolução prevista`; filtros `status` (`cancelled`/`no_show`), `room_id`, `text`.
 
-- [ ] **Step 1: Testes do CSV** (`domain/csv.rs`): começa com o BOM `EF BB BF`; cabeçalho e linhas separados por `;` e `\r\n`; campo com `;`, `"` e quebra de linha vai entre aspas com `""`; dinheiro com `;` sai `150,00` e com `,` sai `150.00`; negativo `-30,00`; `Percent(7500)` sai `75,0`; data permanece `DD/MM/AAAA`; texto `=SOMA(A1)` e `+55 11` saem com apóstrofo; texto `-` e `@x` idem; número negativo em `Money` **não** leva apóstrofo; rodapé de totais é a última linha; `truncated` acrescenta a linha de aviso.
-- [ ] **Step 2: Testes do serviço** (`Harness`, 21/10/2026 09:00 local): `reception_user_can_run_operational_reports_but_not_financial` (os quatro funcionam; os seis financeiros dão `Forbidden` — por enquanto só confere o mapeamento, os financeiros devolvem `Validation("em construção")` até a T2, então o teste cobre `Forbidden` antes do tipo); `invalid_periods_and_unknown_reports_are_refused`; `unsupported_filter_is_refused` (`method` em `occupancy`); `default_period_is_the_last_30_days`; `occupancy_has_one_row_per_day_and_matches_the_dashboard` (mesmos números da visão gerencial para o dia); `reservations_filter_by_status_room_and_text_combined` (3 reservas, filtro combinado devolve só a que bate nos três); `reservations_use_the_arrival_date` (chegada em 21/10 entra, em 22/10 não, num período de 1 dia); `stays_list_balance_and_status`; `cancellations_list_cancelled_and_no_show_with_retained_amount`; `rows_over_the_limit_are_truncated_with_a_flag` (limite reduzido por constante de teste).
-- [ ] **Step 3: Run** `cargo test --lib report` — Expected: FAIL.
-- [ ] **Step 4: Implement** modelos, `domain::report` (formatação de célula para texto: `R$ 150,00`, `75,0%`), `domain::csv`, `report_repo` (SQL à mão, uma função por relatório), `ReportService`; ligar em `app.rs` e no `Harness`.
-- [ ] **Step 5: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 6: Commit** `feat: report engine, csv and operational reports`
+- [x] **Step 1: Testes do CSV** (`domain/csv.rs`): começa com o BOM `EF BB BF`; cabeçalho e linhas separados por `;` e `\r\n`; campo com `;`, `"` e quebra de linha vai entre aspas com `""`; dinheiro com `;` sai `150,00` e com `,` sai `150.00`; negativo `-30,00`; `Percent(7500)` sai `75,0`; data permanece `DD/MM/AAAA`; texto `=SOMA(A1)` e `+55 11` saem com apóstrofo; texto `-` e `@x` idem; número negativo em `Money` **não** leva apóstrofo; rodapé de totais é a última linha; `truncated` acrescenta a linha de aviso.
+- [x] **Step 2: Testes do serviço** (`Harness`, 21/10/2026 09:00 local): `reception_user_can_run_operational_reports_but_not_financial` (os quatro funcionam; os seis financeiros dão `Forbidden` — por enquanto só confere o mapeamento, os financeiros devolvem `Validation("em construção")` até a T2, então o teste cobre `Forbidden` antes do tipo); `invalid_periods_and_unknown_reports_are_refused`; `unsupported_filter_is_refused` (`method` em `occupancy`); `default_period_is_the_last_30_days`; `occupancy_has_one_row_per_day_and_matches_the_dashboard` (mesmos números da visão gerencial para o dia); `reservations_filter_by_status_room_and_text_combined` (3 reservas, filtro combinado devolve só a que bate nos três); `reservations_use_the_arrival_date` (chegada em 21/10 entra, em 22/10 não, num período de 1 dia); `stays_list_balance_and_status`; `cancellations_list_cancelled_and_no_show_with_retained_amount`; `rows_over_the_limit_are_truncated_with_a_flag` (limite reduzido por constante de teste).
+- [x] **Step 3: Run** `cargo test --lib report` — Expected: FAIL.
+- [x] **Step 4: Implement** modelos, `domain::report` (formatação de célula para texto: `R$ 150,00`, `75,0%`), `domain::csv`, `report_repo` (SQL à mão, uma função por relatório), `ReportService`; ligar em `app.rs` e no `Harness`.
+- [x] **Step 5: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 6: Commit** `feat: report engine, csv and operational reports`
 
 ---
 
@@ -119,11 +119,11 @@ docs/usuario/{relatorios,documentos}.md   docs/desenvolvimento/{relatorios,docum
   - **Closings** (dias fechados no período): `Dia`, `Fechado em`, `Por`, e por forma: `Esperado`, `Contado`, `Diferença` (uma linha por dia e forma); filtro `method`; rodapé com a soma das diferenças.
 - Regras: nenhum relatório grava; textos de justificativa de diferença aparecem na coluna `Justificativa` do fechamento.
 
-- [ ] **Step 1: Testes:** `reception_gets_forbidden_for_every_financial_report` (seis tipos, inclusive com filtros inválidos: a permissão vem antes da validação); `receipts_have_one_row_per_component_and_split_debit_credit` (recebimento de 100 em Pix 60 + crédito 40 ⇒ duas linhas); `receipts_use_the_local_day` (23:30 local de 21/10 = 02:30Z de 22/10 entra em 21/10, não em 22/10); `receipts_net_total_matches_closing_and_dashboard` (mesmo dia: líquido do relatório = `closing.received − refunded` = `management.receipts_daily`); `refund_appears_as_its_own_row_and_lowers_the_net`; `balances_match_stay_account` (saldo da linha = `stays.get().account.balance_cents`; crédito separado); `guest_expenses_include_reversals_and_net_zero_for_reversed_items`; `property_expenses_use_competence_and_show_paid_in_period_separately` (conta de competência 10/2026 paga em 11/2026: aparece em outubro como em aberto/pago conforme o dia, e o "pago no período" só em novembro); `payables_filter_by_status_and_category_combined`; `closings_list_difference_and_justification`; `period_of_one_day_returns_only_that_day`.
-- [ ] **Step 2: Run** — Expected: FAIL.
-- [ ] **Step 3: Implement** as consultas e o mapeamento para `ReportTable`.
-- [ ] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 5: Commit** `feat: financial reports with reconciliation tests`
+- [x] **Step 1: Testes:** `reception_gets_forbidden_for_every_financial_report` (seis tipos, inclusive com filtros inválidos: a permissão vem antes da validação); `receipts_have_one_row_per_component_and_split_debit_credit` (recebimento de 100 em Pix 60 + crédito 40 ⇒ duas linhas); `receipts_use_the_local_day` (23:30 local de 21/10 = 02:30Z de 22/10 entra em 21/10, não em 22/10); `receipts_net_total_matches_closing_and_dashboard` (mesmo dia: líquido do relatório = `closing.received − refunded` = `management.receipts_daily`); `refund_appears_as_its_own_row_and_lowers_the_net`; `balances_match_stay_account` (saldo da linha = `stays.get().account.balance_cents`; crédito separado); `guest_expenses_include_reversals_and_net_zero_for_reversed_items`; `property_expenses_use_competence_and_show_paid_in_period_separately` (conta de competência 10/2026 paga em 11/2026: aparece em outubro como em aberto/pago conforme o dia, e o "pago no período" só em novembro); `payables_filter_by_status_and_category_combined`; `closings_list_difference_and_justification`; `period_of_one_day_returns_only_that_day`.
+- [x] **Step 2: Run** — Expected: FAIL.
+- [x] **Step 3: Implement** as consultas e o mapeamento para `ReportTable`.
+- [x] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 5: Commit** `feat: financial reports with reconciliation tests`
 
 ---
 
@@ -141,12 +141,12 @@ docs/usuario/{relatorios,documentos}.md   docs/desenvolvimento/{relatorios,docum
   - `ReportService::pdf(&self, token, query, issued_at_text) -> Result<Vec<u8>, AppError>` usando o mesmo `run` e o nome da pousada.
 - Detalhes: A4 retrato (595×842 pt), margem 40 pt; fontes Helvetica/Helvetica-Bold com `/Encoding /WinAnsiEncoding`; o texto é convertido de UTF-8 para WinAnsi (caractere fora do mapa vira `?`); parênteses e barra invertida escapados; largura de texto estimada por tabela de larguras da Helvetica (aproximação por classe de caractere é aceitável, mas **nunca** deixar texto sair da coluna: truncar com "…"); relatório com mais colunas que cabem em retrato usa **paisagem** (841×595) quando `colunas > 7`.
 
-- [ ] **Step 1: Testes** (`domain/pdf.rs`): o arquivo começa com `%PDF-1.4` e termina com `%%EOF`; a tabela `xref` tem um offset por objeto e cada offset aponta para `N 0 obj`; `startxref` aponta para a tabela; o número de páginas em `/Count` bate com o de objetos `/Type /Page`; texto com acentos aparece como WinAnsi (`ç` = `\347`); parênteses e `\` escapados; 120 linhas de tabela geram 3 ou mais páginas, o cabeçalho da tabela aparece em cada uma e o rodapé diz "Página 1 de N"; texto maior que a coluna é truncado com "…"; mais de 7 colunas gera `/MediaBox [0 0 841 595]`; PDF vazio (sem linhas) ainda é válido, com "Nenhum registro no período.".
-- [ ] **Step 2: Teste do serviço:** `pdf_contains_the_title_filters_and_every_row_of_the_screen` (extrai as strings do fluxo de conteúdo e confere título, filtros e as linhas da `ReportTable` equivalente) e `pdf_of_a_financial_report_requires_the_permission`.
-- [ ] **Step 3: Run** — Expected: FAIL.
-- [ ] **Step 4: Implement** o escritor (objetos: catálogo, páginas, fontes, conteúdo; fluxo de conteúdo sem compressão para manter os testes simples) e `ReportService::pdf`.
-- [ ] **Step 5: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 6: Commit** `feat: pdf writer and report pdf`
+- [x] **Step 1: Testes** (`domain/pdf.rs`): o arquivo começa com `%PDF-1.4` e termina com `%%EOF`; a tabela `xref` tem um offset por objeto e cada offset aponta para `N 0 obj`; `startxref` aponta para a tabela; o número de páginas em `/Count` bate com o de objetos `/Type /Page`; texto com acentos aparece como WinAnsi (`ç` = `\347`); parênteses e `\` escapados; 120 linhas de tabela geram 3 ou mais páginas, o cabeçalho da tabela aparece em cada uma e o rodapé diz "Página 1 de N"; texto maior que a coluna é truncado com "…"; mais de 7 colunas gera `/MediaBox [0 0 841 595]`; PDF vazio (sem linhas) ainda é válido, com "Nenhum registro no período.".
+- [x] **Step 2: Teste do serviço:** `pdf_contains_the_title_filters_and_every_row_of_the_screen` (extrai as strings do fluxo de conteúdo e confere título, filtros e as linhas da `ReportTable` equivalente) e `pdf_of_a_financial_report_requires_the_permission`.
+- [x] **Step 3: Run** — Expected: FAIL.
+- [x] **Step 4: Implement** o escritor (objetos: catálogo, páginas, fontes, conteúdo; fluxo de conteúdo sem compressão para manter os testes simples) e `ReportService::pdf`.
+- [x] **Step 5: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 6: Commit** `feat: pdf writer and report pdf`
 
 ---
 
@@ -163,11 +163,11 @@ docs/usuario/{relatorios,documentos}.md   docs/desenvolvimento/{relatorios,docum
   - TS: `ReportQuery`, `ReportTable`, `ReportColumn`, `ReportCell`, `ExportResult`, `runReport`, `exportReportCsv`, `exportReportPdf`, `openExportedFile`.
 - Regras: exportar exige a mesma permissão de `run`; o CSV/PDF é gerado **a partir do mesmo `run`** (sem consulta própria).
 
-- [ ] **Step 1: Testes:** `api.test.ts` (cada função chama o comando certo com `{ token, query }`, `{ token, query, delimiter, path }`…); Rust: `export_writes_the_file_atomically_with_the_csv_bytes`, `export_refuses_a_wrong_extension`, `export_to_a_missing_folder_gives_a_friendly_error_and_leaves_nothing`, `export_requires_the_report_permission` (recepção + financeiro ⇒ `Forbidden` e **nenhum arquivo criado**).
-- [ ] **Step 2: Run** — Expected: FAIL.
-- [ ] **Step 3: Implement** comandos (a escrita em `report_service::write_export`), registrar os plugins em `lib.rs`.
-- [ ] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `npx vitest run src/lib/api.test.ts`, `npx tsc --noEmit`, `cargo check` (valida as permissões) — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: report commands, export and file plugins`
+- [x] **Step 1: Testes:** `api.test.ts` (cada função chama o comando certo com `{ token, query }`, `{ token, query, delimiter, path }`…); Rust: `export_writes_the_file_atomically_with_the_csv_bytes`, `export_refuses_a_wrong_extension`, `export_to_a_missing_folder_gives_a_friendly_error_and_leaves_nothing`, `export_requires_the_report_permission` (recepção + financeiro ⇒ `Forbidden` e **nenhum arquivo criado**).
+- [x] **Step 2: Run** — Expected: FAIL.
+- [x] **Step 3: Implement** comandos (a escrita em `report_service::write_export`), registrar os plugins em `lib.rs`.
+- [x] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `npx vitest run src/lib/api.test.ts`, `npx tsc --noEmit`, `cargo check` (valida as permissões) — Expected: PASS.
+- [x] **Step 5: Commit** `feat: report commands, export and file plugins`
 
 ---
 
@@ -181,11 +181,11 @@ docs/usuario/{relatorios,documentos}.md   docs/desenvolvimento/{relatorios,docum
 - Consumes: T4 (`runReport`, `exportReportCsv`, `exportReportPdf`, `openExportedFile`), `@tauri-apps/plugin-dialog` (`save`).
 - Produces: `REPORTS: { kind, label, financial, filters: FilterKey[] }[]` espelhando o backend; `ReportsPage` com seletor de relatório (só os permitidos: administrador vê os 10, recepção vê 4), filtros do relatório escolhido (período com padrão últimos 30 dias, situação, quarto, forma de pagamento, categoria, texto), botão **Gerar relatório**, tabela (`ReportTableView`: cabeçalho fixo, valores `R$`, rodapé de totais, aviso de truncamento) e **Exportar CSV** / **Exportar PDF** (abrem "Salvar como" com nome sugerido `relatorio-<tipo>-AAAA-MM-DD.csv|pdf`; depois mostram "Arquivo salvo em …" com **Abrir arquivo**; erro mostra a mensagem e mantém **Tentar de novo**). Os filtros ficam na URL (`?tipo=receipts&de=…&ate=…`) para recarregar sem perder a consulta.
 
-- [ ] **Step 1: Testes:** recepção vê só os quatro operacionais e o administrador, os dez; trocar o relatório mostra só os filtros dele; período invertido ou acima de 366 dias mostra o erro e **não consulta**; **Gerar relatório** chama `runReport` com os filtros combinados e mostra colunas, linhas e rodapé em `R$`/`%`/`DD/MM/AAAA`; `truncated` mostra "Mostrando as primeiras 5.000 linhas; refine os filtros"; vazio mostra "Nenhum registro para estes filtros."; Exportar CSV: abre o diálogo com o nome sugerido, chama `exportReportCsv` com **os mesmos filtros** e o separador escolhido, mostra "Arquivo salvo em …" e **Abrir arquivo**; cancelar o diálogo não exporta nem mostra erro; falha de gravação mostra a mensagem e o botão **Tentar de novo**; os filtros e o relatório vêm da URL ao recarregar; o item do menu **Relatórios** abre a tela e deixou de ser "Em breve".
-- [ ] **Step 2: Run** `npx vitest run src/pages/reports src/components/layout` — Expected: FAIL.
-- [ ] **Step 3: Implement** a tela e o item de menu.
-- [ ] **Step 4: Run** `npx vitest run`, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: reports screen with csv and pdf export`
+- [x] **Step 1: Testes:** recepção vê só os quatro operacionais e o administrador, os dez; trocar o relatório mostra só os filtros dele; período invertido ou acima de 366 dias mostra o erro e **não consulta**; **Gerar relatório** chama `runReport` com os filtros combinados e mostra colunas, linhas e rodapé em `R$`/`%`/`DD/MM/AAAA`; `truncated` mostra "Mostrando as primeiras 5.000 linhas; refine os filtros"; vazio mostra "Nenhum registro para estes filtros."; Exportar CSV: abre o diálogo com o nome sugerido, chama `exportReportCsv` com **os mesmos filtros** e o separador escolhido, mostra "Arquivo salvo em …" e **Abrir arquivo**; cancelar o diálogo não exporta nem mostra erro; falha de gravação mostra a mensagem e o botão **Tentar de novo**; os filtros e o relatório vêm da URL ao recarregar; o item do menu **Relatórios** abre a tela e deixou de ser "Em breve".
+- [x] **Step 2: Run** `npx vitest run src/pages/reports src/components/layout` — Expected: FAIL.
+- [x] **Step 3: Implement** a tela e o item de menu.
+- [x] **Step 4: Run** `npx vitest run`, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: reports screen with csv and pdf export`
 
 ---
 
@@ -201,11 +201,11 @@ docs/usuario/{relatorios,documentos}.md   docs/desenvolvimento/{relatorios,docum
 - Produces: `enum DocumentKind` (`ReservationConfirmation`, `PaymentReceipt`, `StayRecord`, `FinalStatement`) com rótulos ("Confirmação de reserva", "Comprovante de pagamento", "Ficha de hospedagem", "Demonstrativo final da conta"); `struct DocumentView { id, kind, kind_label, source_id, version, issued_at, issued_by_name, current: bool }`; `DocumentService::{issue(token, kind, source_id) -> DocumentView, list(token, kind, source_id) -> Vec<DocumentView>, pdf(token, document_id) -> Vec<u8>}`.
 - Regras (D9–D11): `issue` monta o instantâneo atual (JSON estável, campos ordenados), calcula `snapshot_hash`; se for igual ao da última versão devolve essa (sem gravar); senão grava a versão seguinte e audita (`documents`/`issue_document`, kind, origem e versão — **sem** o conteúdo) **na mesma transação**. `pdf` lê **só o instantâneo gravado** (nunca a origem) e o nome da pousada do **instantâneo** (o cabeçalho também é congelado na emissão: nome, endereço e telefone da pousada). Condições: confirmação só para reserva `pending|confirmed|checked_in|completed`; ficha só com hospedagem existente; demonstrativo só com `checked_out`; comprovante de um recebimento existente. Origem inexistente ⇒ `NotFound`; condição não atendida ⇒ `Validation` com texto da pousada ("O demonstrativo final só pode ser emitido depois do check-out."). Qualquer sessão válida emite e lista; sem sessão ⇒ erro de autenticação.
 
-- [ ] **Step 1: Testes:** `issue_creates_version_1_and_audits_in_the_same_transaction` (conta linhas em `documents` e `audit_log`); `issue_again_without_changes_returns_the_same_version_and_writes_nothing`; `issue_after_the_reservation_changed_creates_version_2_and_keeps_version_1_intact` (muda as datas; `pdf` da v1 ainda mostra as datas antigas, a v2 as novas); `pdf_uses_the_snapshot_even_if_the_pousada_name_changed_later`; `documents_cannot_be_updated_or_deleted` (SQL direto aborta); `final_statement_requires_checkout` / `confirmation_refused_for_cancelled_reservation` / `unknown_source_is_not_found`; `payment_receipt_lists_each_method_and_the_total` (pagamento dividido) e `statement_lists_charges_payments_refunds_and_final_balance` (valores batem com `stays.get().account`); `snapshot_has_masked_cpf_and_no_secret_fields`; `migration_0013_is_idempotent_in_the_migration_test` (atualiza a contagem de migrações do teste existente); `list_returns_versions_newest_first_with_current_flag`; `requires_a_session`.
-- [ ] **Step 2: Run** `cargo test --lib document` — Expected: FAIL.
-- [ ] **Step 3: Implement** migração, repositório, serviço e os quatro montadores de instantâneo (reaproveitando `ReservationService::get`, `StayService::get`, `PaymentService`/`payment_repo` e `pousada_repo`), mais o PDF de cada tipo usando `domain::pdf`.
-- [ ] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 5: Commit** `feat: versioned internal documents`
+- [x] **Step 1: Testes:** `issue_creates_version_1_and_audits_in_the_same_transaction` (conta linhas em `documents` e `audit_log`); `issue_again_without_changes_returns_the_same_version_and_writes_nothing`; `issue_after_the_reservation_changed_creates_version_2_and_keeps_version_1_intact` (muda as datas; `pdf` da v1 ainda mostra as datas antigas, a v2 as novas); `pdf_uses_the_snapshot_even_if_the_pousada_name_changed_later`; `documents_cannot_be_updated_or_deleted` (SQL direto aborta); `final_statement_requires_checkout` / `confirmation_refused_for_cancelled_reservation` / `unknown_source_is_not_found`; `payment_receipt_lists_each_method_and_the_total` (pagamento dividido) e `statement_lists_charges_payments_refunds_and_final_balance` (valores batem com `stays.get().account`); `snapshot_has_masked_cpf_and_no_secret_fields`; `migration_0013_is_idempotent_in_the_migration_test` (atualiza a contagem de migrações do teste existente); `list_returns_versions_newest_first_with_current_flag`; `requires_a_session`.
+- [x] **Step 2: Run** `cargo test --lib document` — Expected: FAIL.
+- [x] **Step 3: Implement** migração, repositório, serviço e os quatro montadores de instantâneo (reaproveitando `ReservationService::get`, `StayService::get`, `PaymentService`/`payment_repo` e `pousada_repo`), mais o PDF de cada tipo usando `domain::pdf`.
+- [x] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 5: Commit** `feat: versioned internal documents`
 
 ---
 
@@ -219,11 +219,11 @@ docs/usuario/{relatorios,documentos}.md   docs/desenvolvimento/{relatorios,docum
 - Produces: comandos `issue_document(token, kind, source_id)`, `list_documents(token, kind, source_id)`, `save_document_pdf(token, document_id, path) -> ExportResult`; TS `issueDocument`, `listDocuments`, `saveDocumentPdf`, `DocumentView`; `DocumentActions({ kind, sourceId, label })`: botão **Emitir <rótulo>** (ex.: "Emitir confirmação de reserva"), lista das versões ("Versão 2 · emitida em 21/10/2026 às 14:05 por Ana · vigente") cada uma com **Salvar PDF** (diálogo "Salvar como", nome `confirmacao-RES-000005-v2.pdf`) e **Abrir** (leitor padrão, de onde se imprime); depois de salvar mostra "PDF salvo em …" com **Abrir arquivo**; falha de gravação mostra a mensagem e **Tentar de novo** **sem** emitir de novo (o documento já existe).
 - Onde aparece: `ReservationPage` → Confirmação de reserva (reserva ativa); linhas de recebimento da reserva e da hospedagem → Comprovante de pagamento; `StayPage` → Ficha de hospedagem e, depois do check-out, Demonstrativo final.
 
-- [ ] **Step 1: Testes:** `api.test.ts` dos três comandos; `DocumentActions`: sem versões mostra só **Emitir …**; emitir chama `issueDocument` uma vez e atualiza a lista; lista versões em ordem com a vigente marcada **em texto**; **Salvar PDF** abre o diálogo com o nome sugerido e chama `saveDocumentPdf` com o caminho; cancelar o diálogo não faz nada; erro de gravação mostra a mensagem, mantém **Tentar de novo** e **não** chama `issueDocument`; `ReservationPage` mostra **Emitir confirmação de reserva** só para reserva ativa; `StayPage` mostra **Emitir ficha de hospedagem** sempre e **Emitir demonstrativo final** só com a hospedagem encerrada; cada recebimento tem **Emitir comprovante**.
-- [ ] **Step 2: Run** `npx vitest run src/components src/pages/reservations src/pages/stays src/lib/api.test.ts` — Expected: FAIL.
-- [ ] **Step 3: Implement** os comandos Rust e os componentes.
-- [ ] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `npx vitest run`, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: document actions in reservation and stay screens`
+- [x] **Step 1: Testes:** `api.test.ts` dos três comandos; `DocumentActions`: sem versões mostra só **Emitir …**; emitir chama `issueDocument` uma vez e atualiza a lista; lista versões em ordem com a vigente marcada **em texto**; **Salvar PDF** abre o diálogo com o nome sugerido e chama `saveDocumentPdf` com o caminho; cancelar o diálogo não faz nada; erro de gravação mostra a mensagem, mantém **Tentar de novo** e **não** chama `issueDocument`; `ReservationPage` mostra **Emitir confirmação de reserva** só para reserva ativa; `StayPage` mostra **Emitir ficha de hospedagem** sempre e **Emitir demonstrativo final** só com a hospedagem encerrada; cada recebimento tem **Emitir comprovante**.
+- [x] **Step 2: Run** `npx vitest run src/components src/pages/reservations src/pages/stays src/lib/api.test.ts` — Expected: FAIL.
+- [x] **Step 3: Implement** os comandos Rust e os componentes.
+- [x] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `npx vitest run`, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: document actions in reservation and stay screens`
 
 ---
 
@@ -233,19 +233,37 @@ docs/usuario/{relatorios,documentos}.md   docs/desenvolvimento/{relatorios,docum
 - Modify: `src-tauri/src/seed.rs` (+ teste), `docs/desenvolvimento/seed.md`, `CHANGELOG.md`, `docs/usuario/README.md`, `docs/usuario/roteiro-de-treinamento.md`, `docs/desenvolvimento/README.md`, `local/plano-completo.md`, `local/spec.md` (Anexo A.8 com D1–D11), este plano
 - Create: `docs/usuario/{relatorios,documentos}.md`, `docs/desenvolvimento/{relatorios,documentos}.md`, teste de volume em `services/report_service.rs`
 
-- [ ] **Step 1: Volume:** `volume_5_years_of_fake_data_runs_every_report_under_the_limit` — insere por SQL ≈ 5 anos (1.800 dias) de reservas, hospedagens, recebimentos (com componentes), contas e fechamentos fictícios, roda os 10 relatórios do período máximo (366 dias) e do período curto e afirma cada um **< 2 s** em build de teste (ou o limite medido, registrado no plano), além de conferir que a tela (`run`) e o CSV têm o mesmo número de linhas.
-- [ ] **Step 2: Seed:** o cenário existente já alimenta os relatórios e permite emitir os quatro documentos; o teste afirma que `reports.run` (admin) devolve linhas para recebimentos e contas a pagar e que `documents.issue` funciona para a hospedagem do seed.
-- [ ] **Step 3: Docs:** guias de usuário (relatórios: escolher, filtrar, exportar, abrir; documentos: emitir, versões, reimprimir, o que fazer se não salvar) e de desenvolvimento (motor `ReportTable`, permissões, datas de referência, CSV, PDF, versionamento, limitações e provisórios D11), `CHANGELOG.md`, roteiro (módulos de Relatórios e Documentos; marcar ⚠ o conteúdo dos documentos), Anexo A.8 da spec, marca o 6.4 como implementado no plano-completo.
-- [ ] **Step 4: Verificação completa:** `cargo test --features dev-seed`, `cargo clippy --all-targets --features dev-seed -- -D warnings`, `npx vitest run`, `npx tsc --noEmit`, `npm run build`; registrar contagens no Status.
-- [ ] **Step 5:** `graphify update .`; anotar no Status.
-- [ ] **Step 6:** Revisão final da branch por revisor independente (modelo mais capaz) com o Review Focus; corrigir Críticos/Importantes (TDD); registrar menores adiados; atualizar Status, desvios e pendências.
-- [ ] **Step 7: Commit** `docs: close marco 6.4`
+- [x] **Step 1: Volume:** `volume_5_years_of_fake_data_runs_every_report_under_the_limit` — insere por SQL ≈ 5 anos (1.800 dias) de reservas, hospedagens, recebimentos (com componentes), contas e fechamentos fictícios, roda os 10 relatórios do período máximo (366 dias) e do período curto e afirma cada um **< 2 s** em build de teste (ou o limite medido, registrado no plano), além de conferir que a tela (`run`) e o CSV têm o mesmo número de linhas.
+- [x] **Step 2: Seed:** o cenário existente já alimenta os relatórios e permite emitir os quatro documentos; o teste afirma que `reports.run` (admin) devolve linhas para recebimentos e contas a pagar e que `documents.issue` funciona para a hospedagem do seed.
+- [x] **Step 3: Docs:** guias de usuário (relatórios: escolher, filtrar, exportar, abrir; documentos: emitir, versões, reimprimir, o que fazer se não salvar) e de desenvolvimento (motor `ReportTable`, permissões, datas de referência, CSV, PDF, versionamento, limitações e provisórios D11), `CHANGELOG.md`, roteiro (módulos de Relatórios e Documentos; marcar ⚠ o conteúdo dos documentos), Anexo A.8 da spec, marca o 6.4 como implementado no plano-completo.
+- [x] **Step 4: Verificação completa:** `cargo test --features dev-seed`, `cargo clippy --all-targets --features dev-seed -- -D warnings`, `npx vitest run`, `npx tsc --noEmit`, `npm run build`; registrar contagens no Status.
+- [x] **Step 5:** `graphify update .`; anotar no Status.
+- [x] **Step 6:** Revisão final da branch por revisor independente (modelo mais capaz) com o Review Focus; corrigir Críticos/Importantes (TDD); registrar menores adiados; atualizar Status, desvios e pendências.
+- [x] **Step 7: Commit** `docs: close marco 6.4`
 
 ---
 
 ## Status
 
-**Não iniciado.** Plano escrito em 03/11/2026.
+**Implementado, aguardando revisão final** na branch `marco-6-4-relatorios` (a partir de `identidade-visual`). T1 a T8 concluídas; migração `0013`.
+
+- **Testes (última execução completa):** `cargo test --features dev-seed --lib` 608 testes; `cargo clippy --all-targets --features dev-seed -- -D warnings` limpo; `npx vitest run` 534 testes em 67 arquivos; `npx tsc --noEmit` e `npm run build` limpos; `graphify update .` executado.
+- **Pendências de verificação:** (1) os 4 testes de integração `tests/startup.rs` não foram reexecutados nesta rodada porque um `boreal-pms.exe` (provavelmente `npm run tauri dev`) estava aberto e impedia o cargo de recompilar o binário; nada neste marco toca esse caminho. (2) Manual em `npm run tauri dev`: diálogo "Salvar como", abrir o PDF no leitor padrão, aparência dos PDFs impressos, CSV no Excel. (3) `search_over_five_years_of_data_stays_fast` é sensível a tempo sob carga paralela (passa isolado).
+
+## Medição de volume
+
+Cenário: 5 anos (14.600 reservas com noites, hospedagens, cobranças, recebimentos, 1.825 contas e fechamentos). Período de 365 dias: Hospedagens ≈ 0,5–0,65 s (2.912 linhas, o mais lento); Recebimentos ≈ 0,09 s; os demais < 0,06 s. Período de 1 dia: < 0,03 s. Limite do teste: 3 s.
+
+## Desvios e decisões da execução
+
+- A abertura do arquivo exportado é um comando do backend (`open_exported_file`, só `.pdf`/`.csv` existentes) em vez de `opener:allow-open-path` com escopo amplo; só `dialog:allow-save` entrou nas permissões.
+- `ReportService::pdf(token, query)` calcula a data de emissão sozinho (`ctx.local_now`), sem o parâmetro `issued_at_text` do plano.
+- Origem inexistente nos documentos devolve `Validation` ("não encontrada"), não `NotFound` (o projeto usa `Validation` para isso).
+- O documento não guarda `snapshot_hash`: a comparação é pelo texto do instantâneo (evita depender de um hash que pode mudar entre versões do Rust).
+- PDF paisagem usa 842×595 (A4) em vez de 841×595.
+- O cenário de volume não tem cancelamentos nem hospedagens em andamento; Cancelamentos e Saldos podem vir vazios nesse teste.
+- Sem logotipo nos PDFs (v1).
+
 
 ## Marcos seguintes
 
