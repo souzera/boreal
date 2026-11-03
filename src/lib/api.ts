@@ -1533,3 +1533,8 @@ export interface DocumentView {
 export const issueDocument = (token: string, kind: DocumentKind, sourceId: number) => call<DocumentView>("issue_document", { token, kind, sourceId });
 export const listDocuments = (token: string, kind: DocumentKind, sourceId: number) => call<DocumentView[]>("list_documents", { token, kind, sourceId });
 export const saveDocumentPdf = (token: string, documentId: number, path: string) => call<ExportResult>("save_document_pdf", { token, documentId, path });
+
+// ---- Backup e recuperação ----
+
+/** Chave de recuperação (9 grupos); só o administrador, com a senha. */
+export const revealRecoveryKey = (token: string, password: string) => call<string>("reveal_recovery_key", { token, password });

@@ -11,6 +11,7 @@ pub mod room_status;
 pub mod documents;
 pub mod management;
 pub mod reception;
+pub mod recovery;
 pub mod reports;
 pub mod search;
 pub mod auth;

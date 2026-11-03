@@ -11,6 +11,8 @@ pub mod maintenance;
 pub mod money;
 pub mod pdf;
 pub mod phone;
+pub mod recovery_key;
+pub mod secret;
 pub mod report;
 pub mod pricing;
 pub mod room_state;

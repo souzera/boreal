@@ -1,3 +1,4 @@
+use crate::domain::secret::SecretKey;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -8,6 +9,7 @@ use super::alert_service::AlertService;
 use super::document_service::DocumentService;
 use super::management_service::ManagementService;
 use super::reception_service::ReceptionService;
+use super::recovery_service::RecoveryService;
 use super::report_service::ReportService;
 use super::auth_service::AuthService;
 use super::block_service::BlockService;
@@ -97,12 +99,16 @@ pub struct Harness {
     pub management: ManagementService,
     pub reports: ReportService,
     pub documents: DocumentService,
+    pub recovery: RecoveryService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
 }
 
 pub const ADMIN_PASSWORD: &str = "Admin-Senha-1";
+
+/// Chave fixa dos testes (não é segredo).
+pub const TEST_KEY: [u8; 32] = [0x2A; 32];
 
 pub fn t0() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 10, 21, 12, 0, 0).unwrap()
@@ -119,6 +125,7 @@ pub fn harness() -> Harness {
         sessions: Arc::new(SessionManager::new(Duration::from_secs(600))),
         clock: clock.clone(),
         utc: utc.clone(),
+        key: Arc::new(SecretKey::new(TEST_KEY.to_vec())),
     };
     Harness {
         auth: AuthService::new(ctx.clone()),
@@ -146,7 +153,8 @@ pub fn harness() -> Harness {
         reception: ReceptionService::new(ctx.clone()),
         management: ManagementService::new(ctx.clone()),
         reports: ReportService::new(ctx.clone()),
-        documents: DocumentService::new(ctx),
+        documents: DocumentService::new(ctx.clone()),
+        recovery: RecoveryService::new(ctx),
         utc,
         clock,
         db,

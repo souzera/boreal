@@ -15,6 +15,7 @@ pub mod payment_service;
 pub mod policy_service;
 pub mod pousada_service;
 pub mod rate_service;
+pub mod recovery_service;
 pub mod refund_service;
 pub mod report_service;
 pub mod reception_service;
@@ -37,6 +38,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::auth::session::{Clock, SessionManager, SystemClock};
+use crate::domain::secret::SecretKey;
 use crate::error::AppError;
 use crate::repositories::settings_repo;
 
@@ -65,6 +67,8 @@ pub struct Ctx {
     pub sessions: Arc<SessionManager>,
     pub clock: Arc<dyn Clock>,
     pub utc: Arc<dyn UtcClock>,
+    /// Chave do banco em memória (backup e chave de recuperação); zerada ao ser solta.
+    pub key: Arc<SecretKey>,
 }
 
 impl Ctx {
@@ -88,7 +92,7 @@ impl Ctx {
         (self.utc.now_utc() + chrono::Duration::seconds(offset)).date_naive()
     }
 
-    pub fn production(conn: Connection) -> Result<Self, AppError> {
+    pub fn production(conn: Connection, key: SecretKey) -> Result<Self, AppError> {
         let idle_minutes = settings_repo::get_u32(&conn, "idle_lock_minutes")?;
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
@@ -97,6 +101,7 @@ impl Ctx {
             ))),
             clock: Arc::new(SystemClock),
             utc: Arc::new(SystemUtc),
+            key: Arc::new(key),
         })
     }
 }

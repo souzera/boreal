@@ -145,6 +145,7 @@ pub fn run() {
             commands::search::global_search,
             commands::reception::reception_overview,
             commands::management::management_dashboard,
+            commands::recovery::reveal_recovery_key,
             commands::reports::run_report,
             commands::reports::export_report_csv,
             commands::reports::export_report_pdf,

@@ -6,6 +6,7 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
 import {
+  revealRecoveryKey,
   issueDocument,
   listDocuments,
   saveDocumentPdf,
@@ -286,5 +287,15 @@ describe("documentos internos", () => {
 
     await saveDocumentPdf("t", 12, "C:/x/d.pdf");
     expect(invoke).toHaveBeenLastCalledWith("save_document_pdf", { token: "t", documentId: 12, path: "C:/x/d.pdf" });
+  });
+});
+
+describe("chave de recuperação", () => {
+  it("reveal_recovery_key envia o token e a senha", async () => {
+    invoke.mockResolvedValue("AAAA");
+
+    await revealRecoveryKey("t", "minha-senha");
+
+    expect(invoke).toHaveBeenLastCalledWith("reveal_recovery_key", { token: "t", password: "minha-senha" });
   });
 });

@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::db::keystore::KeyStore;
 use crate::db::open_database;
+use crate::domain::secret::SecretKey;
 use crate::error::AppError;
 use crate::migrations::{current_version, last_applied_at, run_migrations};
 use crate::services::alert_service::AlertService;
@@ -18,6 +19,7 @@ use crate::services::rate_service::RateService;
 use crate::services::document_service::DocumentService;
 use crate::services::management_service::ManagementService;
 use crate::services::reception_service::ReceptionService;
+use crate::services::recovery_service::RecoveryService;
 use crate::services::report_service::ReportService;
 use crate::services::reservation_service::ReservationService;
 use crate::services::block_service::BlockService;
@@ -67,6 +69,7 @@ pub struct AppState {
     pub management: ManagementService,
     pub reports: ReportService,
     pub documents: DocumentService,
+    pub recovery: RecoveryService,
     ctx: Ctx,
 }
 
@@ -91,7 +94,9 @@ impl AppState {
 pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppError> {
     let mut conn = open_database(db_path, keys)?;
     run_migrations(&mut conn)?;
-    let ctx = Ctx::production(conn)?;
+    // O banco só abre com a chave; ela fica em memória (zerada ao sair) para backup e chave de recuperação.
+    let key = keys.get()?.ok_or(AppError::KeyUnavailable)?;
+    let ctx = Ctx::production(conn, SecretKey::new(key))?;
     Ok(AppState {
         auth: AuthService::new(ctx.clone()),
         users: UserService::new(ctx.clone()),
@@ -119,6 +124,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         management: ManagementService::new(ctx.clone()),
         reports: ReportService::new(ctx.clone()),
         documents: DocumentService::new(ctx.clone()),
+        recovery: RecoveryService::new(ctx.clone()),
         ctx,
     })
 }
