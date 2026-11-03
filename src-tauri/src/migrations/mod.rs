@@ -2,6 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::AppError;
 
+#[derive(Clone, Copy)]
 pub struct Migration {
     pub version: u32,
     pub sql: &'static str,
@@ -79,6 +80,17 @@ pub fn current_version(conn: &Connection) -> Result<u32, AppError> {
 /// Quando a última migração foi aplicada (RFC 3339 UTC), se houver.
 pub fn last_applied_at(conn: &Connection) -> Result<Option<String>, AppError> {
     Ok(conn.query_row("SELECT MAX(applied_at) FROM schema_migrations", [], |r| r.get(0))?)
+}
+
+/// Versão do esquema, ou 0 se o banco ainda não tem nenhuma migração aplicada.
+pub fn version_or_zero(conn: &Connection) -> u32 {
+    current_version(conn).unwrap_or(0)
+}
+
+/// Quantas migrações de `migrations` ainda não foram aplicadas.
+pub fn pending(conn: &Connection, migrations: &[Migration]) -> usize {
+    let current = version_or_zero(conn);
+    migrations.iter().filter(|m| m.version > current).count()
 }
 
 /// Aplica as migrações pendentes e retorna a versão atual do esquema.

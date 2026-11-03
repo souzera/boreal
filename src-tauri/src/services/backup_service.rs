@@ -138,7 +138,8 @@ impl BackupService {
     }
 
     fn dest_dir(&self, conn: &Connection) -> Result<PathBuf, AppError> {
-        let configured = settings_repo::get(conn, "backup_dir")?.unwrap_or_default();
+        // Banco antigo (antes de a configuração existir): usa a pasta padrão em vez de falhar.
+        let configured = settings_repo::get(conn, "backup_dir").ok().flatten().unwrap_or_default();
         if configured.trim().is_empty() {
             Ok(self.db_path.parent().map_or_else(|| PathBuf::from("backups"), |p| p.join("backups")))
         } else {
@@ -395,6 +396,7 @@ impl BackupService {
         let conn = self.ctx.conn()?;
         match outcome {
             Ok(done) => {
+                // O histórico é melhor esforço: num banco ainda sem a tabela (antes de migrar) o backup vale mesmo assim.
                 let id = backup_repo::insert_run(
                     &conn,
                     &NewRun {
@@ -407,7 +409,8 @@ impl BackupService {
                         schema_version: Some(i64::from(done.schema_version)),
                         message: "",
                     },
-                )?;
+                )
+                .unwrap_or(0);
                 Ok(BackupRunView {
                     id,
                     kind: kind.as_str().into(),
@@ -425,10 +428,10 @@ impl BackupService {
                     AppError::Validation(m) => m.clone(),
                     _ => "Não foi possível concluir o backup.".to_string(),
                 };
-                backup_repo::insert_run(
+                let _ = backup_repo::insert_run(
                     &conn,
                     &NewRun { kind: kind.as_str(), status: "failed", started_at: &started, finished_at: &finished, file_name: None, bytes: 0, schema_version: None, message: &message },
-                )?;
+                );
                 Err(error)
             }
         }

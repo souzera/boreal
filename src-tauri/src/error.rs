@@ -20,6 +20,10 @@ pub enum AppError {
     Database(String),
     #[error("Sem espaço em disco. Libere espaço e tente de novo. Nada foi salvo.")]
     DiskFull,
+    #[error("Não foi possível fazer o backup antes de atualizar o banco de dados. Seus dados estão intactos. Libere espaço ou verifique a pasta de backup e abra o aplicativo de novo.")]
+    UpdateBackupFailed,
+    #[error("A atualização do banco de dados não pôde ser concluída. Seus dados foram preservados e há uma cópia de segurança. Reinstale a versão anterior do aplicativo ou procure o suporte.")]
+    UpdateFailed(String),
     /// O texto técnico (nomes de tabelas, no máximo) fica só no `Debug`; a mensagem é sempre a mesma.
     #[error("O banco de dados apresenta problemas de integridade. Os dados não foram alterados; restaure o último backup válido.")]
     IntegrityProblem(String),
@@ -52,6 +56,8 @@ impl AppError {
             AppError::Database(_) => "database",
             AppError::DiskFull => "disk_full",
             AppError::IntegrityProblem(_) => "integrity",
+            AppError::UpdateBackupFailed => "update_backup_failed",
+            AppError::UpdateFailed(_) => "update_failed",
             AppError::Validation(_) => "validation",
             AppError::Unauthorized => "unauthorized",
             AppError::InvalidCredentials => "invalid_credentials",

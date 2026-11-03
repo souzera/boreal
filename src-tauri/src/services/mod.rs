@@ -113,7 +113,8 @@ impl Ctx {
     }
 
     pub fn production(conn: Connection, key: SecretKey, data_dir: std::path::PathBuf) -> Result<Self, AppError> {
-        let idle_minutes = settings_repo::get_u32(&conn, "idle_lock_minutes")?;
+        // Antes das migrações a tabela pode não existir (banco novo): usa o padrão e a abertura relê depois de migrar.
+        let idle_minutes = settings_repo::get_u32(&conn, "idle_lock_minutes").unwrap_or(10);
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
             sessions: Arc::new(SessionManager::new(Duration::from_secs(
