@@ -158,9 +158,12 @@ pub fn disk_world() -> DiskWorld {
     ctx.conn()
         .unwrap()
         .execute_batch(
-            "INSERT INTO users (id, username, display_name, password_hash, role, active, must_change_password, created_at, updated_at)
-               VALUES (1, 'admin', 'Administrador', 'x', 'admin', 1, 0, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z'),
-                      (2, 'rec', 'Recepção', 'x', 'recepcao', 1, 0, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z');",
+            &format!(
+                "INSERT INTO users (id, username, display_name, password_hash, role, active, must_change_password, created_at, updated_at)
+                   VALUES (1, 'admin', 'Administrador', '{}', 'admin', 1, 0, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z'),
+                          (2, 'rec', 'Recepção', 'x', 'recepcao', 1, 0, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z');",
+                crate::auth::password::hash_password(ADMIN_PASSWORD).unwrap()
+            ),
         )
         .unwrap();
     let admin = ctx.sessions.create(1, Role::Admin, ctx.clock.now());

@@ -13,15 +13,19 @@ use super::{format_utc, Ctx};
 use crate::audit::{self, AuditEntry};
 use crate::auth::permissions::Permission;
 use crate::auth::session::require;
-use crate::domain::backup::{file_name, is_backup_name, parse_datetime, retain};
+use crate::domain::backup::{file_name, is_backup_name, is_safety_name, parse_datetime, retain, retain_safety, safety_file_name};
 use crate::domain::secret::SecretKey;
 use crate::error::AppError;
-use crate::migrations::current_version;
-use crate::models::backup::{BackupFileView, BackupRunView, DestinationView};
+use crate::auth::password::verify_password;
+use crate::migrations::{current_version, run_migrations, MIGRATIONS};
+use crate::repositories::user_repo;
+use super::health_service::check_database;
+use crate::models::backup::{BackupFileView, BackupRunView, Counts, DestinationView, RestorePreview, RestoreResult};
 use crate::repositories::backup_repo::{self, NewRun, RunRow};
 use crate::repositories::settings_repo;
 
 const RETENTION_DAYS: usize = 7;
+const SAFETY_KEEP: usize = 5;
 const SPACE_MARGIN: u64 = 64 * 1024 * 1024;
 
 fn invalid(message: &str) -> AppError {
@@ -92,6 +96,20 @@ pub(crate) fn validate_file(path: &Path, key: &SecretKey) -> Result<BackupInfo, 
         schema_version: current_version(&conn)?,
         audit_count: conn.query_row("SELECT count(*) FROM audit_log", [], |r| r.get(0))?,
     })
+}
+
+/// Versão do esquema que este aplicativo conhece.
+pub(crate) fn latest_schema_version() -> u32 {
+    MIGRATIONS.iter().map(|m| m.version).max().unwrap_or(0)
+}
+
+fn counts_of(conn: &Connection) -> Counts {
+    let count = |table: &str| conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0)).unwrap_or(0);
+    Counts { reservations: count("reservations"), stays: count("stays"), payments: count("payments"), guests: count("guests") }
+}
+
+fn last_activity(conn: &Connection) -> Option<String> {
+    conn.query_row("SELECT MAX(at) FROM audit_log", [], |r| r.get(0)).unwrap_or(None)
 }
 
 struct Done {
@@ -207,13 +225,156 @@ impl BackupService {
                     let name = e.file_name().to_string_lossy().to_string();
                     let at = parse_datetime(&name)?;
                     let bytes = e.metadata().ok()?.len();
-                    Some(BackupFileView { file_name: name, at: at.format("%d/%m/%Y %H:%M").to_string(), bytes })
+                    Some(BackupFileView { safety: is_safety_name(&name), file_name: name, at: at.format("%d/%m/%Y %H:%M").to_string(), bytes })
                 })
                 .collect(),
             Err(_) => Vec::new(),
         };
         files.sort_by(|a, b| b.file_name.cmp(&a.file_name));
         Ok(files)
+    }
+
+    /// O que o backup contém, comparado com o banco atual (sem alterar nada). Só o administrador.
+    pub fn preview_restore(&self, token: &str, path: &str) -> Result<RestorePreview, AppError> {
+        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        require(&actor, Permission::RestoreBackup)?;
+        let file = Path::new(path);
+        let file_name = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let backup_at = parse_datetime(&file_name).map_or_else(|| "Data não informada".to_string(), |d| d.format("%d/%m/%Y %H:%M").to_string());
+        let (current_counts, current_last) = {
+            let conn = self.ctx.conn()?;
+            (counts_of(&conn), last_activity(&conn))
+        };
+        let app_schema = latest_schema_version();
+        let refused = |problem: String, schema: u32| RestorePreview {
+            file_name: file_name.clone(),
+            backup_at: backup_at.clone(),
+            schema_version: schema,
+            app_schema_version: app_schema,
+            restorable: false,
+            problem: Some(problem),
+            counts: Counts::default(),
+            current_counts: current_counts.clone(),
+            loses_recent_data: false,
+        };
+        if !file.is_absolute() || !file.is_file() {
+            return Ok(refused("O arquivo de backup não foi encontrado.".into(), 0));
+        }
+        let info = match validate_file(file, &self.ctx.key) {
+            Ok(info) => info,
+            Err(AppError::Validation(message)) => return Ok(refused(message, 0)),
+            Err(other) => return Err(other),
+        };
+        if info.schema_version > app_schema {
+            return Ok(refused("Este backup foi feito por uma versão mais nova do Boreal. Atualize o aplicativo antes de restaurar.".into(), info.schema_version));
+        }
+        let source = open_with_key(file, &self.ctx.key)?;
+        let backup_last = last_activity(&source);
+        Ok(RestorePreview {
+            file_name,
+            backup_at,
+            schema_version: info.schema_version,
+            app_schema_version: app_schema,
+            restorable: true,
+            problem: None,
+            counts: counts_of(&source),
+            current_counts,
+            loses_recent_data: matches!((&backup_last, &current_last), (Some(b), Some(c)) if b < c),
+        })
+    }
+
+    /// Restaura um backup **para dentro** do banco aberto. Exige administrador, a senha e a confirmação digitada;
+    /// faz antes uma cópia de segurança do estado atual (sem ela, não restaura) e encerra todas as sessões.
+    pub fn restore(&self, token: &str, path: &str, confirmation: &str, password: &str) -> Result<RestoreResult, AppError> {
+        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        require(&actor, Permission::RestoreBackup)?;
+        if confirmation.trim().to_uppercase() != "RESTAURAR" {
+            return Err(invalid("Digite RESTAURAR para confirmar."));
+        }
+        let username = {
+            let conn = self.ctx.conn()?;
+            let (user, hash) = user_repo::find_with_hash(&conn, actor.user_id)?.ok_or(AppError::Unauthorized)?;
+            if !verify_password(password, &hash) {
+                return Err(invalid("A senha está incorreta."));
+            }
+            user.username
+        };
+        let preview = self.preview_restore(token, path)?;
+        if !preview.restorable {
+            return Err(invalid(preview.problem.as_deref().unwrap_or("Este backup não pode ser restaurado.")));
+        }
+
+        // A cópia de segurança do estado atual é obrigatória: sem ela nada é alterado.
+        let safety = self
+            .execute(BackupKind::PreRestore)
+            .map_err(|_| invalid("Não foi possível fazer a cópia de segurança do estado atual. A restauração foi cancelada e nada foi alterado."))?;
+        let safety_file = safety.file_name.clone().unwrap_or_default();
+
+        if self.copy_into_live(Path::new(path)).is_err() {
+            // Volta ao estado de antes, a partir da cópia de segurança.
+            let dir = {
+                let conn = self.ctx.conn()?;
+                self.dest_dir(&conn)?
+            };
+            let _ = self.copy_into_live(&dir.join(&safety_file));
+            return Err(invalid("A restauração não pôde ser concluída. O estado anterior foi recuperado."));
+        }
+
+        self.ctx.sessions.destroy_all();
+        let at = self.ctx.utc.now_utc();
+        let mut conn = self.ctx.conn()?;
+        let tx = conn.transaction()?;
+        // O banco restaurado não conhece a cópia de segurança recém-feita: registra-a, para o histórico (e o alerta de
+        // "sem backup válido") refletirem a realidade.
+        backup_repo::insert_run(
+            &tx,
+            &NewRun {
+                kind: BackupKind::PreRestore.as_str(),
+                status: "ok",
+                started_at: &safety.finished_at,
+                finished_at: &safety.finished_at,
+                file_name: Some(&safety_file),
+                bytes: safety.bytes,
+                schema_version: Some(i64::from(latest_schema_version())),
+                message: "",
+            },
+        )?;
+        backup_repo::insert_event(&tx, "restore", &format_utc(at), &format!("Backup de {}", preview.backup_at))?;
+        audit::record(
+            &tx,
+            &AuditEntry {
+                at,
+                // O usuário que restaurou pode nem existir no backup restaurado: o nome vai no texto.
+                user_id: None,
+                module: "backup",
+                operation: "restore_backup",
+                entity: "backup",
+                entity_id: None,
+                before: None,
+                after: Some(json!({ "restored_by": username, "backup_at": preview.backup_at, "safety_copy": safety_file })),
+                justification: None,
+            },
+        )?;
+        tx.commit()?;
+        Ok(RestoreResult { safety_copy: safety_file, backup_at: preview.backup_at })
+    }
+
+    /// Copia o arquivo de backup para dentro da conexão aberta, reaplica migrações e confere a integridade.
+    fn copy_into_live(&self, from: &Path) -> Result<(), AppError> {
+        let source = open_with_key(from, &self.ctx.key)?;
+        let mut live = self.ctx.conn()?;
+        live.execute_batch("PRAGMA journal_mode = DELETE;")?;
+        {
+            let backup = Backup::new(&source, &mut live)?;
+            backup.run_to_completion(256, Duration::ZERO, None)?;
+        }
+        live.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
+        run_migrations(&mut live)?;
+        let report = check_database(&live);
+        if !report.ok {
+            return Err(AppError::IntegrityProblem(report.problems.join(" | ")));
+        }
+        Ok(())
     }
 
     /// Na abertura do aplicativo: se o último backup válido tem mais de 24 h (ou não há nenhum), faz um agora,
@@ -229,7 +390,7 @@ impl BackupService {
 
     fn execute(&self, kind: BackupKind) -> Result<BackupRunView, AppError> {
         let started = format_utc(self.ctx.utc.now_utc());
-        let outcome = self.try_backup();
+        let outcome = self.try_backup(kind);
         let finished = format_utc(self.ctx.utc.now_utc());
         let conn = self.ctx.conn()?;
         match outcome {
@@ -273,7 +434,7 @@ impl BackupService {
         }
     }
 
-    fn try_backup(&self) -> Result<Done, AppError> {
+    fn try_backup(&self, kind: BackupKind) -> Result<Done, AppError> {
         let dir = {
             let conn = self.ctx.conn()?;
             self.dest_dir(&conn)?
@@ -292,7 +453,10 @@ impl BackupService {
             return Err(invalid("Não há espaço suficiente na pasta de backup."));
         }
 
-        let name = file_name(self.ctx.local_now());
+        // Cópias de segurança (antes de restaurar ou atualizar) têm nome próprio e retenção própria: nunca apagam
+        // um backup diário, nem o que está sendo restaurado.
+        let safety = matches!(kind, BackupKind::PreMigration | BackupKind::PreRestore);
+        let name = if safety { safety_file_name(self.ctx.local_now()) } else { file_name(self.ctx.local_now()) };
         let target = dir.join(&name);
         let partial = dir.join(format!("{name}.partial"));
         if target.exists() {
@@ -314,10 +478,11 @@ impl BackupService {
 
         // Só depois de um backup novo e válido a retenção apaga os antigos (e só arquivos do padrão).
         let names: Vec<String> = std::fs::read_dir(&dir)
-            .map(|entries| entries.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| is_backup_name(n)).collect())
+            .map(|entries| entries.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| is_backup_name(n) || is_safety_name(n)).collect())
             .unwrap_or_default();
-        for old in retain(&names, RETENTION_DAYS) {
-            let _ = std::fs::remove_file(dir.join(old));
+        let old = if safety { retain_safety(&names, SAFETY_KEEP) } else { retain(&names, RETENTION_DAYS) };
+        for name in old {
+            let _ = std::fs::remove_file(dir.join(name));
         }
 
         let bytes = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
@@ -633,5 +798,239 @@ mod tests {
         let conn = w.ctx.conn().unwrap();
         let after: String = conn.query_row("SELECT group_concat(after_json) FROM audit_log WHERE operation = 'set_destination'", [], |r| r.get(0)).unwrap();
         assert!(!after.contains("externo"), "{after}");
+    }
+}
+
+#[cfg(test)]
+mod restore_tests {
+    use super::*;
+    use crate::services::test_support::{disk_world, DiskWorld, ADMIN_PASSWORD};
+
+    fn service(w: &DiskWorld) -> BackupService {
+        BackupService::new(w.ctx.clone(), w.db_path.clone())
+    }
+
+    fn backups_dir(w: &DiskWorld) -> PathBuf {
+        w.db_path.parent().unwrap().join("backups")
+    }
+
+    fn add_guests(w: &DiskWorld, from: i64, to: i64) {
+        let conn = w.ctx.conn().unwrap();
+        for i in from..=to {
+            conn.execute(
+                "INSERT INTO guests (code, full_name, name_key, phone, created_at, updated_at) VALUES (?1, ?2, ?3, '11999990000', '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z')",
+                rusqlite::params![format!("HOS-{i:06}"), format!("Hóspede {i}"), format!("hospede {i}")],
+            )
+            .unwrap();
+        }
+    }
+
+    fn guest_count(w: &DiskWorld) -> i64 {
+        w.ctx.conn().unwrap().query_row("SELECT count(*) FROM guests", [], |r| r.get(0)).unwrap()
+    }
+
+    fn make_backup(w: &DiskWorld) -> String {
+        let run = service(w).run(&w.admin).unwrap();
+        backups_dir(w).join(run.file_name.unwrap()).to_string_lossy().to_string()
+    }
+
+    fn restore(w: &DiskWorld, path: &str) -> Result<RestoreResult, AppError> {
+        service(w).restore(&w.admin, path, "RESTAURAR", ADMIN_PASSWORD)
+    }
+
+    fn at(w: &DiskWorld, rfc3339: &str) {
+        w.utc.set(chrono::DateTime::parse_from_rfc3339(rfc3339).unwrap().with_timezone(&chrono::Utc));
+    }
+
+    #[test]
+    fn restore_brings_back_exactly_the_backed_up_data() {
+        let w = disk_world();
+        add_guests(&w, 1, 5);
+        let backup = make_backup(&w);
+        at(&w, "2026-10-21T15:00:00Z");
+        add_guests(&w, 6, 8);
+        assert_eq!(guest_count(&w), 8);
+
+        let result = restore(&w, &backup).unwrap();
+
+        assert_eq!(guest_count(&w), 5, "voltou ao que o backup tinha");
+        assert!(result.safety_copy.starts_with("boreal-seguranca-2026-10-21-"), "{result:?}");
+        let conn = w.ctx.conn().unwrap();
+        let copy = open_with_key(Path::new(&backup), &w.ctx.key).unwrap();
+        for table in ["guests", "settings", "users", "room_categories"] {
+            let rows = |c: &Connection| -> Vec<String> {
+                let mut stmt = c.prepare(&format!("SELECT * FROM {table} ORDER BY 1")).unwrap();
+                let n = stmt.column_count();
+                stmt.query_map([], |r| Ok((0..n).map(|i| format!("{:?}", r.get::<_, rusqlite::types::Value>(i).unwrap())).collect::<Vec<_>>().join("|"))).unwrap().map(Result::unwrap).collect()
+            };
+            assert_eq!(rows(&conn), rows(&copy), "{table}");
+        }
+    }
+
+    #[test]
+    fn restore_makes_a_safety_copy_first_and_nothing_changes_if_it_fails() {
+        let w = disk_world();
+        add_guests(&w, 1, 5);
+        let backup = make_backup(&w);
+        add_guests(&w, 6, 8);
+
+        w.disk.set(10);
+        let failed = restore(&w, &backup);
+        assert!(matches!(&failed, Err(AppError::Validation(m)) if m.contains("cópia de segurança")), "{failed:?}");
+        assert_eq!(guest_count(&w), 8, "sem cópia de segurança, nada é restaurado");
+        assert!(w.ctx.sessions.touch(&w.admin, w.ctx.clock.now()).is_ok(), "a sessão continua");
+
+        w.disk.set(u64::MAX / 2);
+        let done = restore(&w, &backup).unwrap();
+        // A restauração encerra todas as sessões: entra de novo.
+        let admin = w.ctx.sessions.create(1, crate::models::user::Role::Admin, w.ctx.clock.now());
+        let safety = open_with_key(&backups_dir(&w).join(&done.safety_copy), &w.ctx.key).unwrap();
+        let guests: i64 = safety.query_row("SELECT count(*) FROM guests", [], |r| r.get(0)).unwrap();
+        assert_eq!(guests, 8, "a cópia de segurança guarda o estado de antes");
+        let kinds: Vec<String> = service(&w).recent_runs(&admin, 10).unwrap().into_iter().map(|r| r.kind).collect();
+        assert!(kinds.contains(&"pre_restore".to_string()), "{kinds:?}");
+        assert!(std::path::Path::new(&backup).exists(), "a cópia de segurança nunca apaga o backup restaurado");
+        let listed = service(&w).list_files(&admin).unwrap();
+        assert!(listed.iter().any(|f| f.safety) && listed.iter().any(|f| !f.safety), "a lista mostra as duas: {listed:?}");
+    }
+
+    #[test]
+    fn invalid_unreadable_or_newer_schema_backups_are_refused_without_touching_the_database() {
+        let w = disk_world();
+        add_guests(&w, 1, 5);
+        let good = make_backup(&w);
+        let dir = backups_dir(&w);
+        let garbage = dir.join("boreal-2026-01-01-100000.bak");
+        std::fs::write(&garbage, vec![7u8; 8192]).unwrap();
+        let newer = dir.join("boreal-2026-01-02-100000.bak");
+        std::fs::copy(&good, &newer).unwrap();
+        {
+            let conn = Connection::open(&newer).unwrap();
+            conn.pragma_update(None, "key", format!("x'{}'", w.ctx.key.hex())).unwrap();
+            conn.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (99, 'x')", []).unwrap();
+        }
+        add_guests(&w, 6, 7);
+        let svc = service(&w);
+
+        for (path, expected) in [
+            (garbage.to_string_lossy().to_string(), "chave"),
+            (dir.join("nao-existe.bak").to_string_lossy().to_string(), "não foi encontrado"),
+            (newer.to_string_lossy().to_string(), "mais nova"),
+        ] {
+            let preview = svc.preview_restore(&w.admin, &path).unwrap();
+            assert!(!preview.restorable && preview.problem.as_deref().unwrap().contains(expected), "{path}: {preview:?}");
+            let result = restore(&w, &path);
+            assert!(matches!(&result, Err(AppError::Validation(m)) if m.contains(expected)), "{path}: {result:?}");
+        }
+        assert_eq!(guest_count(&w), 7, "o banco não foi tocado");
+        assert_eq!(svc.recent_runs(&w.admin, 10).unwrap().iter().filter(|r| r.kind == "pre_restore").count(), 0, "nem cópia de segurança se não há o que restaurar");
+    }
+
+    #[test]
+    fn a_wrong_confirmation_or_a_wrong_password_changes_nothing() {
+        let w = disk_world();
+        add_guests(&w, 1, 2);
+        let backup = make_backup(&w);
+        add_guests(&w, 3, 4);
+        let svc = service(&w);
+
+        let confirmation = svc.restore(&w.admin, &backup, "restaurar tudo", ADMIN_PASSWORD);
+        let password = svc.restore(&w.admin, &backup, "RESTAURAR", "senha-errada");
+
+        assert!(matches!(&confirmation, Err(AppError::Validation(m)) if m.contains("RESTAURAR")), "{confirmation:?}");
+        assert!(matches!(&password, Err(AppError::Validation(m)) if m.contains("senha está incorreta")), "{password:?}");
+        assert_eq!(guest_count(&w), 4);
+        assert!(svc.restore(&w.admin, &backup, "restaurar", ADMIN_PASSWORD).is_ok(), "a confirmação não diferencia maiúsculas");
+    }
+
+    #[test]
+    fn reception_cannot_preview_or_restore() {
+        let w = disk_world();
+        let backup = make_backup(&w);
+        let svc = service(&w);
+
+        assert!(matches!(svc.preview_restore(&w.reception, &backup), Err(AppError::Forbidden)));
+        assert!(matches!(svc.restore(&w.reception, &backup, "RESTAURAR", "x"), Err(AppError::Forbidden)));
+    }
+
+    #[test]
+    fn restore_ends_all_sessions_and_audits_inside_the_restored_database() {
+        let w = disk_world();
+        let backup = make_backup(&w);
+
+        restore(&w, &backup).unwrap();
+
+        assert!(matches!(w.ctx.sessions.touch(&w.admin, w.ctx.clock.now()), Err(AppError::Unauthorized)));
+        assert!(matches!(w.ctx.sessions.touch(&w.reception, w.ctx.clock.now()), Err(AppError::Unauthorized)));
+        let conn = w.ctx.conn().unwrap();
+        let (user, after): (Option<i64>, String) =
+            conn.query_row("SELECT user_id, after_json FROM audit_log WHERE operation = 'restore_backup'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert!(user.is_none() && after.contains("\"restored_by\":\"admin\""), "{after}");
+        assert!(!after.contains(ADMIN_PASSWORD) && !after.to_uppercase().contains("2A2A2A2A"));
+        let events: i64 = conn.query_row("SELECT count(*) FROM system_events WHERE kind = 'restore'", [], |r| r.get(0)).unwrap();
+        assert_eq!(events, 1);
+    }
+
+    #[test]
+    fn the_preview_compares_counts_and_warns_about_recent_activity() {
+        let w = disk_world();
+        add_guests(&w, 1, 3);
+        service(&w).set_destination(&w.admin, backups_dir(&w).to_str().unwrap()).unwrap();
+        let backup = make_backup(&w);
+        at(&w, "2026-10-22T15:00:00Z");
+        add_guests(&w, 4, 6);
+        {
+            let conn = w.ctx.conn().unwrap();
+            conn.execute("INSERT INTO audit_log (user_id, at, module, operation, entity) VALUES (1, '2026-10-22T15:00:00Z', 'x', 'y', 'z')", []).unwrap();
+        }
+
+        let preview = service(&w).preview_restore(&w.admin, &backup).unwrap();
+
+        assert!(preview.restorable && preview.problem.is_none());
+        assert_eq!((preview.counts.guests, preview.current_counts.guests), (3, 6));
+        assert!(preview.loses_recent_data, "o banco atual tem atividade depois do backup");
+        assert!(preview.backup_at.starts_with("21/10/2026"), "{}", preview.backup_at);
+        assert_eq!((preview.schema_version, preview.app_schema_version), (14, 14));
+    }
+
+    #[test]
+    fn restoring_an_older_schema_backup_migrates_it_forward() {
+        let w = disk_world();
+        add_guests(&w, 1, 2);
+        let old = backups_dir(&w).join("boreal-2026-01-03-100000.bak");
+        let backup = make_backup(&w);
+        std::fs::copy(&backup, &old).unwrap();
+        {
+            let conn = Connection::open(&old).unwrap();
+            conn.pragma_update(None, "key", format!("x'{}'", w.ctx.key.hex())).unwrap();
+            conn.execute_batch(
+                "DROP TABLE backup_runs; DROP TABLE system_events; DELETE FROM settings WHERE key = 'backup_dir'; DELETE FROM schema_migrations WHERE version = 14;",
+            )
+            .unwrap();
+        }
+
+        let preview = service(&w).preview_restore(&w.admin, old.to_str().unwrap()).unwrap();
+        assert!(preview.restorable && preview.schema_version == 13, "{preview:?}");
+        service(&w).restore(&w.admin, old.to_str().unwrap(), "RESTAURAR", ADMIN_PASSWORD).unwrap();
+
+        let conn = w.ctx.conn().unwrap();
+        assert_eq!(current_version(&conn).unwrap(), 14);
+        let tables: i64 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE name IN ('backup_runs', 'system_events')", [], |r| r.get(0)).unwrap();
+        assert_eq!(tables, 2, "as migrações pendentes foram reaplicadas");
+    }
+
+    #[test]
+    fn restoring_keeps_the_database_usable_for_new_backups() {
+        let w = disk_world();
+        add_guests(&w, 1, 2);
+        let backup = make_backup(&w);
+        restore(&w, &backup).unwrap();
+        at(&w, "2026-10-21T18:00:00Z");
+
+        let svc = service(&w);
+        let again = svc.run_system(BackupKind::Auto).unwrap();
+
+        assert_eq!(again.status, "ok");
+        assert!(w.ctx.conn().unwrap().query_row("PRAGMA journal_mode", [], |r| r.get::<_, String>(0)).unwrap().eq_ignore_ascii_case("wal"));
     }
 }
