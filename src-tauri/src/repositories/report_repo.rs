@@ -20,24 +20,28 @@ pub struct Scope<'a> {
     pub status: Option<&'a str>,
     pub room_id: Option<i64>,
     pub text: Option<&'a str>,
+    pub method: Option<&'a str>,
+    pub category_id: Option<i64>,
+    /// Hoje (data local), para a situação das contas.
+    pub today: &'a str,
     /// Máximo de linhas; a consulta busca uma a mais para saber se truncou.
     pub limit: usize,
 }
 
 impl Scope<'_> {
-    fn shift(&self) -> String {
+    pub(crate) fn shift(&self) -> String {
         format!("{:+} seconds", self.offset_secs)
     }
 
-    fn code_pattern(&self) -> Option<String> {
+    pub(crate) fn code_pattern(&self) -> Option<String> {
         self.text.map(str::trim).filter(|t| !t.is_empty()).map(like_pattern)
     }
 
-    fn name_pattern(&self) -> Option<String> {
+    pub(crate) fn name_pattern(&self) -> Option<String> {
         self.text.map(str::trim).filter(|t| !t.is_empty()).map(|t| like_pattern(&fold(t)))
     }
 
-    fn fetch(&self) -> i64 {
+    pub(crate) fn fetch(&self) -> i64 {
         i64::try_from(self.limit).unwrap_or(i64::MAX - 1) + 1
     }
 }

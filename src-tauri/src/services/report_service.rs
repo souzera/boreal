@@ -10,6 +10,8 @@ use crate::domain::dates;
 use crate::domain::report::{br_date, Cell, Column, ColumnKind, Filter, ReportKind, ReportTable};
 use crate::error::AppError;
 use crate::models::report::ReportQuery;
+use crate::domain::payment::Method;
+use crate::repositories::report_finance_repo as finance;
 use crate::repositories::report_repo::{self, Rows, Scope, RESERVATION_STATUS_LABEL};
 
 /// Linhas por relatório na tela, no CSV e no PDF.
@@ -102,6 +104,7 @@ impl ReportService {
         let (start, end) = dates::utc_bounds(from_date, to_date, offset);
         let from = dates::format(from_date);
         let to = dates::format(to_date);
+        let today_text = dates::format(today);
         let conn = self.ctx.conn()?;
 
         let mut filters = Vec::new();
@@ -121,6 +124,17 @@ impl ReportService {
                 .or_else(|e| if matches!(e, rusqlite::Error::QueryReturnedNoRows) { Ok(None) } else { Err(e) })?;
             filters.push(format!("Quarto: {}", code.ok_or_else(|| invalid("Quarto não encontrado."))?));
         }
+        if let Some(m) = method {
+            let parsed = Method::parse(m).ok_or_else(|| invalid("Forma de pagamento inválida."))?;
+            filters.push(format!("Forma de pagamento: {}", parsed.label()));
+        }
+        if let Some(category) = query.category_id {
+            let name: Option<String> = conn
+                .query_row("SELECT name FROM expense_categories WHERE id = ?1", [category], |r| r.get(0))
+                .map(Some)
+                .or_else(|e| if matches!(e, rusqlite::Error::QueryReturnedNoRows) { Ok(None) } else { Err(e) })?;
+            filters.push(format!("Categoria: {}", name.ok_or_else(|| invalid("Categoria não encontrada."))?));
+        }
         if let Some(t) = text {
             filters.push(format!("Texto: {t}"));
         }
@@ -134,6 +148,9 @@ impl ReportService {
             status,
             room_id: query.room_id,
             text,
+            method,
+            category_id: query.category_id,
+            today: &today_text,
             limit,
         };
         let (columns, mut rows, totals) = match kind {
@@ -141,7 +158,15 @@ impl ReportService {
             ReportKind::Reservations => reservations(&conn, &scope)?,
             ReportKind::Stays => stays(&conn, &scope)?,
             ReportKind::Cancellations => cancellations(&conn, &scope)?,
-            _ => return Err(invalid("Este relatório ainda não está disponível.")),
+            ReportKind::Receipts => receipts(&conn, &scope)?,
+            ReportKind::Balances => balances(&conn, &scope)?,
+            ReportKind::GuestExpenses => guest_expenses(&conn, &scope)?,
+            ReportKind::PropertyExpenses => {
+                filters.push(format!("Pago no período (data efetiva): {}", crate::domain::report::money_text(finance::paid_in_period(&conn, &scope)?)));
+                property_expenses(&conn, &scope)?
+            }
+            ReportKind::Payables => payables(&conn, &scope)?,
+            ReportKind::Closings => closings(&conn, &scope)?,
         };
         let truncated = rows.len() > limit;
         rows.truncate(limit);
@@ -158,6 +183,7 @@ fn status_label(kind: ReportKind, status: &str) -> Result<String, AppError> {
         ReportKind::Reservations => &["pending", "confirmed", "checked_in", "completed", "cancelled", "no_show"],
         ReportKind::Stays => &["in_house", "checked_out"],
         ReportKind::Cancellations => &["cancelled", "no_show"],
+        ReportKind::PropertyExpenses | ReportKind::Payables => &["pending", "partial", "paid", "overdue"],
         _ => &[],
     };
     if !allowed.contains(&status) {
@@ -166,6 +192,7 @@ fn status_label(kind: ReportKind, status: &str) -> Result<String, AppError> {
     Ok(match status {
         "in_house" => "Hospedado".to_string(),
         "checked_out" => "Check-out feito".to_string(),
+        "pending" | "partial" | "paid" | "overdue" if kind.financial() => finance::payable_status_label(status).to_string(),
         other => RESERVATION_STATUS_LABEL.iter().find(|(k, _)| *k == other).map_or(other, |(_, v)| v).to_string(),
     })
 }
@@ -241,6 +268,120 @@ fn cancellations(conn: &rusqlite::Connection, scope: &Scope) -> Result<Built, Ap
         ],
         rows,
         Box::new(|rows| Some(vec![total_label(), Cell::Empty, Cell::Empty, Cell::Empty, Cell::Empty, Cell::Money(sum_money(rows, 5)), Cell::Money(sum_money(rows, 6))])),
+    ))
+}
+
+fn receipts(conn: &rusqlite::Connection, scope: &Scope) -> Result<Built, AppError> {
+    let rows = finance::receipts(conn, scope)?;
+    Ok((
+        vec![
+            Column::new("date", "Data", ColumnKind::Date),
+            Column::new("time", "Hora", ColumnKind::Time),
+            Column::new("number", "Número", ColumnKind::Text),
+            Column::new("type", "Tipo", ColumnKind::Text),
+            Column::new("guest", "Hóspede", ColumnKind::Text),
+            Column::new("reference", "Referência", ColumnKind::Text),
+            Column::new("method", "Forma", ColumnKind::Text),
+            Column::new("amount", "Valor", ColumnKind::Money),
+        ],
+        rows,
+        Box::new(|rows| {
+            Some(vec![Cell::text("Líquido (recebido menos devolvido)"), Cell::Empty, Cell::Empty, Cell::Empty, Cell::Empty, Cell::Empty, Cell::Empty, Cell::Money(sum_money(rows, 7))])
+        }),
+    ))
+}
+
+fn balances(conn: &rusqlite::Connection, scope: &Scope) -> Result<Built, AppError> {
+    let rows = finance::balances(conn, scope)?;
+    Ok((
+        vec![
+            Column::new("stay", "Hospedagem", ColumnKind::Text),
+            Column::new("guest", "Hóspede", ColumnKind::Text),
+            Column::new("room", "Quarto", ColumnKind::Text),
+            Column::new("check_out", "Saída prevista", ColumnKind::Date),
+            Column::new("to_receive", "Saldo a receber", ColumnKind::Money),
+            Column::new("credit", "Crédito do hóspede", ColumnKind::Money),
+        ],
+        rows,
+        Box::new(|rows| Some(vec![total_label(), Cell::Empty, Cell::Empty, Cell::Empty, Cell::Money(sum_money(rows, 4)), Cell::Money(sum_money(rows, 5))])),
+    ))
+}
+
+fn guest_expenses(conn: &rusqlite::Connection, scope: &Scope) -> Result<Built, AppError> {
+    let rows = finance::guest_expenses(conn, scope)?;
+    Ok((
+        vec![
+            Column::new("date", "Data", ColumnKind::Date),
+            Column::new("stay", "Hospedagem", ColumnKind::Text),
+            Column::new("guest", "Hóspede", ColumnKind::Text),
+            Column::new("room", "Quarto", ColumnKind::Text),
+            Column::new("item", "Item", ColumnKind::Text),
+            Column::new("type", "Tipo", ColumnKind::Text),
+            Column::new("amount", "Valor", ColumnKind::Money),
+        ],
+        rows,
+        Box::new(|rows| Some(vec![Cell::text("Líquido"), Cell::Empty, Cell::Empty, Cell::Empty, Cell::Empty, Cell::Empty, Cell::Money(sum_money(rows, 6))])),
+    ))
+}
+
+fn property_expenses(conn: &rusqlite::Connection, scope: &Scope) -> Result<Built, AppError> {
+    let rows = finance::property_expenses(conn, scope)?;
+    Ok((
+        vec![
+            Column::new("competence", "Competência", ColumnKind::Date),
+            Column::new("code", "Código", ColumnKind::Text),
+            Column::new("supplier", "Fornecedor", ColumnKind::Text),
+            Column::new("description", "Descrição", ColumnKind::Text),
+            Column::new("category", "Categoria", ColumnKind::Text),
+            Column::new("amount", "Valor", ColumnKind::Money),
+            Column::new("paid", "Pago", ColumnKind::Money),
+            Column::new("open", "Em aberto", ColumnKind::Money),
+        ],
+        rows,
+        Box::new(|rows| {
+            Some(vec![total_label(), Cell::Empty, Cell::Empty, Cell::Empty, Cell::Empty, Cell::Money(sum_money(rows, 5)), Cell::Money(sum_money(rows, 6)), Cell::Money(sum_money(rows, 7))])
+        }),
+    ))
+}
+
+fn payables(conn: &rusqlite::Connection, scope: &Scope) -> Result<Built, AppError> {
+    let rows = finance::payables(conn, scope)?;
+    Ok((
+        vec![
+            Column::new("due", "Vencimento", ColumnKind::Date),
+            Column::new("code", "Código", ColumnKind::Text),
+            Column::new("supplier", "Fornecedor", ColumnKind::Text),
+            Column::new("category", "Categoria", ColumnKind::Text),
+            Column::new("amount", "Valor", ColumnKind::Money),
+            Column::new("paid", "Pago", ColumnKind::Money),
+            Column::new("open", "Em aberto", ColumnKind::Money),
+            Column::new("status", "Situação", ColumnKind::Text),
+            Column::new("last_payment", "Último pagamento", ColumnKind::Date),
+        ],
+        rows,
+        Box::new(|rows| {
+            Some(vec![total_label(), Cell::Empty, Cell::Empty, Cell::Empty, Cell::Money(sum_money(rows, 4)), Cell::Money(sum_money(rows, 5)), Cell::Money(sum_money(rows, 6)), Cell::Empty, Cell::Empty])
+        }),
+    ))
+}
+
+fn closings(conn: &rusqlite::Connection, scope: &Scope) -> Result<Built, AppError> {
+    let rows = finance::closings(conn, scope)?;
+    Ok((
+        vec![
+            Column::new("day", "Dia", ColumnKind::Date),
+            Column::new("closed_at", "Fechado em", ColumnKind::Text),
+            Column::new("closed_by", "Por", ColumnKind::Text),
+            Column::new("method", "Forma", ColumnKind::Text),
+            Column::new("expected", "Esperado", ColumnKind::Money),
+            Column::new("counted", "Contado", ColumnKind::Money),
+            Column::new("difference", "Diferença", ColumnKind::Money),
+            Column::new("justification", "Justificativa", ColumnKind::Text),
+        ],
+        rows,
+        Box::new(|rows| {
+            Some(vec![total_label(), Cell::Empty, Cell::Empty, Cell::Empty, Cell::Money(sum_money(rows, 4)), Cell::Money(sum_money(rows, 5)), Cell::Money(sum_money(rows, 6)), Cell::Empty])
+        }),
     ))
 }
 
@@ -523,5 +664,302 @@ mod tests {
         let w = world();
 
         assert!(w.h.reports.run("invalido", ReportQuery::new("occupancy")).is_err());
+    }
+}
+
+#[cfg(test)]
+mod finance_tests {
+    use chrono::{DateTime, Utc};
+
+    use super::*;
+    use crate::models::closing::{CloseInput, CountedInput};
+    use crate::models::payable::{NewPayable, PayInput};
+    use crate::models::payment::{ComponentInput, PaymentInput, PaymentTarget};
+    use crate::models::refund::RefundInput;
+    use crate::models::stay::{ChargeInput, CheckInInput, OccupantInput};
+    use crate::services::test_support::{admin_token, book, harness, pay, seed, Harness, Seed};
+
+    // Fuso -03:00. "Hoje" é 21/10/2026, 09:00 local. Diária R$ 200,00; quarto 101.
+
+    struct World {
+        h: Harness,
+        admin: String,
+        seed: Seed,
+    }
+
+    fn world() -> World {
+        let h = harness();
+        let admin = admin_token(&h);
+        let seed = seed(&h, &admin, 20_000, 2);
+        World { h, admin, seed }
+    }
+
+    fn at(w: &World, rfc3339: &str) {
+        w.h.utc.set(DateTime::parse_from_rfc3339(rfc3339).unwrap().with_timezone(&Utc));
+    }
+
+    fn stay_in_house(w: &World) -> i64 {
+        let reservation = book(&w.h, &w.admin, &w.seed, "2026-10-21", "2026-10-23");
+        at(w, "2026-10-21T17:00:00Z");
+        let version = w.h.reservations.get(&w.admin, reservation).unwrap().reservation.version;
+        let holder = OccupantInput { full_name: "Ana Souza".into(), guest_id: Some(w.seed.guest_id), document: String::new() };
+        w.h.stays
+            .check_in(&w.admin, CheckInInput { reservation_id: reservation, expected_version: version, occupants: vec![holder], exceed_capacity: false })
+            .unwrap()
+    }
+
+    fn query(kind: &str, from: &str, to: &str) -> ReportQuery {
+        ReportQuery { from: Some(from.into()), to: Some(to.into()), ..ReportQuery::new(kind) }
+    }
+
+    fn run(w: &World, q: ReportQuery) -> ReportTable {
+        w.h.reports.run(&w.admin, q).unwrap()
+    }
+
+    fn texts(row: &[Cell]) -> Vec<String> {
+        row.iter().map(crate::domain::report::cell_text).collect()
+    }
+
+    fn category(w: &World, name: &str) -> i64 {
+        w.h.payables.create_category(&w.admin, name).unwrap()
+    }
+
+    fn bill(category_id: i64, cents: i64, competence: &str, due: &str) -> NewPayable {
+        NewPayable {
+            supplier: "Fornecedor".into(),
+            description: "Conta".into(),
+            amount_cents: cents,
+            competence_date: competence.into(),
+            due_date: due.into(),
+            category_id,
+            notes: String::new(),
+            paid_now: None,
+        }
+    }
+
+    #[test]
+    fn every_financial_report_runs_for_the_administrator_on_an_empty_database() {
+        let w = world();
+
+        for kind in ["receipts", "balances", "guest_expenses", "property_expenses", "payables", "closings"] {
+            let table = run(&w, ReportQuery::new(kind));
+            assert!(table.rows.is_empty(), "{kind}");
+            assert_eq!(table.kind, kind);
+            assert!(!table.columns.is_empty());
+        }
+    }
+
+    #[test]
+    fn receipts_have_one_row_per_component_and_split_debit_credit() {
+        let w = world();
+        let stay = stay_in_house(&w);
+        w.h.payments
+            .record(
+                &w.admin,
+                PaymentTarget::Stay { stay_id: stay },
+                PaymentInput {
+                    components: vec![
+                        ComponentInput { method: "debit".into(), amount_cents: 6_000 },
+                        ComponentInput { method: "credit".into(), amount_cents: 4_000 },
+                    ],
+                    note: String::new(),
+                    duplicate_release: None,
+                },
+            )
+            .unwrap();
+
+        let table = run(&w, query("receipts", "2026-10-21", "2026-10-21"));
+
+        assert_eq!(table.rows.len(), 2);
+        let methods: Vec<String> = table.rows.iter().map(|r| texts(r)[6].clone()).collect();
+        assert!(methods.contains(&"Cartão de débito".to_string()) && methods.contains(&"Cartão de crédito".to_string()), "{methods:?}");
+        assert_eq!(table.totals.unwrap()[7], Cell::Money(10_000));
+        let only_debit = run(&w, ReportQuery { method: Some("debit".into()), ..query("receipts", "2026-10-21", "2026-10-21") });
+        assert_eq!(only_debit.rows.len(), 1);
+        assert_eq!(only_debit.rows[0][7], Cell::Money(6_000));
+    }
+
+    #[test]
+    fn receipts_use_the_local_day() {
+        let w = world();
+        let stay = stay_in_house(&w);
+        at(&w, "2026-10-22T02:30:00Z"); // 23:30 de 21/10 no horário local
+        pay(&w.h, &w.admin, stay, 10_000, "pix").unwrap();
+
+        let on_21 = run(&w, query("receipts", "2026-10-21", "2026-10-21"));
+        let on_22 = run(&w, query("receipts", "2026-10-22", "2026-10-22"));
+
+        assert_eq!(on_21.rows.len(), 1);
+        assert_eq!(texts(&on_21.rows[0])[..2], ["21/10/2026", "23:30"]);
+        assert!(on_22.rows.is_empty());
+    }
+
+    #[test]
+    fn receipts_net_total_matches_closing_and_dashboard_and_a_refund_is_its_own_negative_row() {
+        let w = world();
+        let stay = stay_in_house(&w);
+        let receipt = pay(&w.h, &w.admin, stay, 10_000, "cash").unwrap();
+        pay(&w.h, &w.admin, stay, 4_000, "pix").unwrap();
+        w.h.refunds
+            .record(
+                &w.admin,
+                RefundInput { payment_id: receipt.id, components: vec![ComponentInput { method: "cash".into(), amount_cents: 2_500 }], reason: "Ajuste".into() },
+            )
+            .unwrap();
+
+        let table = run(&w, query("receipts", "2026-10-21", "2026-10-21"));
+        let net = match table.totals.as_ref().unwrap()[7] {
+            Cell::Money(c) => c,
+            _ => panic!("líquido"),
+        };
+        let preview = w.h.closing.preview(&w.admin, "2026-10-21").unwrap();
+        let closing_net: i64 = preview.expected.iter().map(|e| e.expected_cents).sum();
+        let dash = w.h.management.dashboard(&w.admin, "2026-10-21", "2026-10-21").unwrap();
+
+        assert_eq!(net, 11_500);
+        assert_eq!(net, closing_net, "bate com o fechamento de caixa");
+        assert_eq!(net, dash.receipts_daily[0].net_cents, "bate com a visão gerencial");
+        let refund_row = table.rows.iter().find(|r| texts(r)[3] == "Devolução").unwrap();
+        assert_eq!(refund_row[7], Cell::Money(-2_500));
+    }
+
+    #[test]
+    fn balances_match_the_stay_account_and_split_credit() {
+        let w = world();
+        let stay = stay_in_house(&w);
+        let balance = w.h.stays.get(&w.admin, stay).unwrap().account.balance_cents;
+
+        let owing = run(&w, ReportQuery::new("balances"));
+        assert_eq!(owing.rows.len(), 1);
+        assert_eq!(owing.rows[0][4], Cell::Money(balance));
+        assert_eq!(owing.rows[0][5], Cell::Money(0));
+
+        pay(&w.h, &w.admin, stay, balance + 1_500, "pix").unwrap();
+        let credit = run(&w, ReportQuery::new("balances"));
+        assert_eq!((&credit.rows[0][4], &credit.rows[0][5]), (&Cell::Money(0), &Cell::Money(1_500)));
+        assert_eq!(credit.totals.unwrap()[5], Cell::Money(1_500));
+    }
+
+    #[test]
+    fn paid_up_stays_are_not_listed_in_balances() {
+        let w = world();
+        let stay = stay_in_house(&w);
+        let balance = w.h.stays.get(&w.admin, stay).unwrap().account.balance_cents;
+        pay(&w.h, &w.admin, stay, balance, "cash").unwrap();
+
+        assert!(run(&w, ReportQuery::new("balances")).rows.is_empty());
+    }
+
+    #[test]
+    fn guest_expenses_include_reversals_and_net_zero_for_reversed_items() {
+        let w = world();
+        let stay = stay_in_house(&w);
+        w.h.stays.add_charge(&w.admin, stay, ChargeInput { kind: "consumption".into(), description: "Água".into(), amount_cents: 500, item_id: None }).unwrap();
+        w.h.stays.add_charge(&w.admin, stay, ChargeInput { kind: "extra".into(), description: "Lavanderia".into(), amount_cents: 3_000, item_id: None }).unwrap();
+        let account = w.h.stays.get(&w.admin, stay).unwrap().account;
+        let water = account.charges.iter().find(|c| c.description == "Água").unwrap().id;
+        w.h.stays.reverse_charge(&w.admin, stay, water, "Lançado por engano".into(), None).unwrap();
+
+        let table = run(&w, query("guest_expenses", "2026-10-21", "2026-10-21"));
+
+        let kinds: Vec<String> = table.rows.iter().map(|r| texts(r)[5].clone()).collect();
+        assert_eq!(kinds, ["Consumo", "Despesa extra", "Estorno"]);
+        assert_eq!(table.totals.unwrap()[6], Cell::Money(3_000), "água estornada soma zero; sobra a lavanderia");
+        assert!(table.rows.iter().all(|r| texts(r)[0] == "21/10/2026"));
+    }
+
+    #[test]
+    fn property_expenses_use_competence_and_show_paid_in_period_separately() {
+        let w = world();
+        let energy = category(&w, "Energia do mês");
+        let id = w.h.payables.create(&w.admin, bill(energy, 50_000, "2026-10-15", "2026-11-10")).unwrap();
+        at(&w, "2026-11-05T15:00:00Z");
+        let version = w.h.payables.get(&w.admin, id).unwrap().payable.version;
+        w.h.payables.pay(&w.admin, id, PayInput { amount_cents: 20_000, method: "pix".into(), note: String::new() }, version).unwrap();
+
+        let october = run(&w, query("property_expenses", "2026-10-01", "2026-10-31"));
+        let november = run(&w, query("property_expenses", "2026-11-01", "2026-11-30"));
+
+        assert_eq!(october.rows.len(), 1, "a competência é de outubro");
+        assert_eq!(texts(&october.rows[0])[5..], ["R$ 500,00", "R$ 200,00", "R$ 300,00"]);
+        assert!(october.filters.contains(&"Pago no período (data efetiva): R$ 0,00".to_string()), "{:?}", october.filters);
+        assert!(november.rows.is_empty());
+        assert!(november.filters.contains(&"Pago no período (data efetiva): R$ 200,00".to_string()), "{:?}", november.filters);
+    }
+
+    #[test]
+    fn payables_filter_by_status_and_category_combined_and_use_the_due_date() {
+        let w = world();
+        let energy = category(&w, "Energia do mês");
+        let water = category(&w, "Água do mês");
+        w.h.payables.create(&w.admin, bill(energy, 10_000, "2026-10-01", "2026-10-10")).unwrap(); // vencida
+        w.h.payables.create(&w.admin, bill(water, 20_000, "2026-10-01", "2026-10-10")).unwrap(); // vencida, outra categoria
+        w.h.payables.create(&w.admin, bill(energy, 30_000, "2026-10-01", "2026-10-30")).unwrap(); // pendente
+        let paid = w.h.payables.create(&w.admin, bill(energy, 5_000, "2026-10-01", "2026-10-12")).unwrap();
+        let version = w.h.payables.get(&w.admin, paid).unwrap().payable.version;
+        w.h.payables.pay(&w.admin, paid, PayInput { amount_cents: 5_000, method: "cash".into(), note: String::new() }, version).unwrap();
+
+        let overdue_energy = run(
+            &w,
+            ReportQuery { status: Some("overdue".into()), category_id: Some(energy), ..query("payables", "2026-10-01", "2026-10-31") },
+        );
+        let all = run(&w, query("payables", "2026-10-01", "2026-10-31"));
+
+        assert_eq!(overdue_energy.rows.len(), 1);
+        assert_eq!(texts(&overdue_energy.rows[0])[7], "Vencida");
+        assert_eq!(overdue_energy.filters.last().unwrap(), "Categoria: Energia do mês");
+        assert_eq!(all.rows.len(), 4);
+        assert_eq!(texts(&all.rows[1])[0], "10/10/2026", "ordenado pelo vencimento");
+        let paid_row = all.rows.iter().find(|r| texts(r)[7] == "Paga").unwrap();
+        assert_eq!(paid_row[8], Cell::text("21/10/2026"), "último pagamento");
+        assert_eq!(all.totals.unwrap()[6], Cell::Money(60_000), "em aberto soma só o que falta");
+    }
+
+    #[test]
+    fn closings_list_difference_and_justification() {
+        let w = world();
+        let stay = stay_in_house(&w);
+        pay(&w.h, &w.admin, stay, 10_000, "cash").unwrap();
+        let counted: Vec<CountedInput> = [("cash", 9_000, Some("Troco devolvido")), ("pix", 0, None), ("debit", 0, None), ("credit", 0, None), ("transfer", 0, None)]
+            .into_iter()
+            .map(|(m, c, j)| CountedInput { method: m.into(), counted_cents: c, justification: j.map(str::to_string) })
+            .collect();
+        w.h.closing.close(&w.admin, CloseInput { date: "2026-10-21".into(), counted }).unwrap();
+
+        let table = run(&w, query("closings", "2026-10-21", "2026-10-21"));
+        let cash_only = run(&w, ReportQuery { method: Some("cash".into()), ..query("closings", "2026-10-21", "2026-10-21") });
+
+        assert_eq!(table.rows.len(), 5);
+        let cash = cash_only.rows[0].clone();
+        assert_eq!(texts(&cash)[3], "Dinheiro");
+        assert_eq!((&cash[4], &cash[5], &cash[6]), (&Cell::Money(10_000), &Cell::Money(9_000), &Cell::Money(-1_000)));
+        assert_eq!(texts(&cash)[7], "Troco devolvido");
+        assert_eq!(table.totals.unwrap()[6], Cell::Money(-1_000));
+        assert_eq!(cash_only.rows.len(), 1);
+    }
+
+    #[test]
+    fn period_of_one_day_returns_only_that_day() {
+        let w = world();
+        let stay = stay_in_house(&w);
+        pay(&w.h, &w.admin, stay, 1_000, "pix").unwrap();
+        at(&w, "2026-10-22T15:00:00Z");
+        pay(&w.h, &w.admin, stay, 2_000, "pix").unwrap();
+
+        let table = run(&w, query("receipts", "2026-10-22", "2026-10-22"));
+
+        assert_eq!(table.rows.len(), 1);
+        assert_eq!(table.rows[0][7], Cell::Money(2_000));
+    }
+
+    #[test]
+    fn invalid_method_and_category_filters_are_refused() {
+        let w = world();
+
+        let bad_method = ReportQuery { method: Some("cheque".into()), ..ReportQuery::new("receipts") };
+        let bad_category = ReportQuery { category_id: Some(9_999), ..ReportQuery::new("payables") };
+
+        assert!(matches!(w.h.reports.run(&w.admin, bad_method), Err(AppError::Validation(_))));
+        assert!(matches!(w.h.reports.run(&w.admin, bad_category), Err(AppError::Validation(_))));
     }
 }
