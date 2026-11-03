@@ -17,7 +17,7 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 - **Quem:** todos.
 - **Passo a passo:**
   1. Entre com usuário e senha. No primeiro acesso, o sistema pede a troca da senha.
-  2. Mostre o menu lateral, agrupado: **Recepção**; **Reservas** (Reservas, Hóspedes); **Hospedagens**; **Quartos** (Mapa de quartos, Limpeza, Bloqueios, Manutenção, Cadastro de quartos); **Financeiro** (Fechamento de caixa e, com permissão, Contas a pagar); **Configurações** (Tarifas e Itens e serviços; Configurações e Usuários só para o administrador). **Alertas** mostra um selo com a contagem; **Relatórios** aparece esmaecido com "Em breve". A tela atual fica destacada no menu.
+  2. Mostre o menu lateral, agrupado: **Recepção**; **Reservas** (Reservas, Hóspedes); **Hospedagens**; **Quartos** (Mapa de quartos, Limpeza, Bloqueios, Manutenção, Cadastro de quartos); **Financeiro** (Fechamento de caixa e, com permissão, Contas a pagar); **Configurações** (Tarifas e Itens e serviços; Configurações e Usuários só para o administrador). **Alertas** mostra um selo com a contagem; **Relatórios** abre a tela de relatórios. A tela atual fica destacada no menu.
   2b. Mostre as ações do topo e seus atalhos: **Nova reserva** (`Alt+N`), **Buscar** (`Ctrl+K`), **Check-in** (`Alt+C`, abre a aba Chegadas da Recepção), **Receber pagamento** (`Alt+R`, lista de hospedagens) e **Check-out** (`Alt+S`, abre a aba Saídas).
   2c. Mostre a barra no topo da janela: arraste-a para mover, dê duplo clique para maximizar e use **Minimizar**, **Maximizar/Restaurar** e **Fechar**. Ela aparece também na tela de entrada.
   3. Mostre a busca no topo e a tela **Recepção** (o Módulo 13 explica cada parte). O item **Visão gerencial** só aparece para o administrador.
@@ -211,6 +211,38 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 - ⚠ **Provisório:** as métricas escolhidas (Anexo A.7).
 - **Guia:** [Visão gerencial](visao-gerencial.md).
 
+## Módulo 15 — Relatórios (20 min)
+
+- **Objetivo:** consultar números por período e levá-los para planilha ou impressão.
+- **Quem:** todos veem os quatro relatórios operacionais; o administrador vê também os seis financeiros.
+- **Cenário:** o seed já tem recebimentos de hoje, contas a pagar e fechamentos.
+- **Passo a passo:**
+  1. Abra **Relatórios**. Mostre que a recepção só vê Ocupação, Reservas, Hospedagens e Cancelamentos e no-shows; entre como administrador e mostre os dez.
+  2. Escolha **Reservas**, combine **Situação**, **Quarto** e **Texto** e clique em **Gerar relatório**. Mostre o rodapé de totais.
+  3. Como administrador, abra **Recebimentos e devoluções**: débito e crédito em linhas separadas, devolução com valor negativo e o líquido no rodapé (confira com o **Fechamento de caixa** do mesmo dia).
+  4. Abra **Despesas da pousada** e explique competência × pagamento ("Pago no período").
+  5. Clique em **Exportar CSV**, escolha a pasta e abra no Excel; depois **Exportar PDF** e **Abrir arquivo** para imprimir.
+  6. Digite uma data final antes da inicial para ver o aviso; recarregue a página e mostre que a consulta continua.
+- **O participante deve ver:** que a tela, o CSV e o PDF mostram as mesmas linhas.
+- **Erros comuns:** período acima de 366 dias; salvar numa pasta sem permissão ("Tentar de novo"); procurar relatório financeiro como recepção.
+- ⚠ **Provisório:** a lista de colunas de cada relatório (Anexo A.8).
+- **Guia:** [Relatórios](relatorios.md).
+
+## Módulo 16 — Documentos internos (15 min)
+
+- **Objetivo:** emitir os papéis da estadia e entender as versões.
+- **Quem:** recepção.
+- **Passo a passo:**
+  1. Na **Reserva**, clique em **Emitir confirmação de reserva** e depois em **Salvar PDF da versão 1**.
+  2. Registre um sinal na reserva e emita de novo: nasce a **versão 2** (vigente) e a versão 1 continua como foi emitida. Emitir sem mudar nada avisa que a versão continua valendo.
+  3. Em um recebimento, clique em **Emitir comprovante**; na **Hospedagem**, em **Emitir ficha de hospedagem**.
+  4. Depois do check-out, mostre **Emitir demonstrativo final** (antes disso ele não está disponível).
+  5. Simule uma pasta sem permissão: aparece **Tentar de novo**, que repete só a gravação.
+- **O participante deve ver:** que reimprimir uma versão antiga devolve exatamente o que foi entregue.
+- **Erros comuns:** tentar o demonstrativo antes do check-out; emitir confirmação de reserva cancelada.
+- ⚠ **Provisório:** o conteúdo de cada documento e a ausência do logotipo (Anexo A.8).
+- **Guia:** [Documentos internos](documentos.md).
+
 ## Fechamento do treinamento (5 min)
 
 - Reforce: o sistema funciona **sem internet**, e cada tela confirma "salvo neste computador".
@@ -219,4 +251,4 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 
 ## Ainda por vir
 
-Entram neste roteiro quando existirem: relatórios e documentos internos (6.4); backup e restauração.
+Entram neste roteiro quando existirem: backup e restauração.

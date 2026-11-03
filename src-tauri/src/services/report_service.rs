@@ -1243,3 +1243,120 @@ mod finance_tests {
         assert!(matches!(w.h.reports.run(&w.admin, bad_category), Err(AppError::Validation(_))));
     }
 }
+
+#[cfg(test)]
+mod volume_tests {
+    use super::*;
+    use crate::services::test_support::{admin_token, harness, seed};
+
+    /// Limite por relatório em build de teste (sem otimização); a medição real fica registrada no plano.
+    const LIMIT_SECONDS: f64 = 3.0;
+
+    fn fill_five_years(h: &crate::services::test_support::Harness, category_id: i64, guest_id: i64) {
+        let mut conn = h.db.lock().unwrap();
+        let tx = conn.transaction().unwrap();
+        for room in 2..=8 {
+            tx.execute(
+                "INSERT INTO rooms (code, category_id, max_capacity, description, notes, active, version, created_at, updated_at) VALUES (?1, ?2, 2, '', '', 1, 1, '2021-01-01T12:00:00Z', '2021-01-01T12:00:00Z')",
+                rusqlite::params![format!("{}", 100 + room), category_id],
+            )
+            .unwrap();
+        }
+        let rooms: Vec<i64> = {
+            let mut stmt = tx.prepare("SELECT id FROM rooms").unwrap();
+            stmt.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect()
+        };
+        let start = chrono::NaiveDate::from_ymd_opt(2021, 1, 1).unwrap();
+        let mut n = 0i64;
+        for day in 0..1825 {
+            let date = start + chrono::Duration::days(day);
+            let d_in = date.format("%Y-%m-%d").to_string();
+            let d_out = (date + chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
+            let t = format!("{d_in}T15:00:00Z");
+            for room in &rooms {
+                n += 1;
+                let code = format!("RES-{:06}", 100 + n);
+                tx.execute(
+                    "INSERT INTO reservations (code, room_id, guest_id, check_in_date, check_out_date, expected_check_in_time, expected_check_out_time, occupants, status,
+                        list_total_cents, agreed_total_cents, deposit_expected_cents, deposit_due_date, created_by, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, '14:00', '12:00', 1, 'completed', 20000, 20000, 6000, ?4, 1, ?6, ?6)",
+                    rusqlite::params![code, room, guest_id, d_in, d_out, t],
+                )
+                .unwrap();
+                let reservation_id = tx.last_insert_rowid();
+                tx.execute("INSERT INTO reservation_nights (reservation_id, date, amount_cents, rule) VALUES (?1, ?2, 20000, 'weekday')", rusqlite::params![reservation_id, d_in]).unwrap();
+                tx.execute(
+                    "INSERT INTO stays (reservation_id, code, status, checked_in_at, checked_in_by, checked_out_at, checked_out_by, created_at, updated_at) VALUES (?1, ?2, 'checked_out', ?3, 1, ?3, 1, ?3, ?3)",
+                    rusqlite::params![reservation_id, code, t],
+                )
+                .unwrap();
+                let stay_id = tx.last_insert_rowid();
+                tx.execute("INSERT INTO charges (stay_id, kind, description, amount_cents, created_by, created_at) VALUES (?1, 'night', 'Diária', 20000, 1, ?2)", rusqlite::params![stay_id, t]).unwrap();
+                if n % 5 == 0 {
+                    tx.execute("INSERT INTO charges (stay_id, kind, description, amount_cents, created_by, created_at) VALUES (?1, 'consumption', 'Água', 500, 1, ?2)", rusqlite::params![stay_id, t]).unwrap();
+                }
+                tx.execute(
+                    "INSERT INTO payments (code, reservation_id, stay_id, kind, amount_cents, received_at, received_by) VALUES (?1, ?2, ?3, 'stay', 20000, ?4, 1)",
+                    rusqlite::params![format!("PAG-{:06}", 100 + n), reservation_id, stay_id, t],
+                )
+                .unwrap();
+                let payment_id = tx.last_insert_rowid();
+                tx.execute("INSERT INTO payment_components (payment_id, method, amount_cents) VALUES (?1, ?2, 20000)", rusqlite::params![payment_id, if n % 2 == 0 { "pix" } else { "debit" }]).unwrap();
+            }
+            tx.execute(
+                "INSERT INTO payables (code, supplier, description, amount_cents, competence_date, due_date, category_id, notes, created_by, created_at, updated_at)
+                 VALUES (?1, 'Fornecedor', 'Conta', 30000, ?2, ?2, 1, '', 1, ?3, ?3)",
+                rusqlite::params![format!("CP-{:06}", day + 1), d_in, t],
+            )
+            .unwrap();
+            let payable_id = tx.last_insert_rowid();
+            tx.execute("INSERT INTO payable_payments (payable_id, amount_cents, method, paid_at, paid_by) VALUES (?1, 10000, 'pix', ?2, 1)", rusqlite::params![payable_id, t]).unwrap();
+            tx.execute("INSERT INTO cash_closings (closing_date, closed_at, closed_by) VALUES (?1, ?2, 1)", rusqlite::params![d_in, t]).unwrap();
+            let closing_id = tx.last_insert_rowid();
+            for method in ["cash", "pix", "debit", "credit", "transfer"] {
+                tx.execute(
+                    "INSERT INTO cash_closing_lines (closing_id, method, expected_cents, counted_cents, difference_cents) VALUES (?1, ?2, 1000, 1000, 0)",
+                    rusqlite::params![closing_id, method],
+                )
+                .unwrap();
+            }
+        }
+        tx.commit().unwrap();
+    }
+
+    #[test]
+    fn five_years_of_fake_data_run_every_report_under_the_limit_and_csv_matches_the_screen() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let seed = seed(&h, &admin, 20_000, 2);
+        fill_five_years(&h, seed.category_id, seed.guest_id);
+
+        for kind in ReportKind::ALL {
+            for (from, to) in [("2025-01-01", "2025-12-31"), ("2025-06-15", "2025-06-15")] {
+                let mut query = ReportQuery::new(kind.as_str());
+                if kind.uses_period() {
+                    query.from = Some(from.into());
+                    query.to = Some(to.into());
+                }
+                let started = std::time::Instant::now();
+                let table = h.reports.run(&admin, query.clone()).unwrap();
+                let elapsed = started.elapsed().as_secs_f64();
+                eprintln!("{:<18} {from}..{to}: {:>5} linhas em {elapsed:.3}s", kind.as_str(), table.rows.len());
+                assert!(elapsed < LIMIT_SECONDS, "{} levou {elapsed:.2}s", kind.as_str());
+                // O cenário fictício não tem cancelamentos nem hospedagens em andamento.
+                if !matches!(kind, ReportKind::Balances | ReportKind::Cancellations) {
+                    assert!(!table.rows.is_empty(), "{} sem linhas", kind.as_str());
+                }
+
+                let csv = crate::domain::csv::render(&table, ';');
+                let lines = String::from_utf8_lossy(&csv).matches("\r\n").count();
+                let expected = 1 + table.rows.len() + usize::from(table.totals.is_some()) + usize::from(table.truncated);
+                assert_eq!(lines, expected, "{}: o CSV tem as mesmas linhas da tela", kind.as_str());
+                if !table.truncated {
+                    let pdf = h.reports.pdf(&admin, query).unwrap();
+                    assert!(pdf.starts_with(b"%PDF-1.4"));
+                }
+            }
+        }
+    }
+}

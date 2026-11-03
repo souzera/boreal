@@ -42,6 +42,8 @@ Só roda uma vez por banco. O seed cria também três **contas a pagar** (penden
 
 O mesmo cenário alimenta a **Recepção** (chegada de hoje no 201, conflito de manutenção em "Em risco", hospedagens em andamento) e a **Visão gerencial** (recebimentos de hoje e a conta vencida); `seed_fills_the_reception_and_the_management_dashboard` confere isso.
 
+O cenário também alimenta os **relatórios** (recebimentos de hoje, ocupação, contas) e permite emitir os quatro **documentos internos**; `seed_feeds_the_reports_and_the_internal_documents` confere isso.
+
 ## Banco de demonstração à parte
 
 O seed recusa banco com quartos. Para não mexer no banco que você já usa, aponte `--db` para um arquivo novo (a chave do cofre é reaproveitada e o arquivo nasce cifrado), por exemplo `%APPDATA%\br.com.boreal.pms\demo\boreal.db`. O aplicativo só abre `%APPDATA%\br.com.boreal.pms\boreal.db`: para ver a demonstração nele, feche o app, guarde o banco atual e coloque o arquivo da demonstração no lugar.

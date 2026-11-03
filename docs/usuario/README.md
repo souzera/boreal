@@ -24,6 +24,8 @@ Guias passo a passo para a equipe da pousada. Cada guia explica o objetivo, quan
 
 - [Recepção](recepcao.md) — a tela inicial: chegadas, saídas, riscos, mapa de 7 dias e painel lateral.
 - [Visão gerencial](visao-gerencial.md) — ocupação, recebimentos, saldos e contas (só administrador).
+- [Relatórios](relatorios.md) — consultar, filtrar e exportar em CSV e PDF.
+- [Documentos internos](documentos.md) — confirmação, comprovante, ficha e demonstrativo, com versões.
 - [Alertas](alertas.md) — pendências persistentes, prioridades, como dispensar e abrir o registro.
 - [Busca](busca.md) — encontrar hóspedes, reservas, hospedagens e movimentos.
 

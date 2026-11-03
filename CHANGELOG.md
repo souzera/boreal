@@ -48,6 +48,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - **Visão gerencial** (só administrador): ocupação por dia, recebimentos líquidos por dia e por forma de pagamento, saldos a receber e créditos, contas vencidas e em aberto por categoria, com gráficos e a tabela equivalente de cada um; período padrão hoje.
 - **Logo e ícone do Boreal**: fitas de aurora em teal, usadas no ícone do aplicativo (janela, barra de tarefas e instalador), no menu lateral, na tela de entrada e na aba do navegador.
 - **Barra de título própria**: a janela deixou de ter a moldura padrão do Windows e ganhou uma barra com o logo, área para arrastar (duplo clique maximiza) e os botões **Minimizar**, **Maximizar/Restaurar** e **Fechar**, sempre visível, inclusive na tela de entrada e sobre os diálogos.
+- **Relatórios** com filtros combinados: Ocupação, Reservas, Hospedagens, Cancelamentos e no-shows (todos veem) e, só para o administrador, Recebimentos e devoluções (débito e crédito separados), Saldos pendentes, Despesas extras dos hóspedes, Despesas da pousada (por competência, com o pago no período), Contas a pagar e Fechamentos de caixa.
+- **Exportação em CSV e PDF** de qualquer relatório, com as mesmas linhas da tela: o CSV abre direto no Excel em português e o PDF tem cabeçalho, filtros, totais e numeração de páginas. O sistema pergunta onde salvar e, se a gravação falhar, permite tentar de novo sem perder a consulta.
+- **Documentos internos** em PDF: Confirmação de reserva, Comprovante de pagamento, Ficha de hospedagem e Demonstrativo final da conta, com versões: o que foi emitido não muda, e emitir de novo depois de uma alteração cria a versão seguinte. Falha ao salvar o PDF não emite nada de novo.
 
 ### Changed
 - **Novo visual do Boreal**: identidade teal com neutros frios, fonte Onest, ícones Material Symbols (empacotados, funcionam sem internet) e cantos e sombras suaves. Os estados dos quartos, reservas, bloqueios, manutenção e contas continuam combinando cor, ícone e rótulo.
@@ -63,6 +66,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - O sinal da reserva passa a ser um recebimento de verdade e acompanha a hospedagem no check-in (antes era só um valor na reserva); o botão **Registrar sinal recebido** virou **Registrar pagamento**.
 - O cancelamento continua calculando a devolução pela política, mas a devolução em si passa a ser registrada à parte quando o dinheiro volta.
 - **Check-in** (`Alt+C`) e **Check-out** (`Alt+S`) do topo agora abrem as abas **Chegadas** e **Saídas** da Recepção, em vez das listas de reservas e hospedagens.
+- O item **Relatórios** do menu deixou de ser "Em breve" e abre a nova tela de relatórios.
 - A tela inicial deixou de ser o Dashboard simples e passou a ser a Recepção completa.
 
 ### Fixed

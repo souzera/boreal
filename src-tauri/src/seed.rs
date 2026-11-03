@@ -457,6 +457,35 @@ mod tests {
     }
 
     #[test]
+    fn seed_feeds_the_reports_and_the_internal_documents() {
+        let (_dir, app) = fresh();
+        run(&app, "admin", ADMIN, None).unwrap();
+        let token = app.auth.login("admin", ADMIN).unwrap().token;
+        let today = app.reception.overview(&token).unwrap().date;
+
+        let day = |kind: &str| crate::models::report::ReportQuery {
+            from: Some(today.clone()),
+            to: Some(today.clone()),
+            ..crate::models::report::ReportQuery::new(kind)
+        };
+        let receipts = app.reports.run(&token, day("receipts")).unwrap();
+        let payables = app.reports.run(&token, crate::models::report::ReportQuery::new("payables")).unwrap();
+        let occupancy = app.reports.run(&token, day("occupancy")).unwrap();
+        assert!(!receipts.rows.is_empty(), "recebimentos de hoje");
+        assert!(!occupancy.rows.is_empty());
+        assert_eq!(payables.title, "Contas a pagar");
+        assert!(!app.reports.pdf(&token, day("receipts")).unwrap().is_empty());
+
+        let in_house = app.stays.list(&token, crate::models::stay::StayQuery { status: Some("in_house".into()), text: None, page: 1, page_size: 20 }).unwrap();
+        let stay = in_house.items[0].stay.id;
+        let record = app.documents.issue(&token, "stay_record", stay).unwrap();
+        assert_eq!(record.version, 1);
+        assert!(app.documents.pdf(&token, record.id).unwrap().starts_with(b"%PDF-1.4"));
+        let reservation = in_house.items[0].stay.reservation_id;
+        assert_eq!(app.documents.issue(&token, "reservation_confirmation", reservation).unwrap().version, 1);
+    }
+
+    #[test]
     fn seed_refuses_a_database_that_already_has_rooms() {
         let (_dir, app) = fresh();
         run(&app, "admin", ADMIN, None).unwrap();
