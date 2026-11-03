@@ -11,7 +11,11 @@ pub fn closing_preview(app: State<'_, App>, token: String, date: String) -> Resu
 
 #[tauri::command]
 pub fn close_cash(app: State<'_, App>, token: String, input: CloseInput) -> Result<ClosingView, AppError> {
-    app.state()?.closing.close(&token, input)
+    let state = app.state()?;
+    let closing = state.closing.close(&token, input)?;
+    // "Encerrar o expediente": o backup automático sai em segundo plano e nunca muda o resultado do fechamento.
+    crate::services::backup_service::spawn_auto(state.backup.clone());
+    Ok(closing)
 }
 
 #[tauri::command]

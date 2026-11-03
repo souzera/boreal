@@ -98,7 +98,8 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
     run_migrations(&mut conn)?;
     // O banco só abre com a chave; ela fica em memória (zerada ao sair) para backup e chave de recuperação.
     let key = keys.get()?.ok_or(AppError::KeyUnavailable)?;
-    let ctx = Ctx::production(conn, SecretKey::new(key))?;
+    let data_dir = db_path.parent().map_or_else(|| std::path::PathBuf::from("."), std::path::Path::to_path_buf);
+    let ctx = Ctx::production(conn, SecretKey::new(key), data_dir)?;
     Ok(AppState {
         auth: AuthService::new(ctx.clone()),
         users: UserService::new(ctx.clone()),

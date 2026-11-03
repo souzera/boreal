@@ -133,12 +133,19 @@ impl AlertService {
     /// Roda os detectores e sincroniza. Chamado ao abrir o painel e a cada minuto pela tela.
     pub fn refresh(&self, token: &str) -> Result<(), AppError> {
         self.touch(token)?;
-        let managed: Vec<AlertKind> = AlertKind::ALL.into_iter().filter(|k| k.managed_by_detectors()).collect();
+        let monitor = self.ctx.system_alerts;
+        let managed: Vec<AlertKind> = AlertKind::ALL.into_iter().filter(|k| k.managed_by_detectors() && (monitor || !k.is_system())).collect();
         let now = self.ctx.utc.now_utc();
         // Detectores e sincronização sob a mesma trava da conexão: duas rodadas nunca se misturam.
         let mut conn = self.ctx.conn()?;
         let settings = settings_repo::load(&conn)?;
-        let findings = alert_detectors::collect_all(&conn, self.ctx.today(), self.ctx.local_now(), self.ctx.utc.local_offset().local_minus_utc(), &settings)?;
+        let offset = self.ctx.utc.local_offset().local_minus_utc();
+        let mut findings = alert_detectors::collect_all(&conn, self.ctx.today(), self.ctx.local_now(), offset, &settings)?;
+        if monitor {
+            let db_bytes = super::health_service::database_bytes(&conn);
+            let disk = self.ctx.disk.free_bytes(&self.ctx.data_dir).ok().map(|free| (free, super::health_service::disk_threshold(db_bytes)));
+            findings.extend(alert_detectors::collect_system_findings(&conn, now, offset, disk)?);
+        }
         Self::sync_in(&mut conn, now, findings, &managed)
     }
 
@@ -262,7 +269,7 @@ mod tests {
     }
 
     fn managed() -> Vec<AlertKind> {
-        AlertKind::ALL.into_iter().filter(|k| k.managed_by_detectors()).collect()
+        AlertKind::ALL.into_iter().filter(|k| k.managed_by_detectors() && !k.is_system()).collect()
     }
 
     fn query(status: &str) -> AlertQuery {

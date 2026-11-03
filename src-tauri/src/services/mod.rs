@@ -8,6 +8,7 @@ pub mod closing_service;
 pub mod document_service;
 pub mod cleaning_service;
 pub mod guest_service;
+pub mod health_service;
 pub mod item_service;
 pub mod maintenance_service;
 pub mod management_service;
@@ -84,6 +85,10 @@ pub struct Ctx {
     /// Chave do banco em memória (backup e chave de recuperação); zerada ao ser solta.
     pub key: Arc<SecretKey>,
     pub disk: Arc<dyn DiskProbe>,
+    /// Pasta do banco (espaço em disco e backups padrão).
+    pub data_dir: Arc<std::path::PathBuf>,
+    /// Liga os alertas de backup, disco e atualização (desligado nos testes que não tratam disso).
+    pub system_alerts: bool,
 }
 
 impl Ctx {
@@ -107,7 +112,7 @@ impl Ctx {
         (self.utc.now_utc() + chrono::Duration::seconds(offset)).date_naive()
     }
 
-    pub fn production(conn: Connection, key: SecretKey) -> Result<Self, AppError> {
+    pub fn production(conn: Connection, key: SecretKey, data_dir: std::path::PathBuf) -> Result<Self, AppError> {
         let idle_minutes = settings_repo::get_u32(&conn, "idle_lock_minutes")?;
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
@@ -118,6 +123,8 @@ impl Ctx {
             utc: Arc::new(SystemUtc),
             key: Arc::new(key),
             disk: Arc::new(SystemDisk),
+            data_dir: Arc::new(data_dir),
+            system_alerts: true,
         })
     }
 }

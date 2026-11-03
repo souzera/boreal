@@ -152,6 +152,8 @@ pub fn disk_world() -> DiskWorld {
         utc: utc.clone(),
         key: Arc::new(SecretKey::new(TEST_KEY.to_vec())),
         disk: disk.clone(),
+        data_dir: Arc::new(data.clone()),
+        system_alerts: true,
     };
     ctx.conn()
         .unwrap()
@@ -186,6 +188,8 @@ pub fn harness() -> Harness {
         utc: utc.clone(),
         key: Arc::new(SecretKey::new(TEST_KEY.to_vec())),
         disk: Arc::new(FakeDisk(Mutex::new(u64::MAX / 2))),
+        data_dir: Arc::new(std::env::temp_dir()),
+        system_alerts: false,
     };
     Harness {
         auth: AuthService::new(ctx.clone()),

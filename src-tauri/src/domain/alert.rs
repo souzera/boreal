@@ -139,12 +139,22 @@ impl AlertKind {
 
     /// Permissão exigida para enxergar alertas deste tipo (quem não a tem nem os vê nem os conta).
     pub fn requires_permission(self) -> Option<Permission> {
-        (self == AlertKind::PayableOverdue).then_some(Permission::ManagePayables)
+        match self {
+            AlertKind::PayableOverdue => Some(Permission::ManagePayables),
+            // Backup, disco e atualização são assunto do administrador: a recepção não consegue resolvê-los.
+            k if k.is_system() => Some(Permission::ManageSettings),
+            _ => None,
+        }
     }
 
-    /// Falso para os tipos emitidos por outros módulos (o refresh dos detectores não os resolve).
+    /// Alertas de saúde do sistema (backup, disco e atualização).
+    pub fn is_system(self) -> bool {
+        matches!(self, AlertKind::BackupMissing | AlertKind::DiskLow | AlertKind::UpdateFailed)
+    }
+
+    /// Todos os tipos têm detector; os de sistema só rodam quando o monitoramento está ligado.
     pub fn managed_by_detectors(self) -> bool {
-        !matches!(self, AlertKind::BackupMissing | AlertKind::DiskLow | AlertKind::UpdateFailed)
+        true
     }
 }
 
@@ -223,18 +233,25 @@ mod tests {
     }
 
     #[test]
-    fn only_payable_overdue_requires_a_permission() {
+    fn payables_need_their_permission_and_system_alerts_are_admin_only() {
         for kind in ALL {
-            let expected = (kind == AlertKind::PayableOverdue).then_some(Permission::ManagePayables);
+            let expected = if kind == AlertKind::PayableOverdue {
+                Some(Permission::ManagePayables)
+            } else if kind.is_system() {
+                Some(Permission::ManageSettings)
+            } else {
+                None
+            };
             assert_eq!(kind.requires_permission(), expected, "{kind:?}");
         }
     }
 
     #[test]
-    fn external_kinds_are_not_managed_by_detectors() {
+    fn every_kind_has_a_detector_and_three_are_system_kinds() {
         for kind in ALL {
-            let external = matches!(kind, AlertKind::BackupMissing | AlertKind::DiskLow | AlertKind::UpdateFailed);
-            assert_eq!(kind.managed_by_detectors(), !external, "{kind:?}");
+            let system = matches!(kind, AlertKind::BackupMissing | AlertKind::DiskLow | AlertKind::UpdateFailed);
+            assert!(kind.managed_by_detectors(), "{kind:?}");
+            assert_eq!(kind.is_system(), system, "{kind:?}");
         }
     }
 

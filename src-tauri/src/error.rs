@@ -18,6 +18,8 @@ pub enum AppError {
     StalePreview,
     #[error("Não foi possível concluir a operação. Tente novamente.")]
     Database(String),
+    #[error("Sem espaço em disco. Libere espaço e tente de novo. Nada foi salvo.")]
+    DiskFull,
     #[error("{0}")]
     Validation(String),
     #[error("É preciso entrar no sistema para continuar.")]
@@ -45,6 +47,7 @@ impl AppError {
             AppError::PasswordChangeRequired => "password_change_required",
             AppError::StalePreview => "stale_preview",
             AppError::Database(_) => "database",
+            AppError::DiskFull => "disk_full",
             AppError::Validation(_) => "validation",
             AppError::Unauthorized => "unauthorized",
             AppError::InvalidCredentials => "invalid_credentials",
@@ -59,6 +62,12 @@ impl AppError {
 
 impl From<rusqlite::Error> for AppError {
     fn from(e: rusqlite::Error) -> Self {
+        // Disco cheio: o SQLite já desfez a transação inteira; só traduzimos para uma mensagem clara.
+        if let rusqlite::Error::SqliteFailure(failure, _) = &e
+            && failure.code == rusqlite::ErrorCode::DiskFull
+        {
+            return AppError::DiskFull;
+        }
         AppError::Database(e.to_string())
     }
 }
@@ -89,6 +98,31 @@ impl Serialize for AppError {
 #[cfg(test)]
 mod tests {
     use super::AppError;
+
+    #[test]
+    fn sqlite_full_becomes_a_plain_disk_full_error_and_the_transaction_leaves_nothing() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('antes');").unwrap();
+        let pages: i64 = conn.query_row("PRAGMA page_count", [], |r| r.get(0)).unwrap();
+        conn.execute_batch(&format!("PRAGMA max_page_count = {};", pages + 2)).unwrap();
+
+        let tx = conn.transaction().unwrap();
+        let mut failure = None;
+        for _ in 0..200 {
+            if let Err(e) = tx.execute("INSERT INTO t VALUES (?1)", ["x".repeat(2_000)]) {
+                failure = Some(AppError::from(e));
+                break;
+            }
+        }
+        drop(tx);
+
+        let error = failure.expect("o banco devia encher");
+        assert!(matches!(error, AppError::DiskFull), "{error:?}");
+        assert_eq!(error.code(), "disk_full");
+        assert!(error.to_string().contains("Nada foi salvo"));
+        let count: i64 = conn.query_row("SELECT count(*) FROM t", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1, "a transação inteira foi desfeita");
+    }
 
     #[test]
     fn database_error_message_is_plain() {

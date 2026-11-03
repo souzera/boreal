@@ -216,6 +216,17 @@ impl BackupService {
         Ok(files)
     }
 
+    /// Na abertura do aplicativo: se o último backup válido tem mais de 24 h (ou não há nenhum), faz um agora,
+    /// em segundo plano. Nunca atrasa nem impede a abertura.
+    pub fn catch_up(&self) -> Option<std::thread::JoinHandle<()>> {
+        let stale = match self.last_valid_at() {
+            Ok(Some(at)) => super::parse_utc(&at).is_none_or(|t| self.ctx.utc.now_utc() - t > chrono::Duration::hours(24)),
+            Ok(None) => true,
+            Err(_) => false,
+        };
+        stale.then(|| spawn_auto(self.clone()))
+    }
+
     fn execute(&self, kind: BackupKind) -> Result<BackupRunView, AppError> {
         let started = format_utc(self.ctx.utc.now_utc());
         let outcome = self.try_backup();
@@ -339,6 +350,14 @@ impl BackupService {
         }
         Ok(schema)
     }
+}
+
+/// Backup automático em segundo plano (depois do fechamento de caixa e na abertura). Nunca propaga erro:
+/// a falha fica no histórico e vira alerta persistente.
+pub fn spawn_auto(service: BackupService) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let _ = service.run_system(BackupKind::Auto);
+    })
 }
 
 /// Apaga o arquivo parcial e qualquer auxiliar do SQLite deixado ao lado dele.
@@ -549,6 +568,34 @@ mod tests {
         let run = svc.run_system(BackupKind::Auto).unwrap();
         assert_eq!(run.kind, "auto");
         assert!(svc.last_valid_at().unwrap().is_some());
+    }
+
+    #[test]
+    fn an_automatic_backup_failure_is_recorded_and_never_propagates() {
+        let w = disk_world();
+        let svc = service(&w);
+        let blocker = w.dir.path().join("arquivo.txt");
+        std::fs::write(&blocker, b"x").unwrap();
+        svc.set_destination(&w.admin, blocker.join("sub").to_str().unwrap()).unwrap();
+
+        spawn_auto(svc.clone()).join().expect("a thread não entra em pânico");
+
+        let runs = svc.recent_runs(&w.admin, 5).unwrap();
+        assert_eq!((runs.len(), runs[0].kind.as_str(), runs[0].status.as_str()), (1, "auto", "failed"));
+    }
+
+    #[test]
+    fn catch_up_runs_only_when_the_last_valid_backup_is_older_than_24_hours() {
+        let w = disk_world();
+        let svc = service(&w);
+
+        svc.catch_up().expect("sem backup nenhum, faz um").join().unwrap();
+        assert!(svc.last_valid_at().unwrap().is_some());
+        assert!(svc.catch_up().is_none(), "backup recente: nada a fazer");
+
+        w.utc.set(chrono::DateTime::parse_from_rfc3339("2026-10-22T13:00:00Z").unwrap().with_timezone(&chrono::Utc));
+        svc.catch_up().expect("passaram mais de 24 h").join().unwrap();
+        assert_eq!(svc.recent_runs(&w.admin, 10).unwrap().len(), 2);
     }
 
     #[test]

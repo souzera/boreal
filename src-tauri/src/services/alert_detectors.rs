@@ -1,7 +1,7 @@
 //! Detectores de alertas: cada um olha o estado atual e devolve achados; o motor (`AlertService::sync`)
 //! cria, atualiza e resolve os alertas. Os detectores só leem, nunca alteram o sistema.
 
-use chrono::{Duration, NaiveDate, NaiveDateTime};
+use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, Utc};
 use rusqlite::Connection;
 
 use super::reservation_service::{br, parse_date, parse_time};
@@ -12,7 +12,8 @@ use crate::domain::dates;
 use crate::error::AppError;
 use crate::models::settings::AppSettings;
 use crate::repositories::payable_repo::{self, Filters as PayableFilters};
-use crate::repositories::{cleaning_repo, closing_repo, maintenance_repo, reservation_repo, stay_repo};
+use crate::repositories::{backup_repo, cleaning_repo, closing_repo, maintenance_repo, reservation_repo, stay_repo};
+use super::health_service::size_text;
 
 fn finding(kind: AlertKind, subject_key: String, title: String, detail: String, link: String) -> Finding {
     Finding { kind, subject_key, title, detail, link }
@@ -44,6 +45,63 @@ pub(crate) fn collect_all(
     all.extend(collect_room_findings(conn, now_local)?);
     all.extend(collect_finance_findings(conn, today, offset_seconds)?);
     Ok(all)
+}
+
+/// Backup, disco e atualização (`backup_missing`, `disk_low`, `update_failed`): críticos e só do administrador.
+/// `disk` é (espaço livre, limite) da pasta do banco, se foi possível consultar.
+pub(crate) fn collect_system_findings(
+    conn: &Connection,
+    now: DateTime<Utc>,
+    offset_seconds: i32,
+    disk: Option<(u64, u64)>,
+) -> Result<Vec<Finding>, AppError> {
+    let mut out = Vec::new();
+    let local = |utc: &str| {
+        DateTime::parse_from_rfc3339(utc)
+            .map(|d| (d.with_timezone(&Utc) + Duration::seconds(i64::from(offset_seconds))).format("%d/%m/%Y às %H:%M").to_string())
+            .unwrap_or_else(|_| utc.to_string())
+    };
+
+    let last_valid = backup_repo::last_valid_at(conn)?;
+    let fresh = last_valid
+        .as_deref()
+        .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+        .is_some_and(|t| now - t.with_timezone(&Utc) <= Duration::hours(24));
+    if !fresh {
+        let mut detail = match &last_valid {
+            Some(t) => format!("O último backup válido foi em {}.", local(t)),
+            None => "Nenhum backup válido foi feito ainda.".to_string(),
+        };
+        if let Some(run) = backup_repo::last_run(conn)?.filter(|r| r.status == "failed") {
+            detail.push_str(&format!(" A última tentativa falhou: {}", run.message));
+        }
+        detail.push_str(" Faça um backup em Saúde do sistema.");
+        out.push(finding(AlertKind::BackupMissing, "backup".into(), "Sem backup válido nas últimas 24 horas".into(), detail, "/saude".into()));
+    }
+
+    if let Some((free, threshold)) = disk.filter(|(free, threshold)| free < threshold) {
+        out.push(finding(
+            AlertKind::DiskLow,
+            "disk".into(),
+            "Pouco espaço em disco".into(),
+            format!("Restam {} livres e o recomendado é pelo menos {}. Libere espaço ou escolha outra pasta de backup.", size_text(free), size_text(threshold)),
+            "/saude".into(),
+        ));
+    }
+
+    if let Some((failed_at, message)) = backup_repo::latest_event(conn, "update_failed")? {
+        let recovered = backup_repo::latest_event(conn, "update_ok")?.is_some_and(|(ok_at, _)| ok_at > failed_at);
+        if !recovered {
+            out.push(finding(
+                AlertKind::UpdateFailed,
+                "update".into(),
+                "Falha na atualização".into(),
+                format!("A atualização de {} não foi concluída: {message} Seus dados foram preservados.", local(&failed_at)),
+                "/saude".into(),
+            ));
+        }
+    }
+    Ok(out)
 }
 
 /// Conflitos de manutenção abertos (`maintenance_conflict`, crítico) e limpezas urgentes (`cleaning_urgent`).
@@ -605,5 +663,147 @@ mod tests {
 
         assert!(kinds(&alerts).contains(&"backup_missing"));
         assert!(kinds(&alerts).contains(&"arrival_today"));
+    }
+}
+
+#[cfg(test)]
+mod system_tests {
+    use chrono::{DateTime, Utc};
+
+    use crate::error::AppError;
+    use crate::models::alert::{AlertQuery, AlertView};
+    use crate::repositories::backup_repo;
+    use crate::services::alert_service::AlertService;
+    use crate::services::backup_service::BackupService;
+    use crate::services::test_support::{disk_world, DiskWorld};
+
+    // Fuso -03:00. "Agora" é 21/10/2026 09:00 local (12:00Z).
+
+    fn alerts(w: &DiskWorld) -> AlertService {
+        AlertService::new(w.ctx.clone())
+    }
+
+    fn active(w: &DiskWorld) -> Vec<AlertView> {
+        let svc = alerts(w);
+        svc.refresh(&w.admin).unwrap();
+        svc.list(&w.admin, AlertQuery { status: Some("active".into()), kind: None, severity: None, page: 1, page_size: 50 }).unwrap().items
+    }
+
+    fn kinds(list: &[AlertView]) -> Vec<&str> {
+        let mut k: Vec<&str> = list.iter().map(|a| a.kind.as_str()).collect();
+        k.sort_unstable();
+        k
+    }
+
+    fn backups(w: &DiskWorld) -> BackupService {
+        BackupService::new(w.ctx.clone(), w.db_path.clone())
+    }
+
+    fn at(w: &DiskWorld, rfc3339: &str) {
+        w.utc.set(DateTime::parse_from_rfc3339(rfc3339).unwrap().with_timezone(&Utc));
+    }
+
+    #[test]
+    fn backup_missing_appears_without_a_recent_valid_run_and_resolves_after_one() {
+        let w = disk_world();
+
+        let before = active(&w);
+        assert_eq!(kinds(&before), ["backup_missing"]);
+        assert!(before[0].detail.contains("Nenhum backup válido foi feito ainda"), "{}", before[0].detail);
+        assert_eq!((before[0].severity.as_str(), before[0].link.as_str()), ("critical", "/saude"));
+
+        backups(&w).run(&w.admin).unwrap();
+
+        assert!(kinds(&active(&w)).is_empty());
+    }
+
+    #[test]
+    fn a_failed_last_run_shows_its_reason_in_the_alert() {
+        let w = disk_world();
+        w.disk.set(10);
+        assert!(backups(&w).run(&w.admin).is_err());
+        w.disk.set(u64::MAX / 2);
+
+        let list = active(&w);
+
+        let backup = list.iter().find(|a| a.kind == "backup_missing").unwrap();
+        assert!(backup.detail.contains("A última tentativa falhou: Não há espaço suficiente na pasta de backup."), "{}", backup.detail);
+    }
+
+    #[test]
+    fn an_old_valid_backup_over_24_hours_raises_the_alert_with_its_date() {
+        let w = disk_world();
+        backups(&w).run(&w.admin).unwrap();
+        at(&w, "2026-10-22T11:59:00Z");
+        assert!(kinds(&active(&w)).is_empty(), "23h59 depois ainda vale");
+
+        at(&w, "2026-10-22T12:01:00Z");
+        let list = active(&w);
+
+        assert_eq!(kinds(&list), ["backup_missing"]);
+        assert!(list[0].detail.contains("O último backup válido foi em 21/10/2026 às 09:00"), "{}", list[0].detail);
+    }
+
+    #[test]
+    fn disk_low_uses_the_probe_and_the_threshold_and_clears_when_space_returns() {
+        let w = disk_world();
+        backups(&w).run(&w.admin).unwrap();
+        w.disk.set(500 * 1024 * 1024);
+
+        let list = active(&w);
+        assert_eq!(kinds(&list), ["disk_low"]);
+        assert!(list[0].detail.contains("500 MB") && list[0].detail.contains("1,0 GB"), "{}", list[0].detail);
+
+        w.disk.set(3 * 1024 * 1024 * 1024);
+        assert!(kinds(&active(&w)).is_empty());
+    }
+
+    #[test]
+    fn update_failed_stays_until_a_later_update_ok() {
+        let w = disk_world();
+        backups(&w).run(&w.admin).unwrap();
+        {
+            let conn = w.ctx.conn().unwrap();
+            backup_repo::insert_event(&conn, "update_failed", "2026-10-21T11:00:00Z", "A migração 15 falhou.").unwrap();
+        }
+        let list = active(&w);
+        assert_eq!(kinds(&list), ["update_failed"]);
+        assert!(list[0].detail.contains("A migração 15 falhou.") && list[0].detail.contains("21/10/2026 às 08:00"), "{}", list[0].detail);
+
+        {
+            let conn = w.ctx.conn().unwrap();
+            backup_repo::insert_event(&conn, "update_ok", "2026-10-21T11:30:00Z", "").unwrap();
+        }
+        assert!(kinds(&active(&w)).is_empty());
+    }
+
+    #[test]
+    fn the_three_alerts_are_admin_only_and_cannot_be_dismissed() {
+        let w = disk_world();
+        w.disk.set(100);
+        {
+            let conn = w.ctx.conn().unwrap();
+            backup_repo::insert_event(&conn, "update_failed", "2026-10-21T11:00:00Z", "x").unwrap();
+        }
+        let svc = alerts(&w);
+        let list = active(&w);
+        assert_eq!(kinds(&list), ["backup_missing", "disk_low", "update_failed"]);
+
+        let for_reception = svc.list(&w.reception, AlertQuery { status: Some("active".into()), kind: None, severity: None, page: 1, page_size: 50 }).unwrap();
+        let summary = svc.summary(&w.reception).unwrap();
+        assert!(for_reception.items.is_empty() && summary.total == 0, "a recepção não vê nem conta");
+        assert_eq!(svc.summary(&w.admin).unwrap().critical, 3);
+        for alert in &list {
+            let result = svc.dismiss(&w.admin, alert.id, "ignorar".into(), alert.version);
+            assert!(matches!(result, Err(AppError::Validation(_))), "{}: {result:?}", alert.kind);
+        }
+    }
+
+    #[test]
+    fn system_alerts_are_off_in_a_world_without_monitoring() {
+        let mut w = disk_world();
+        w.ctx.system_alerts = false;
+
+        assert!(kinds(&active(&w)).is_empty());
     }
 }

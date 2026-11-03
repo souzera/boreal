@@ -6,6 +6,7 @@ pub mod document;
 pub mod closing;
 pub mod cleaning;
 pub mod guest;
+pub mod health;
 pub mod item;
 pub mod maintenance;
 pub mod management;

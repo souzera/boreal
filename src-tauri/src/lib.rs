@@ -28,6 +28,10 @@ pub fn run() {
             if let Err(e) = &state {
                 eprintln!("falha ao iniciar: {e}");
             }
+            if let Ok(state) = &state {
+                // Se o último backup válido tem mais de 24 h, faz um agora, sem atrasar a abertura.
+                state.backup.catch_up();
+            }
             tauri_app.manage(app::App(state));
             Ok(())
         })
