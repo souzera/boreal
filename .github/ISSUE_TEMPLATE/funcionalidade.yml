@@ -1,0 +1,31 @@
+name: Funcionalidade
+description: Nova funcionalidade ou melhoria
+title: "[Feat] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo
+      description: Qual problema da operação da pousada isso resolve?
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: Seção da especificação
+      description: "Ex.: 4.2 Alterações de reserva (local/spec.md)"
+  - type: textarea
+    id: aceite
+    attributes:
+      label: Critérios de aceite
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: permissoes
+    attributes:
+      label: Permissões e auditoria
+      description: Quais perfis podem executar? Exige justificativa ou registro de auditoria?

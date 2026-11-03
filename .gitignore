@@ -1,0 +1,47 @@
+# Material local (spec, rascunhos)
+local/
+
+# Dependências e builds
+node_modules/
+dist/
+dist-ssr/
+target/
+src-tauri/target/
+src-tauri/gen/
+
+# Dados sensíveis: nunca versionar banco, backups ou credenciais
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.bak
+*.key
+.env
+.env.*
+
+# Testes e relatórios
+coverage/
+playwright-report/
+test-results/
+
+# Ferramentas e sistema
+graphify-out/
+*.local
+
+# Claude Code: versionar .claude/settings.json, CLAUDE.md e skills-lock.json;
+# ignorar preferências pessoais e skills instaladas (restauráveis pelo lock)
+.claude/settings.local.json
+.claude/worktrees/
+.agents/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# Execução de planos
+.superpowers/

@@ -1,0 +1,49 @@
+name: Bug
+description: Algo não funciona como especificado
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: descricao
+    attributes:
+      label: O que aconteceu?
+      description: Descreva o problema e o que era esperado.
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. Abrir ...
+        2. Clicar em ...
+        3. Ver o erro
+    validations:
+      required: true
+  - type: dropdown
+    id: modulo
+    attributes:
+      label: Módulo
+      options:
+        - Autenticação e permissões
+        - Cadastros (quartos, hóspedes)
+        - Reservas e tarifas
+        - Hospedagem (check-in/check-out)
+        - Limpeza e manutenção
+        - Financeiro (recebimentos, despesas, caixa)
+        - Relatórios e documentos
+        - Backup, criptografia e atualização
+        - Interface
+        - Outro
+    validations:
+      required: true
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do aplicativo
+      description: Veja em Configurações.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs ou capturas de tela
+      description: "Não inclua senhas, dados reais de hóspedes ou o banco de dados."

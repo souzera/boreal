@@ -1,0 +1,170 @@
+pub mod alert_service;
+pub mod backup_service;
+pub(crate) mod alert_detectors;
+pub mod auth_service;
+pub mod block_service;
+pub mod catalog_service;
+pub mod closing_service;
+pub mod document_service;
+pub mod cleaning_service;
+pub mod guest_service;
+pub mod health_service;
+pub mod item_service;
+pub mod maintenance_service;
+pub mod management_service;
+pub mod payable_service;
+pub mod payment_service;
+pub mod policy_service;
+pub mod pousada_service;
+pub mod rate_service;
+pub mod recovery_service;
+pub mod refund_service;
+pub mod report_service;
+pub mod reception_service;
+pub mod reservation_service;
+pub mod room_map_service;
+pub mod room_status_service;
+pub(crate) mod room_rules;
+pub mod search_service;
+pub mod settings_service;
+pub mod stay_service;
+pub mod user_service;
+
+#[cfg(test)]
+pub mod test_support;
+
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use chrono::{DateTime, Utc};
+use rusqlite::Connection;
+
+use crate::auth::session::{Clock, SessionManager, SystemClock};
+use crate::domain::secret::SecretKey;
+use crate::error::AppError;
+use crate::repositories::settings_repo;
+
+/// Relógio de parede em UTC (instantes gravados no banco), injetável nos testes.
+pub trait UtcClock: Send + Sync {
+    fn now_utc(&self) -> DateTime<Utc>;
+
+    /// Deslocamento do fuso local do computador (spec §19.1: exibição e "hoje" seguem o horário local).
+    fn local_offset(&self) -> chrono::FixedOffset {
+        *chrono::Local::now().offset()
+    }
+}
+
+pub struct SystemUtc;
+
+impl UtcClock for SystemUtc {
+    fn now_utc(&self) -> DateTime<Utc> {
+        Utc::now()
+    }
+}
+
+/// Espaço livre em disco, injetável nos testes.
+pub trait DiskProbe: Send + Sync {
+    fn free_bytes(&self, path: &std::path::Path) -> Result<u64, AppError>;
+}
+
+pub struct SystemDisk;
+
+impl DiskProbe for SystemDisk {
+    fn free_bytes(&self, path: &std::path::Path) -> Result<u64, AppError> {
+        fs4::available_space(path).map_err(|_| AppError::Validation("Não foi possível consultar o espaço em disco.".into()))
+    }
+}
+
+/// Dependências compartilhadas pelos serviços.
+#[derive(Clone)]
+pub struct Ctx {
+    pub db: Arc<Mutex<Connection>>,
+    pub sessions: Arc<SessionManager>,
+    pub clock: Arc<dyn Clock>,
+    pub utc: Arc<dyn UtcClock>,
+    /// Chave do banco em memória (backup e chave de recuperação); zerada ao ser solta.
+    pub key: Arc<SecretKey>,
+    pub disk: Arc<dyn DiskProbe>,
+    /// Pasta do banco (espaço em disco e backups padrão).
+    pub data_dir: Arc<std::path::PathBuf>,
+    /// Liga os alertas de backup, disco e atualização (desligado nos testes que não tratam disso).
+    pub system_alerts: bool,
+    /// Logs técnicos (separados da auditoria).
+    pub log: Arc<crate::logging::Logger>,
+}
+
+impl Ctx {
+    /// Conexão com o banco. Se outra operação entrou em pânico segurando a conexão, devolve erro
+    /// (mensagem genérica) em vez de derrubar o aplicativo.
+    pub fn conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>, AppError> {
+        self.db.lock().map_err(|_| {
+            AppError::Database("a conexão com o banco ficou indisponível após uma falha".into())
+        })
+    }
+
+    /// Data e hora atuais no fuso local.
+    pub fn local_now(&self) -> chrono::NaiveDateTime {
+        let offset = i64::from(self.utc.local_offset().local_minus_utc());
+        (self.utc.now_utc() + chrono::Duration::seconds(offset)).naive_utc()
+    }
+
+    /// Data de hoje no fuso local.
+    pub fn today(&self) -> chrono::NaiveDate {
+        let offset = i64::from(self.utc.local_offset().local_minus_utc());
+        (self.utc.now_utc() + chrono::Duration::seconds(offset)).date_naive()
+    }
+
+    pub fn production(conn: Connection, key: SecretKey, data_dir: std::path::PathBuf) -> Result<Self, AppError> {
+        // Antes das migrações a tabela pode não existir (banco novo): usa o padrão e a abertura relê depois de migrar.
+        let idle_minutes = settings_repo::get_u32(&conn, "idle_lock_minutes").unwrap_or(10);
+        Ok(Self {
+            db: Arc::new(Mutex::new(conn)),
+            sessions: Arc::new(SessionManager::new(Duration::from_secs(
+                u64::from(idle_minutes) * 60,
+            ))),
+            clock: Arc::new(SystemClock),
+            utc: Arc::new(SystemUtc),
+            key: Arc::new(key),
+            disk: Arc::new(SystemDisk),
+            log: Arc::new(crate::logging::Logger::new(data_dir.join("logs"))),
+            data_dir: Arc::new(data_dir),
+            system_alerts: true,
+        })
+    }
+}
+
+pub(crate) fn format_utc(at: DateTime<Utc>) -> String {
+    at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+pub(crate) fn parse_utc(text: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(text)
+        .ok()
+        .map(|d| d.with_timezone(&Utc))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::{admin_token, harness};
+    use crate::error::AppError;
+    use crate::models::guest::GuestQuery;
+
+    #[test]
+    fn poisoned_db_mutex_returns_error_not_panic() {
+        let h = harness();
+        let admin = admin_token(&h);
+        let db = h.db.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = db.lock().unwrap();
+            panic!("pânico proposital para envenenar o mutex");
+        })
+        .join();
+
+        let result = h.guests.list(
+            &admin,
+            GuestQuery { text: None, active: None, page: 1, page_size: 10, sort: None, direction: None },
+        );
+
+        assert!(matches!(result, Err(AppError::Database(_))));
+    }
+}

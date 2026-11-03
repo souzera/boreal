@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-labelledby="t d">
+  <title id="t">Boreal PMS</title>
+  <desc id="d">Faixa com o logo do Boreal PMS e a frase: o dia da recepção de uma pousada, em um só lugar e sem depender de internet.</desc>
+  <defs>
+    <linearGradient id="ceu" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B3F3B"/>
+      <stop offset="0.55" stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#0B3F3B"/>
+    </linearGradient>
+    <linearGradient id="marca" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#0B3F3B"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="320" fill="url(#ceu)"/>
+
+  <!-- aurora ao fundo: as mesmas três fitas do logo, ampliadas -->
+  <g fill="none" stroke-linecap="round" transform="translate(190 0)">
+    <path d="M620 340 C760 180 840 300 960 150 S1180 110 1300 -10" stroke="#CCFBF1" stroke-width="30" opacity="0.28"/>
+    <path d="M560 380 C720 240 800 350 930 230 S1160 200 1310 70" stroke="#5EEAD4" stroke-width="30" opacity="0.22"/>
+    <path d="M640 410 C780 310 860 380 980 300 S1180 280 1320 170" stroke="#2DD4BF" stroke-width="26" opacity="0.16"/>
+  </g>
+
+  <!-- estrelas -->
+  <g fill="#FFFFFF">
+    <circle cx="1120" cy="52" r="3.5"/>
+    <circle cx="1214" cy="118" r="2"/>
+    <circle cx="1020" cy="36" r="2"/>
+    <circle cx="906" cy="84" r="1.6"/>
+    <circle cx="1188" cy="34" r="1.6"/>
+  </g>
+
+  <!-- logo -->
+  <g transform="translate(84 104) scale(1.75)">
+    <rect width="64" height="64" rx="14" fill="url(#marca)" stroke="#5EEAD4" stroke-opacity="0.35"/>
+    <path d="M13 47 C20 32 26 44 32 31 S45 26 51 15" fill="none" stroke="#CCFBF1" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M13 55 C20 42 26 52 32 41 S45 37 51 27" fill="none" stroke="#5EEAD4" stroke-width="5.5" stroke-linecap="round" opacity="0.8"/>
+    <path d="M19 59 C24 52 28 57 33 50 S43 47 47 40" fill="none" stroke="#2DD4BF" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+    <circle cx="45" cy="11" r="2.4" fill="#FFFFFF"/>
+  </g>
+
+  <g font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" fill="#FFFFFF">
+    <text x="228" y="166" font-size="72" font-weight="700" letter-spacing="-1">Boreal PMS</text>
+    <text x="230" y="212" font-size="26" fill="#CCFBF1">O dia da recepção da pousada, em um só lugar.</text>
+    <text x="230" y="246" font-size="20" fill="#99F6E4">Funciona sem internet, em um computador na recepção.</text>
+  </g>
+</svg>

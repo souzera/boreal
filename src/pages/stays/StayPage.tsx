@@ -1,0 +1,294 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
+
+import { PageHeader } from "@/components/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useOpenFromQuery } from "@/hooks/useOpenFromQuery";
+import DocumentActions from "@/components/DocumentActions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { getStay, setStayLateTolerance, type ApiError, type PaymentLine } from "@/lib/api";
+import { formatDate, formatInstant, formatMoney } from "@/lib/format";
+import { describeComponents } from "@/lib/payment";
+import { balanceLabel, chargeKindLabel, stayStatusIcon, stayStatusLabel } from "@/lib/stay";
+import { useSessionStore } from "@/stores/session";
+import ChargeDialog from "./ChargeDialog";
+import CheckoutDialog from "./CheckoutDialog";
+import PaymentDialog from "../payments/PaymentDialog";
+import RefundDialog from "../payments/RefundDialog";
+import ReverseDialog from "./ReverseDialog";
+import Icon from "@/components/Icon";
+
+export type StayDialog = "charge" | "payment" | "checkout" | { reverse: number } | null;
+
+function Line({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap justify-between gap-2">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-medium">{children}</dd>
+    </div>
+  );
+}
+
+export default function StayPage() {
+  const { id } = useParams();
+  const stayId = Number(id);
+  const token = useSessionStore((s) => s.token) ?? "";
+  const { can } = usePermissions();
+  const location = useLocation();
+  const queryClient = useQueryClient();
+  const [notice, setNotice] = useState<string | null>((location.state as { notice?: string } | null)?.notice ?? null);
+  const [dialog, setDialog] = useState<StayDialog>(null);
+  const [refunding, setRefunding] = useState<PaymentLine | null>(null);
+  const [tolerance, setTolerance] = useState<string | null>(null);
+  const [toleranceError, setToleranceError] = useState<string | null>(null);
+  const { data, isError } = useQuery({ queryKey: ["stay", stayId], queryFn: () => getStay(token, stayId) });
+
+  // Ações rápidas da Recepção chegam como ?abrir=pagamento|checkout.
+  useOpenFromQuery(["pagamento", "checkout"] as const, !!data, (action) => {
+    if (!data || data.stay.status !== "in_house") {
+      setNotice("Esta ação não está mais disponível: a hospedagem já foi encerrada.");
+      return false;
+    }
+    setDialog(action === "pagamento" ? "payment" : "checkout");
+    return true;
+  });
+
+  if (isError) {
+    return (
+      <section>
+        <PageHeader title="Hospedagem" description="Não foi possível carregar a hospedagem." />
+        <Button render={<Link to="/hospedagens" />} variant="outline">
+          Voltar para as hospedagens
+        </Button>
+      </section>
+    );
+  }
+  if (!data) return null;
+
+  const { stay, occupants, account } = data;
+  const inHouse = stay.status === "in_house";
+  const reversing = typeof dialog === "object" && dialog !== null ? (account.charges.find((c) => c.id === dialog.reverse) ?? null) : null;
+  const saveTolerance = async () => {
+    setToleranceError(null);
+    const text = (tolerance ?? "").trim();
+    const minutes = text === "" ? null : Number(text);
+    if (minutes !== null && (!Number.isInteger(minutes) || minutes < 0 || minutes > 600)) {
+      setToleranceError("Informe de 0 a 600 minutos, ou deixe em branco para usar o padrão.");
+      return;
+    }
+    try {
+      await setStayLateTolerance(token, stay.id, minutes, stay.version);
+      setTolerance(null);
+      done("Tolerância de saída tardia salva.");
+    } catch (e) {
+      setToleranceError((e as ApiError).message);
+    }
+  };
+  const done = (message: string) => {
+    setDialog(null);
+    setNotice(message);
+    void queryClient.invalidateQueries({ queryKey: ["stay", stayId] });
+    void queryClient.invalidateQueries({ queryKey: ["stays"] });
+  };
+
+  return (
+    <section className="grid gap-6">
+      <PageHeader
+        title={`Hospedagem ${stay.code}`}
+        description={
+          <>
+            <Icon name={stayStatusIcon[stay.status]} size="xs" className="mr-1 align-middle" />
+            {stayStatusLabel[stay.status]}
+          </>
+        }
+        action={
+          <div className="flex gap-2">
+            <Button render={<Link to={`/reservas/${stay.reservation_id}`} />} variant="outline">
+              Ver reserva
+            </Button>
+            <Button render={<Link to="/hospedagens" />} variant="outline">
+              Voltar
+            </Button>
+          </div>
+        }
+      />
+
+      {notice && (
+        <p role="status" className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+          {notice}
+        </p>
+      )}
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <dl className="grid gap-2 text-sm">
+          <Line label="Hóspede">
+            <Link to={`/hospedes/${stay.guest_id}`} className="underline">
+              {stay.guest_name}
+            </Link>
+          </Line>
+          <Line label="Quarto">{`Quarto ${stay.room_code}`}</Line>
+          <Line label="Período previsto">{`${formatDate(stay.check_in_date)} a ${formatDate(stay.check_out_date)}`}</Line>
+          <Line label="Horários previstos">{`Entrada ${stay.expected_check_in_time} · saída ${stay.expected_check_out_time}`}</Line>
+          <Line label="Check-in feito em">{formatInstant(stay.checked_in_at)}</Line>
+          {stay.early_check_in && <Line label="Observação">Check-in antecipado autorizado</Line>}
+          {stay.checked_out_at && <Line label="Check-out feito em">{formatInstant(stay.checked_out_at)}</Line>}
+        </dl>
+        <section aria-label="Ocupantes">
+          <h2 className="mb-2 text-base font-semibold">Ocupantes</h2>
+          <ul className="grid gap-1 text-sm">
+            {occupants.map((o) => (
+              <li key={o.id}>
+                {o.full_name}
+                {o.is_holder && <span className="text-muted-foreground"> (titular)</span>}
+                {o.document && <span className="text-muted-foreground">{` · ${o.document}`}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+
+      <p className="w-fit rounded-lg border px-3 py-2 text-lg font-semibold">{balanceLabel(account.balance_cents)}</p>
+
+      {inHouse && (
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setDialog("charge")}>Lançar consumo</Button>
+          <Button variant="outline" onClick={() => setDialog("payment")}>
+            Registrar pagamento
+          </Button>
+          <Button variant="outline" onClick={() => setDialog("checkout")}>
+            Concluir check-out
+          </Button>
+        </div>
+      )}
+
+      {inHouse && can("change_reservation") && (
+        <section aria-label="Tolerância de saída" className="grid gap-2 text-sm">
+          <h2 className="text-base font-semibold">Tolerância de saída tardia desta hospedagem</h2>
+          <div className="flex flex-wrap items-end gap-2">
+            <Input
+              aria-label="Tolerância em minutos"
+              className="w-32"
+              inputMode="numeric"
+              placeholder="padrão"
+              value={tolerance ?? (stay.late_tolerance_minutes === null ? "" : String(stay.late_tolerance_minutes))}
+              onChange={(e) => setTolerance(e.target.value)}
+            />
+            <Button type="button" size="sm" variant="outline" onClick={saveTolerance}>
+              Salvar tolerância
+            </Button>
+          </div>
+          {toleranceError && (
+            <p role="alert" className="text-destructive">
+              {toleranceError}
+            </p>
+          )}
+        </section>
+      )}
+
+      <section aria-label="Conta">
+        <h2 className="mb-2 text-base font-semibold">Conta da hospedagem</h2>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Tipo</TableHead>
+              <TableHead>Descrição</TableHead>
+              <TableHead>Valor</TableHead>
+              <TableHead>Situação</TableHead>
+              <TableHead>Lançado por</TableHead>
+              {inHouse && <TableHead>Ações</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {account.charges.map((c) => (
+              <TableRow key={c.id}>
+                <TableCell>{chargeKindLabel[c.kind]}</TableCell>
+                <TableCell className={c.reversed ? "line-through" : undefined}>
+                  {c.description}
+                  {c.justification && <span className="block text-xs text-muted-foreground">{c.justification}</span>}
+                </TableCell>
+                <TableCell className={c.reversed ? "line-through" : undefined}>{formatMoney(c.amount_cents)}</TableCell>
+                <TableCell>{c.reversed ? <span className="text-xs font-medium">Estornado</span> : "—"}</TableCell>
+                <TableCell>{`${c.created_by_name} · ${formatInstant(c.created_at)}`}</TableCell>
+                {inHouse && (
+                  <TableCell>
+                    {can("reverse_entry") && c.kind !== "reversal" && !c.reversed && (
+                      <Button size="sm" variant="outline" onClick={() => setDialog({ reverse: c.id })}>
+                        Estornar lançamento
+                      </Button>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </section>
+
+      <section aria-label="Documentos" className="grid gap-3">
+        <h2 className="text-base font-semibold">Documentos</h2>
+        <DocumentActions kind="stay_record" sourceId={stay.id} label="Emitir ficha de hospedagem" fileStem={`ficha-${stay.code}`} />
+        {!inHouse && (
+          <DocumentActions kind="final_statement" sourceId={stay.id} label="Emitir demonstrativo final" fileStem={`demonstrativo-${stay.code}`} />
+        )}
+      </section>
+
+      <section aria-label="Recebimentos">
+        <h2 className="mb-2 text-base font-semibold">Recebimentos e devoluções</h2>
+        {account.payments.length === 0 && account.refunds.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum recebimento registrado.</p>
+        ) : (
+          <ul className="grid gap-1 text-sm">
+            {account.payments.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center gap-2">
+                <span>
+                  <span className="font-medium">{p.code}</span>
+                  {` · ${formatMoney(p.amount_cents)} (${describeComponents(p.components)}) · ${formatInstant(p.received_at)} · ${p.received_by_name}`}
+                  {p.released_duplicate && " · liberado como possível duplicado"}
+                </span>
+                {p.refundable_cents > 0 && (
+                  <Button size="sm" variant="outline" onClick={() => setRefunding(p)}>
+                    Registrar devolução
+                  </Button>
+                )}
+                <div className="basis-full pl-3">
+                  <DocumentActions kind="payment_receipt" sourceId={p.id} label="Emitir comprovante" fileStem={`comprovante-${p.code}`} />
+                </div>
+              </li>
+            ))}
+            {account.refunds.map((f) => (
+              <li key={f.id}>
+                <span className="font-medium">{f.code}</span>
+                {` · devolução de ${f.payment_code} · ${formatMoney(f.amount_cents)} (${describeComponents(f.components)}) · ${f.reason}`}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <ChargeDialog open={dialog === "charge"} stayId={stay.id} onClose={() => setDialog(null)} onDone={done} />
+      <PaymentDialog
+        open={dialog === "payment"}
+        target={{ kind: "stay", stayId: stay.id }}
+        hint={balanceLabel(account.balance_cents)}
+        onClose={() => setDialog(null)}
+        onDone={done}
+      />
+      {refunding && (
+        <RefundDialog
+          open
+          payment={refunding}
+          onClose={() => setRefunding(null)}
+          onDone={(message) => {
+            setRefunding(null);
+            done(message);
+          }}
+        />
+      )}
+      <CheckoutDialog open={dialog === "checkout"} stayId={stay.id} onClose={() => setDialog(null)} onDone={done} />
+      <ReverseDialog open={reversing !== null} stayId={stay.id} charge={reversing} onClose={() => setDialog(null)} onDone={done} />
+    </section>
+  );
+}
