@@ -17,6 +17,7 @@ use crate::services::pousada_service::PousadaService;
 use crate::services::rate_service::RateService;
 use crate::services::management_service::ManagementService;
 use crate::services::reception_service::ReceptionService;
+use crate::services::report_service::ReportService;
 use crate::services::reservation_service::ReservationService;
 use crate::services::block_service::BlockService;
 use crate::services::maintenance_service::MaintenanceService;
@@ -63,6 +64,7 @@ pub struct AppState {
     pub search: SearchService,
     pub reception: ReceptionService,
     pub management: ManagementService,
+    pub reports: ReportService,
     ctx: Ctx,
 }
 
@@ -113,6 +115,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         search: SearchService::new(ctx.clone()),
         reception: ReceptionService::new(ctx.clone()),
         management: ManagementService::new(ctx.clone()),
+        reports: ReportService::new(ctx.clone()),
         ctx,
     })
 }

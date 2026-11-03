@@ -16,6 +16,7 @@ pub mod policy_repo;
 pub mod pousada_repo;
 pub mod rate_repo;
 pub mod refund_repo;
+pub mod report_repo;
 pub mod reservation_repo;
 pub mod search_repo;
 pub mod sequence_repo;

@@ -7,6 +7,7 @@ use rusqlite::Connection;
 use super::alert_service::AlertService;
 use super::management_service::ManagementService;
 use super::reception_service::ReceptionService;
+use super::report_service::ReportService;
 use super::auth_service::AuthService;
 use super::block_service::BlockService;
 use super::maintenance_service::MaintenanceService;
@@ -93,6 +94,7 @@ pub struct Harness {
     pub search: SearchService,
     pub reception: ReceptionService,
     pub management: ManagementService,
+    pub reports: ReportService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
@@ -140,7 +142,8 @@ pub fn harness() -> Harness {
         alerts: AlertService::new(ctx.clone()),
         search: SearchService::new(ctx.clone()),
         reception: ReceptionService::new(ctx.clone()),
-        management: ManagementService::new(ctx),
+        management: ManagementService::new(ctx.clone()),
+        reports: ReportService::new(ctx),
         utc,
         clock,
         db,
