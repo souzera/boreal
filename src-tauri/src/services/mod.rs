@@ -1,4 +1,5 @@
 pub mod alert_service;
+pub mod backup_service;
 pub(crate) mod alert_detectors;
 pub mod auth_service;
 pub mod block_service;
@@ -60,6 +61,19 @@ impl UtcClock for SystemUtc {
     }
 }
 
+/// Espaço livre em disco, injetável nos testes.
+pub trait DiskProbe: Send + Sync {
+    fn free_bytes(&self, path: &std::path::Path) -> Result<u64, AppError>;
+}
+
+pub struct SystemDisk;
+
+impl DiskProbe for SystemDisk {
+    fn free_bytes(&self, path: &std::path::Path) -> Result<u64, AppError> {
+        fs4::available_space(path).map_err(|_| AppError::Validation("Não foi possível consultar o espaço em disco.".into()))
+    }
+}
+
 /// Dependências compartilhadas pelos serviços.
 #[derive(Clone)]
 pub struct Ctx {
@@ -69,6 +83,7 @@ pub struct Ctx {
     pub utc: Arc<dyn UtcClock>,
     /// Chave do banco em memória (backup e chave de recuperação); zerada ao ser solta.
     pub key: Arc<SecretKey>,
+    pub disk: Arc<dyn DiskProbe>,
 }
 
 impl Ctx {
@@ -102,6 +117,7 @@ impl Ctx {
             clock: Arc::new(SystemClock),
             utc: Arc::new(SystemUtc),
             key: Arc::new(key),
+            disk: Arc::new(SystemDisk),
         })
     }
 }

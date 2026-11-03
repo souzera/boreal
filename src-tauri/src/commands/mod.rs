@@ -8,6 +8,7 @@ pub mod payments;
 pub mod refunds;
 pub mod closing;
 pub mod room_status;
+pub mod backup;
 pub mod documents;
 pub mod management;
 pub mod reception;

@@ -1,4 +1,5 @@
 pub mod alert;
+pub mod backup;
 pub mod block;
 pub mod catalog;
 pub mod document;

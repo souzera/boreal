@@ -1,4 +1,5 @@
 pub mod alert_repo;
+pub mod backup_repo;
 pub mod block_repo;
 pub mod catalog_repo;
 pub mod closing_repo;

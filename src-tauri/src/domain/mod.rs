@@ -1,6 +1,7 @@
 pub mod account;
 pub mod alert;
 pub mod availability;
+pub mod backup;
 pub mod cancellation;
 pub mod cleaning;
 pub mod cpf;

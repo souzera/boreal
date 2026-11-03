@@ -7,6 +7,7 @@ use crate::error::AppError;
 use crate::migrations::{current_version, last_applied_at, run_migrations};
 use crate::services::alert_service::AlertService;
 use crate::services::auth_service::AuthService;
+use crate::services::backup_service::BackupService;
 use crate::services::catalog_service::CatalogService;
 use crate::services::guest_service::GuestService;
 use crate::services::payable_service::PayableService;
@@ -70,6 +71,7 @@ pub struct AppState {
     pub reports: ReportService,
     pub documents: DocumentService,
     pub recovery: RecoveryService,
+    pub backup: BackupService,
     ctx: Ctx,
 }
 
@@ -125,6 +127,7 @@ pub fn initialize(db_path: &Path, keys: &dyn KeyStore) -> Result<AppState, AppEr
         reports: ReportService::new(ctx.clone()),
         documents: DocumentService::new(ctx.clone()),
         recovery: RecoveryService::new(ctx.clone()),
+        backup: BackupService::new(ctx.clone(), db_path.to_path_buf()),
         ctx,
     })
 }

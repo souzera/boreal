@@ -107,6 +107,65 @@ pub struct Harness {
 
 pub const ADMIN_PASSWORD: &str = "Admin-Senha-1";
 
+/// Espaço livre simulado.
+pub struct FakeDisk(Mutex<u64>);
+
+impl FakeDisk {
+    pub fn set(&self, bytes: u64) {
+        *self.0.lock().unwrap() = bytes;
+    }
+}
+
+impl super::DiskProbe for FakeDisk {
+    fn free_bytes(&self, _: &std::path::Path) -> Result<u64, crate::error::AppError> {
+        Ok(*self.0.lock().unwrap())
+    }
+}
+
+/// Mundo com banco **em arquivo e criptografado** numa pasta temporária (backup e restauração de verdade).
+pub struct DiskWorld {
+    pub ctx: Ctx,
+    pub utc: Arc<FakeUtc>,
+    pub disk: Arc<FakeDisk>,
+    pub dir: tempfile::TempDir,
+    pub db_path: std::path::PathBuf,
+    pub admin: String,
+    pub reception: String,
+}
+
+pub fn disk_world() -> DiskWorld {
+    use crate::db::keystore::MemoryKeyStore;
+    use crate::models::user::Role;
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("dados");
+    std::fs::create_dir_all(&data).unwrap();
+    let db_path = data.join("boreal.db");
+    let mut conn = crate::db::open_database(&db_path, &MemoryKeyStore::with_key(&TEST_KEY)).unwrap();
+    run_migrations(&mut conn).unwrap();
+    let utc = Arc::new(FakeUtc(Mutex::new(t0())));
+    let clock = Arc::new(FakeClock(Mutex::new(Instant::now())));
+    let disk = Arc::new(FakeDisk(Mutex::new(u64::MAX / 2)));
+    let ctx = Ctx {
+        db: Arc::new(Mutex::new(conn)),
+        sessions: Arc::new(SessionManager::new(Duration::from_secs(600))),
+        clock: clock.clone(),
+        utc: utc.clone(),
+        key: Arc::new(SecretKey::new(TEST_KEY.to_vec())),
+        disk: disk.clone(),
+    };
+    ctx.conn()
+        .unwrap()
+        .execute_batch(
+            "INSERT INTO users (id, username, display_name, password_hash, role, active, must_change_password, created_at, updated_at)
+               VALUES (1, 'admin', 'Administrador', 'x', 'admin', 1, 0, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z'),
+                      (2, 'rec', 'Recepção', 'x', 'recepcao', 1, 0, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z');",
+        )
+        .unwrap();
+    let admin = ctx.sessions.create(1, Role::Admin, ctx.clock.now());
+    let reception = ctx.sessions.create(2, Role::Recepcao, ctx.clock.now());
+    DiskWorld { ctx, utc, disk, dir, db_path, admin, reception }
+}
+
 /// Chave fixa dos testes (não é segredo).
 pub const TEST_KEY: [u8; 32] = [0x2A; 32];
 
@@ -126,6 +185,7 @@ pub fn harness() -> Harness {
         clock: clock.clone(),
         utc: utc.clone(),
         key: Arc::new(SecretKey::new(TEST_KEY.to_vec())),
+        disk: Arc::new(FakeDisk(Mutex::new(u64::MAX / 2))),
     };
     Harness {
         auth: AuthService::new(ctx.clone()),

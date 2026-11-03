@@ -61,6 +61,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 13,
         sql: include_str!("sql/0013_documents.sql"),
     },
+    Migration {
+        version: 14,
+        sql: include_str!("sql/0014_backup_health.sql"),
+    },
 ];
 
 /// Versão atual do esquema (0 se nenhuma migração foi aplicada).
@@ -260,7 +264,7 @@ mod tests {
 
         let next: i64 = conn.query_row("SELECT next_value FROM sequences WHERE name='maintenance'", [], |r| r.get(0)).unwrap();
         assert_eq!(next, 1);
-        assert_eq!(super::current_version(&conn).unwrap(), 13);
+        assert_eq!(super::current_version(&conn).unwrap(), 14);
     }
 
     /// Usuário, hóspede, categoria, quarto, reserva e hospedagem mínimos para exercitar as restrições.
@@ -304,7 +308,7 @@ mod tests {
             assert_eq!(n, 1, "tabela {table} ausente");
         }
         let latest: i64 = conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).unwrap();
-        assert_eq!(latest, 13);
+        assert_eq!(latest, 14);
         let fee: String = conn
             .query_row("SELECT value FROM settings WHERE key = 'late_checkout_fee_bp'", [], |r| r.get(0))
             .unwrap();
@@ -331,7 +335,7 @@ mod tests {
         assert_eq!(next, 1);
         let categories: i64 = conn.query_row("SELECT count(*) FROM expense_categories WHERE active = 1", [], |r| r.get(0)).unwrap();
         assert_eq!(categories, 9);
-        assert_eq!(super::current_version(&conn).unwrap(), 13);
+        assert_eq!(super::current_version(&conn).unwrap(), 14);
     }
 
     #[test]
@@ -450,13 +454,36 @@ mod tests {
     }
 
     #[test]
+    fn migration_0014_creates_the_backup_history_system_events_and_the_destination_setting() {
+        let conn = migrated();
+        let tables: i64 = conn
+            .query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('backup_runs', 'system_events')", [], |r| r.get(0))
+            .unwrap();
+        let triggers: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name IN ('backup_runs_no_update', 'backup_runs_no_delete', 'system_events_no_update', 'system_events_no_delete')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let dir: String = conn.query_row("SELECT value FROM settings WHERE key = 'backup_dir'", [], |r| r.get(0)).unwrap();
+        conn.execute("INSERT INTO backup_runs (kind, status, started_at, finished_at) VALUES ('manual', 'ok', 'a', 'b')", []).unwrap();
+        conn.execute("INSERT INTO system_events (kind, at) VALUES ('restore', 'a')", []).unwrap();
+
+        assert_eq!((tables, triggers, dir.as_str()), (2, 4, ""));
+        assert!(conn.execute("UPDATE backup_runs SET status = 'failed'", []).is_err());
+        assert!(conn.execute("DELETE FROM system_events", []).is_err());
+        assert!(conn.execute("INSERT INTO backup_runs (kind, status, started_at, finished_at) VALUES ('x', 'ok', 'a', 'b')", []).is_err(), "tipo inválido");
+    }
+
+    #[test]
     fn migration_0012_creates_alert_tables() {
         let conn = migrated();
         for table in ["alerts", "alert_events"] {
             let n: i64 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0)).unwrap();
             assert_eq!(n, 1, "{table}");
         }
-        assert_eq!(super::current_version(&conn).unwrap(), 13);
+        assert_eq!(super::current_version(&conn).unwrap(), 14);
         let insert = |kind: &str, key: &str, status: &str| {
             conn.execute(
                 "INSERT INTO alerts (kind, subject_key, severity, title, detail, link, status, first_seen_at, last_seen_at)
