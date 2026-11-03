@@ -38,10 +38,11 @@ Os mapas de estado em `src/lib/{roomState,reservation,stay,blocks}.ts` e `Payabl
 ## Menu e ações globais
 
 - O menu é dado, não JSX: `src/components/layout/NavItems.ts` (`NAV`, `visibleNav`). Para acrescentar um item, inclua-o em `NAV` com `icon` (nome do símbolo) e `to`; use `admin: true` ou `permission: "..."` para restringir. `NavItems.test.ts` falha se um destino não existir em `appRoutes`, se houver destino repetido ou se um item não tiver ícone.
-- Itens ainda inexistentes ficam com `soon: true` (aparecem desabilitados com "Em breve"): **Relatórios** (6.4) e **Alertas** (6.2).
+- Itens ainda inexistentes ficam com `soon: true` (aparecem desabilitados com "Em breve"): hoje só **Relatórios** (6.4). **Visão gerencial** (`/gerencial`) é `admin: true`.
 - A barra superior (`GlobalActions`) traz **Nova reserva**, **Buscar**, **Check-in**, **Receber pagamento** e **Check-out**, com atalhos de `useGlobalShortcuts`: `Ctrl+K` busca; `Alt+N`, `Alt+C`, `Alt+R` e `Alt+S` abrem nova reserva, check-in, receber pagamento e check-out. Não disparam com diálogo aberto, com a sessão bloqueada, com tecla repetida nem com outros modificadores. As teclas são reconhecidas pelo código físico (`KeyN`…).
-- Por enquanto *Check-in* leva à lista de **Reservas** e *Receber pagamento*/*Check-out* à lista de **Hospedagens** (a pessoa escolhe a reserva ou a hospedagem e usa o botão específico). A Recepção da 6.3 passa a abrir o fluxo direto.
+- *Check-in* (`Alt+C`) e *Check-out* (`Alt+S`) abrem as abas **Chegadas** (`/?aba=chegadas`) e **Saídas** (`/?aba=saidas`) da Recepção; *Receber pagamento* (`Alt+R`) leva à lista de **Hospedagens**.
+- **Painel lateral** (`SidePanel`): `aside` não modal para resumos ao lado da agenda; a seleção fica na URL (`?painel=`). Veja [Recepção](recepcao.md).
 
 ## Fora do escopo da 6.1
 
-Painel lateral reutilizável e a Recepção de verdade (6.3), estados vazios com ilustração, ajuda contextual e o modo escuro. O brief ainda pede validar os tons dos estados e a escala tipográfica em telas reais.
+Estados vazios com ilustração, ajuda contextual e o modo escuro. O brief ainda pede validar os tons dos estados e a escala tipográfica em telas reais.

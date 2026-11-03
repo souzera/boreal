@@ -40,6 +40,8 @@ Passa pelos serviços reais (regras, auditoria e códigos sequenciais ficam cons
 
 Só roda uma vez por banco. O seed cria também três **contas a pagar** (pendente, parcial e vencida). Ao final ele reavalia os alertas (conflito de manutenção crítico, conta vencida, chegada de hoje). Ele **não** cria fechamento de caixa: o relógio é o do computador e todo movimento nasce hoje, então o fechamento é demonstrado ao vivo (Módulo 11 do roteiro de treinamento).
 
+O mesmo cenário alimenta a **Recepção** (chegada de hoje no 201, conflito de manutenção em "Em risco", hospedagens em andamento) e a **Visão gerencial** (recebimentos de hoje e a conta vencida); `seed_fills_the_reception_and_the_management_dashboard` confere isso.
+
 ## Banco de demonstração à parte
 
 O seed recusa banco com quartos. Para não mexer no banco que você já usa, aponte `--db` para um arquivo novo (a chave do cofre é reaproveitada e o arquivo nasce cifrado), por exemplo `%APPDATA%\br.com.boreal.pms\demo\boreal.db`. O aplicativo só abre `%APPDATA%\br.com.boreal.pms\boreal.db`: para ver a demonstração nele, feche o app, guarde o banco atual e coloque o arquivo da demonstração no lugar.

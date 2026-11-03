@@ -94,7 +94,7 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
   - `reservation_repo::pending_arrivals(conn, today) -> Vec<Reservation>`: `status IN ('pending','confirmed')` e `check_in_date <= today`, por data e horário.
 - Regras: `overdue` = data anterior a hoje **ou** horário previsto + tolerância de no-show já passou; `available_rooms` e `occupied_rooms` contam o estado calculado de `RoomStatusService` (só quartos ativos); `at_risk` vem dos alertas críticos ativos (tipos `departure_risk` e `maintenance_conflict`); `critical_alerts` = `AlertService::summary().critical`.
 
-- [ ] **Step 1: Write the failing tests** (`Harness` com um quarto 101; relógio em 21/10/2026 09:00 local):
+- [x] **Step 1: Write the failing tests** (`Harness` com um quarto 101; relógio em 21/10/2026 09:00 local):
   - `counts_and_lists_arrivals_today_and_marks_overdue_ones` (hoje às 14:00 pendente; outra reserva de ontem sem check-in marcada `overdue`; `summary.arrivals == 2`).
   - `cancelled_and_checked_in_reservations_are_not_arrivals`.
   - `lists_departures_today_with_balance_and_minutes_late` (hospedagem com saída às 12:00, relógio 13:00 ⇒ `minutes_late == 60`, `balance_cents` da conta).
@@ -103,10 +103,10 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
   - `at_risk_lists_only_critical_alerts` (conflito de manutenção aparece; chegada atrasada não) e `critical_alerts_matches_the_alert_summary`.
   - `lists_are_limited_to_fifty_with_the_full_total` (55 reservas pendentes de hoje por SQL ⇒ 50 itens, `total == 55`).
   - `requires_a_session`.
-- [ ] **Step 2: Run** `cargo test reception_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** modelos, `pending_arrivals` e o serviço; ligar em `app.rs` e no `Harness`.
-- [ ] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 5: Commit** `feat: reception overview service`
+- [x] **Step 2: Run** `cargo test reception_service` — Expected: FAIL.
+- [x] **Step 3: Implement** modelos, `pending_arrivals` e o serviço; ligar em `app.rs` e no `Harness`.
+- [x] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 5: Commit** `feat: reception overview service`
 
 ---
 
@@ -130,7 +130,7 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
   - `ManagementService::dashboard(&self, token: &str, from: &str, to: &str) -> Result<ManagementDashboard, AppError>`.
 - Regras: exige `ViewFinancialReports` (`Forbidden` para recepção); `from ≤ to`, no máximo 366 dias (`Validation`); `rate_bp = occupied × 10000 ÷ rooms` (0 se `rooms == 0`), arredondado ao ponto-base mais próximo; recebimentos líquidos por forma (as cinco + `unspecified` quando houver) e por dia **local** (`date(received_at, <deslocamento>)`), com dias sem movimento presentes com zero; saldos e contas são da **situação atual**, não do período; contas em aberto por categoria só com saldo > 0.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `reception_cannot_open_the_dashboard` (`Forbidden`) e `invalid_periods_are_refused` (invertido, > 366 dias, data inválida).
   - `occupancy_counts_active_reservation_nights_and_ignores_cancelled` (2 noites de uma reserva, 1 de uma cancelada ⇒ taxa 10000 pb num quarto; `rooms == total de quartos ativos`).
   - `occupancy_with_no_active_rooms_is_zero_not_a_division_error`.
@@ -140,10 +140,10 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
   - `balances_sum_in_house_stays_to_receive_and_credit_separately`.
   - `payables_summary_has_overdue_open_and_by_category` (paga integralmente não entra; vencimento hoje não é vencida).
   - `default_one_day_period_returns_a_single_day`.
-- [ ] **Step 2: Run** `cargo test management_service` — Expected: FAIL.
-- [ ] **Step 3: Implement** as consultas agregadas (SQL à mão) e o serviço.
-- [ ] **Step 4: Run** `cargo test` e `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
-- [ ] **Step 5: Commit** `feat: management dashboard service`
+- [x] **Step 2: Run** `cargo test management_service` — Expected: FAIL.
+- [x] **Step 3: Implement** as consultas agregadas (SQL à mão) e o serviço.
+- [x] **Step 4: Run** `cargo test` e `cargo clippy --all-targets -- -D warnings` — Expected: PASS / limpo.
+- [x] **Step 5: Commit** `feat: management dashboard service`
 
 ---
 
@@ -156,11 +156,11 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
 **Interfaces:**
 - Produces: comandos `reception_overview`, `management_dashboard`; TS: `receptionOverview(token)`, `managementDashboard(token, from, to)` e os tipos `ReceptionOverview`, `ReceptionSummary`, `ArrivalItem`, `DepartureItem`, `RiskItem`, `ManagementDashboard`, `DayOccupancy`, `MethodNet`, `DayNet`, `BalanceSummary`, `PayablesSummary`, `CategoryOpen` (espelham os modelos da T1/T2).
 
-- [ ] **Step 1: Write the failing test** `api.test.ts`: cada função chama o comando certo (`{ token }` e `{ token, from, to }`).
-- [ ] **Step 2: Run** `npx vitest run src/lib/api.test.ts` — Expected: FAIL.
-- [ ] **Step 3: Implement** comandos finos e funções TS.
-- [ ] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `npx vitest run src/lib/api.test.ts`, `npx tsc --noEmit` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: reception and management commands`
+- [x] **Step 1: Write the failing test** `api.test.ts`: cada função chama o comando certo (`{ token }` e `{ token, from, to }`).
+- [x] **Step 2: Run** `npx vitest run src/lib/api.test.ts` — Expected: FAIL.
+- [x] **Step 3: Implement** comandos finos e funções TS.
+- [x] **Step 4: Run** `cargo test`, `cargo clippy --all-targets -- -D warnings`, `npx vitest run src/lib/api.test.ts`, `npx tsc --noEmit` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: reception and management commands`
 
 ---
 
@@ -178,16 +178,16 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
   - Painéis (cada um recebe `id` e usa `getReservation` / `getStay` / `getGuest` / `listRoomStatus`): resumo somente leitura com situação em ícone e texto, valores em `R$` e o link **Abrir reserva completa** / **Abrir hospedagem completa** / **Abrir cadastro completo** / **Ver na fila de limpeza**; `ReservationPanel` oferece **Confirmar check-in** (`/reservas/:id?abrir=checkin`) só para reserva aberta com chegada até hoje; `StayPanel` oferece **Registrar pagamento** (`?abrir=pagamento`) e **Concluir check-out** (`?abrir=checkout`) só para hospedagem em andamento. Id inexistente ⇒ aviso "Não foi possível carregar este registro."
   - `ReservationPage` aceita `?abrir=checkin|pagamento`; `StayPage` aceita `?abrir=pagamento|checkout`.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `RoomMapGrid.test.tsx`: renderiza quartos e dias; reserva mostra hóspede, situação em ícone e texto e chama `onOpenReservation`; "Livre" só em dia de hoje em diante e chama `onBook`; quarto inativo marcado "(inativo)"; sem `onBook` não oferece "Livre". `RoomMapPage.test.tsx` existente segue verde (clicar numa reserva navega).
   - `SidePanel.test.tsx`: tem `aria-label`, **não** tem `role="dialog"`; botão Fechar chama `onClose`; `Esc` dentro dele fecha; `Esc` fora não; o conteúdo atrás continua acessível (não há `inert`/`aria-hidden` nos irmãos).
   - `useOpenFromQuery.test.tsx`: abre uma vez e limpa a URL (Voltar não reabre); valor desconhecido é ignorado e limpo; `onOpen` devolvendo `false` não abre; não abre antes de os dados existirem.
   - Painéis: cada um mostra o resumo e os links certos; ações condicionais (check-in só para reserva aberta com chegada ≤ hoje; pagamento/check-out só para hospedagem em andamento); erro mostra o aviso.
   - `ReservationPage`/`StayPage`: `?abrir=checkin` abre o diálogo "Confirmar check-in"; em reserva cancelada mostra "Esta ação não está mais disponível para esta reserva." e não abre; `?abrir=pagamento` abre o diálogo de pagamento da hospedagem.
-- [ ] **Step 2: Run** `npx vitest run src/components src/hooks src/pages/reception src/pages/reservations src/pages/stays src/pages/calendar` — Expected: FAIL.
-- [ ] **Step 3: Implement** (extrair a tabela de `RoomMapPage` sem mudar o comportamento; `SidePanel` com `onKeyDown`; `useOpenFromQuery` com `useSearchParams`).
-- [ ] **Step 4: Run** a suíte inteira, `npx tsc --noEmit` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: shared room map grid, side panel and open-from-query`
+- [x] **Step 2: Run** `npx vitest run src/components src/hooks src/pages/reception src/pages/reservations src/pages/stays src/pages/calendar` — Expected: FAIL.
+- [x] **Step 3: Implement** (extrair a tabela de `RoomMapPage` sem mudar o comportamento; `SidePanel` com `onKeyDown`; `useOpenFromQuery` com `useSearchParams`).
+- [x] **Step 4: Run** a suíte inteira, `npx tsc --noEmit` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: shared room map grid, side panel and open-from-query`
 
 ---
 
@@ -201,7 +201,7 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
 - Consumes: `receptionOverview` (T3), `roomMap` (existente), `useAlertSummary` (6.2), `RoomMapGrid`, `SidePanel` e painéis (T4).
 - Produces: `useReceptionOverview()` (`queryKey ["reception-overview"]`, refaz a cada 60 s com a sessão ativa, sem repetir tentativa). `ReceptionPage` com: título **Recepção** e "Hoje, DD/MM/AAAA"; faixa de resumo (cartões **Chegadas**, **Saídas**, **Quartos ocupados** "N de T", **Quartos disponíveis**, **Alertas críticos**; Chegadas e Saídas selecionam a aba, Alertas críticos leva a `/alertas?prioridade=critical`); à esquerda o **mapa de 7 dias** a partir de hoje (clicar numa reserva abre o painel); à direita abas **Chegadas · Saídas · Em risco** (`?aba=`) ou, com `?painel=` válido, o painel (o mapa permanece); abaixo, **Alertas urgentes** (até 3, do resumo) e o atalho **Quartos aguardando limpeza: N** (fila de limpeza). Linhas: chegada com **Confirmar check-in** (`/reservas/:id?abrir=checkin`) e **Ver detalhes** (painel), marcada "Atrasada" em texto e ícone quando `overdue`, "Sinal vencido" quando `deposit_overdue`; saída com saldo em palavras (`balanceLabel`), "Atrasada há N min" quando `minutes_late > 0`, **Registrar pagamento** só com saldo > 0 e **Concluir check-out**; risco com **Abrir registro**. Estados vazios explicam ("Nenhuma chegada pendente para hoje.").
 
-- [ ] **Step 1: Write the failing tests** (API simulada):
+- [x] **Step 1: Write the failing tests** (API simulada):
   - `ReceptionPage`: mostra data e os cinco cartões com os números; clicar em **Saídas** seleciona a aba; `?aba=chegadas` abre Chegadas e `?aba=saidas`, Saídas; aba inválida cai em Chegadas.
   - Chegadas: linha atrasada com texto "Atrasada" e ícone; **Confirmar check-in** aponta para `/reservas/5?abrir=checkin`; **Ver detalhes** define `?painel=reserva-5` e mostra o painel **com o mapa ainda na tela**; fechar o painel remove o parâmetro e devolve a lista na mesma aba.
   - Saídas: saldo em palavras ("Saldo a receber R$ 80,00"), **Registrar pagamento** só quando há saldo, **Concluir check-out** sempre, "Atrasada há 60 min" em texto.
@@ -211,10 +211,10 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
   - Alertas urgentes e fila de limpeza continuam presentes (as asserções do antigo `Dashboard.test.tsx` migram para cá).
   - Atalhos: `Alt+C` navega para `/?aba=chegadas` e `Alt+S` para `/?aba=saidas`; repetir na mesma URL não empilha histórico; `useGlobalShortcuts.test.tsx` e `GlobalActions.test.tsx` atualizados para os novos destinos.
   - Falha de rede/erro do backend mostra "Não foi possível carregar a Recepção. Tente de novo em instantes." sem apagar o que já estava na tela.
-- [ ] **Step 2: Run** `npx vitest run src/pages/reception src/hooks src/components/layout` — Expected: FAIL.
-- [ ] **Step 3: Implement** as telas e a troca de rota.
-- [ ] **Step 4: Run** `npx vitest run`, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: reception home screen with side panel and quick actions`
+- [x] **Step 2: Run** `npx vitest run src/pages/reception src/hooks src/components/layout` — Expected: FAIL.
+- [x] **Step 3: Implement** as telas e a troca de rota.
+- [x] **Step 4: Run** `npx vitest run`, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: reception home screen with side panel and quick actions`
 
 ---
 
@@ -228,17 +228,17 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
 - Consumes: `managementDashboard(token, from, to)` (T3), tokens de gráfico `--chart-1..5` (6.1), Recharts (`LineChart`, `BarChart`, `PieChart`, `ResponsiveContainer`).
 - Produces: `ChartCard({ title, description, children, table })`: cartão com o gráfico (`role="img"` e `aria-label` com a descrição) e `<details>` **Ver os números** contendo a tabela equivalente. `ManagementPage`: seletor de período (**Hoje**, **Últimos 7 dias**, **Este mês**, datas livres; padrão Hoje); cartões de números (Chegadas, Saídas, Hospedados agora, Recebido no período, Saldos a receber, Créditos, Contas vencidas); gráficos **Ocupação por dia** (linha, %), **Recebimentos por dia** (barras, líquido em R$) e **Contas em aberto por categoria** (pizza); tabela de recebimentos por forma de pagamento (recebido, devolvido, líquido; débito e crédito separados). Quem não é administrador vê "Esta área é só para administradores." (a rota existe, o backend recusa).
 
-- [ ] **Step 1: Write the failing tests** (Recharts substituído por componentes simples via `vi.mock("recharts")` para jsdom):
+- [x] **Step 1: Write the failing tests** (Recharts substituído por componentes simples via `vi.mock("recharts")` para jsdom):
   - Período padrão é hoje e chama `managementDashboard(token, hoje, hoje)`; **Últimos 7 dias** e **Este mês** recalculam as datas e consultam de novo; data final antes da inicial mostra o erro "A data final não pode ser antes da inicial." sem chamar a API.
   - Cartões mostram os números em `R$` e em palavras; recebido do período é a soma dos líquidos.
   - Cada gráfico tem `role="img"` com descrição e, em **Ver os números**, a tabela com os mesmos valores (ocupação em %, recebimento líquido por dia incluindo dia negativo, categoria e valor).
   - Tabela por forma de pagamento mostra débito e crédito separados e a linha "Sem modalidade" só quando existe.
   - Período sem movimento mostra "Sem movimento no período." nos gráficos, em vez de um gráfico vazio.
   - Erro `Forbidden` do backend mostra a mensagem; usuário recepção não vê o item de menu, administrador vê; `NavItems.test.ts` (destino `/gerencial` existe nas rotas, recepção não o vê).
-- [ ] **Step 2: Run** `npx vitest run src/pages/management src/components/layout` — Expected: FAIL.
-- [ ] **Step 3: Implement** a página, o cartão de gráfico e o item de menu.
-- [ ] **Step 4: Run** `npx vitest run`, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat: management dashboard with charts`
+- [x] **Step 2: Run** `npx vitest run src/pages/management src/components/layout` — Expected: FAIL.
+- [x] **Step 3: Implement** a página, o cartão de gráfico e o item de menu.
+- [x] **Step 4: Run** `npx vitest run`, `npx tsc --noEmit`, `npm run build` — Expected: PASS.
+- [x] **Step 5: Commit** `feat: management dashboard with charts`
 
 ---
 
@@ -248,18 +248,30 @@ docs/usuario/{recepcao,visao-gerencial}.md   docs/desenvolvimento/{recepcao,visa
 - Modify: `src-tauri/src/seed.rs` (+ teste), `docs/desenvolvimento/seed.md`, `CHANGELOG.md`, `docs/usuario/README.md`, `docs/usuario/roteiro-de-treinamento.md`, `docs/desenvolvimento/README.md`, `docs/desenvolvimento/design-system.md` (Recepção como tela inicial; uso do painel lateral), `local/plano-completo.md`, `local/spec.md` (Anexo A.7 com R1–R8), este plano
 - Create: `docs/usuario/{recepcao,visao-gerencial}.md`, `docs/desenvolvimento/{recepcao,visao-gerencial}.md`
 
-- [ ] **Step 1: Seed:** o cenário existente já preenche a Recepção; o teste afirma que `reception.overview` devolve chegadas, saídas (a hospedagem do 101) e ao menos um item em risco, e que `management.dashboard` (admin) devolve ocupação, recebimentos do dia e contas vencidas coerentes com o seed.
-- [ ] **Step 2: Docs:** guia da Recepção (resumo, mapa, abas, painel lateral, ações rápidas, atalhos `Alt+C`/`Alt+S`), guia da visão gerencial (período, números, gráficos e tabelas, quem acessa), desenvolvimento (serviços de leitura, composição, regras de ocupação e de dia local, decisões R1–R8, limitações: denominador de ocupação pelos quartos ativos de hoje, lista de 50 itens), `CHANGELOG.md` (`Added`/`Changed`: a tela inicial deixou de ser o Dashboard simples), roteiro de treinamento (módulo da Recepção e da visão gerencial; o Módulo 0 passa a mostrar a Recepção), Anexo A.7 da spec.
-- [ ] **Step 3: Verificação completa:** `cargo test --features dev-seed`, `cargo clippy --all-targets --features dev-seed -- -D warnings`, `npx vitest run`, `npx tsc --noEmit`, `npm run build`; registrar contagens no Status.
-- [ ] **Step 4:** `graphify update .`; anotar no Status.
-- [ ] **Step 5:** Revisão final da branch por revisor independente (modelo mais capaz), com o Review Focus; corrigir Críticos/Importantes (TDD); registrar menores adiados; atualizar Status, desvios e pendências.
-- [ ] **Step 6: Commit** `docs: close marco 6.3`
+- [x] **Step 1: Seed:** o cenário existente já preenche a Recepção; o teste afirma que `reception.overview` devolve chegadas, saídas (a hospedagem do 101) e ao menos um item em risco, e que `management.dashboard` (admin) devolve ocupação, recebimentos do dia e contas vencidas coerentes com o seed.
+- [x] **Step 2: Docs:** guia da Recepção (resumo, mapa, abas, painel lateral, ações rápidas, atalhos `Alt+C`/`Alt+S`), guia da visão gerencial (período, números, gráficos e tabelas, quem acessa), desenvolvimento (serviços de leitura, composição, regras de ocupação e de dia local, decisões R1–R8, limitações: denominador de ocupação pelos quartos ativos de hoje, lista de 50 itens), `CHANGELOG.md` (`Added`/`Changed`: a tela inicial deixou de ser o Dashboard simples), roteiro de treinamento (módulo da Recepção e da visão gerencial; o Módulo 0 passa a mostrar a Recepção), Anexo A.7 da spec.
+- [x] **Step 3: Verificação completa:** `cargo test --features dev-seed`, `cargo clippy --all-targets --features dev-seed -- -D warnings`, `npx vitest run`, `npx tsc --noEmit`, `npm run build`; registrar contagens no Status.
+- [x] **Step 4:** `graphify update .`; anotar no Status.
+- [x] **Step 5:** Revisão final da branch por revisor independente (modelo mais capaz), com o Review Focus; corrigir Críticos/Importantes (TDD); registrar menores adiados; atualizar Status, desvios e pendências.
+- [x] **Step 6: Commit** `docs: close marco 6.3`
 
 ---
 
 ## Status
 
-**Não iniciado.** Plano escrito em 02/11/2026.
+**Implementado, aguardando revisão final** na branch `marco-6-3-recepcao` (a partir de `marco-6-2-alertas`). T1 a T7 concluídas; sem migração.
+
+- **Testes (última execução completa):** `cargo test --features dev-seed` 545 + 4; `cargo clippy --all-targets --features dev-seed -- -D warnings` limpo; `npx vitest run` 496 testes em 64 arquivos; `npx tsc --noEmit` e `npm run build` limpos; `graphify update .` executado.
+- **Pendências de verificação (manuais):** `npm run tauri dev` com a interface real (Alt+C/Alt+S no WebView2, aparência do painel lateral e dos gráficos com dados reais); tempo de `reception_overview` com meses de dados (há N+1 consultas por hospedagem).
+
+## Desvios e decisões da execução
+
+- O cartão **Alertas críticos** leva a `/alertas` sem filtro (a tela de Alertas não lê filtros da URL).
+- `RoomMapGrid` ganhou `onOpenRoom` opcional (o código do quarto vira botão que abre o painel do quarto).
+- `useOpenFromQuery` recebe `ready` (os dados da página) além de `allowed` e `onOpen`.
+- Nos testes de painel e de página, a aba "Em risco" usa o mesmo componente `More` das outras listas.
+- Erros de teste corrigidos no caminho: minutos de atraso de uma saída de 21 h (não mais de 24 h) e limite de 366 dias inclusive.
+
 
 ## Marcos seguintes
 

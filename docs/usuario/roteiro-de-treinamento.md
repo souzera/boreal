@@ -18,8 +18,8 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 - **Passo a passo:**
   1. Entre com usuário e senha. No primeiro acesso, o sistema pede a troca da senha.
   2. Mostre o menu lateral, agrupado: **Recepção**; **Reservas** (Reservas, Hóspedes); **Hospedagens**; **Quartos** (Mapa de quartos, Limpeza, Bloqueios, Manutenção, Cadastro de quartos); **Financeiro** (Fechamento de caixa e, com permissão, Contas a pagar); **Configurações** (Tarifas e Itens e serviços; Configurações e Usuários só para o administrador). **Alertas** mostra um selo com a contagem; **Relatórios** aparece esmaecido com "Em breve". A tela atual fica destacada no menu.
-  2b. Mostre as ações do topo e seus atalhos: **Nova reserva** (`Alt+N`), **Buscar** (`Ctrl+K`), **Check-in** (`Alt+C`), **Receber pagamento** (`Alt+R`) e **Check-out** (`Alt+S`). Por enquanto Check-in leva à lista de reservas e Receber pagamento e Check-out levam à lista de hospedagens.
-  3. Mostre a busca no topo e a tela **Recepção** ("Quartos aguardando limpeza").
+  2b. Mostre as ações do topo e seus atalhos: **Nova reserva** (`Alt+N`), **Buscar** (`Ctrl+K`), **Check-in** (`Alt+C`, abre a aba Chegadas da Recepção), **Receber pagamento** (`Alt+R`, lista de hospedagens) e **Check-out** (`Alt+S`, abre a aba Saídas).
+  3. Mostre a busca no topo e a tela **Recepção** (o Módulo 13 explica cada parte). O item **Visão gerencial** só aparece para o administrador.
   4. Deixe a tela parada até o bloqueio por inatividade e desbloqueie com a senha: o que estava aberto volta como estava.
 - **O participante deve ver:** que a sessão bloqueada esconde os dados e que nada digitado se perde.
 - **Erros comuns:** senha errada várias vezes bloqueia a conta por alguns minutos (⚠ 5 tentativas, 5 minutos).
@@ -181,6 +181,35 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 - ⚠ **Provisório:** tipos e prioridades dos alertas (Anexo A.6).
 - **Guias:** [Alertas](alertas.md), [Busca](busca.md).
 
+## Módulo 13 — Recepção: o trabalho de hoje (20 min)
+
+- **Objetivo:** começar o turno sabendo quem chega, quem sai e o que está em risco, e agir em um clique.
+- **Quem:** recepção.
+- **Cenário:** o seed deixa a chegada de hoje no quarto 201, uma hospedagem em andamento e o conflito de manutenção.
+- **Passo a passo:**
+  1. Abra a **Recepção** e leia o **resumo do dia**: Chegadas, Saídas, Quartos ocupados ("N de T"), Quartos disponíveis e Alertas críticos.
+  2. Na aba **Chegadas**, mostre a marca **Atrasada** (texto e ícone) e **Sinal vencido**. Clique em **Confirmar check-in**: a reserva abre com a janela de check-in já na frente. Confirme.
+  3. Volte à Recepção (`Alt+C` abre direto a aba Chegadas) e clique em **Ver detalhes da reserva**: o painel abre ao lado e **o mapa continua na tela**. Feche com **Fechar painel** ou `Esc`; recarregue a página com o painel aberto e mostre que ele volta.
+  4. Clique numa reserva no mapa dos próximos 7 dias e no código de um quarto para ver os outros painéis.
+  5. Na aba **Saídas** (`Alt+S`), mostre a conta em palavras e "Atrasada há N min". **Registrar pagamento** só aparece com saldo; **Concluir check-out** abre a janela de saída.
+  6. Na aba **Em risco**, abra o conflito de manutenção com **Abrir registro**.
+- **O participante deve ver:** que cada ação leva ao diálogo certo, que a agenda não se perde ao abrir um registro e que nada aparece só em cor.
+- **Erros comuns:** procurar uma reserva cancelada ou já hospedada em Chegadas (ela sai da lista); esperar "Registrar pagamento" numa conta quitada.
+- **Guia:** [Recepção](recepcao.md).
+
+## Módulo 14 — Visão gerencial (10 min)
+
+- **Objetivo:** acompanhar ocupação, recebimentos, saldos e contas por período.
+- **Quem:** administrador (a recepção não vê o item de menu).
+- **Passo a passo:**
+  1. Abra **Visão gerencial**; o período começa em **Hoje**. Troque para **Últimos 7 dias** e **Este mês**.
+  2. Mostre os números e abra **Ver os números** de cada gráfico para conferir a tabela.
+  3. Mostre a tabela por forma de pagamento (débito e crédito separados) e que um dia pode ficar negativo quando há devolução.
+  4. Digite uma data final antes da inicial para ver o aviso.
+- **O participante deve ver:** que saldos e contas são da situação de agora e que a ocupação usa os quartos ativos de hoje.
+- ⚠ **Provisório:** as métricas escolhidas (Anexo A.7).
+- **Guia:** [Visão gerencial](visao-gerencial.md).
+
 ## Fechamento do treinamento (5 min)
 
 - Reforce: o sistema funciona **sem internet**, e cada tela confirma "salvo neste computador".
@@ -189,4 +218,4 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
 
 ## Ainda por vir
 
-Entram neste roteiro quando existirem: Recepção completa (6.3), relatórios e documentos internos (6.4); backup e restauração.
+Entram neste roteiro quando existirem: relatórios e documentos internos (6.4); backup e restauração.

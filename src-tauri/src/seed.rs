@@ -435,6 +435,28 @@ mod tests {
     }
 
     #[test]
+    fn seed_fills_the_reception_and_the_management_dashboard() {
+        let (_dir, app) = fresh();
+        run(&app, "admin", ADMIN, None).unwrap();
+        let token = app.auth.login("admin", ADMIN).unwrap().token;
+
+        let reception = app.reception.overview(&token).unwrap();
+        assert_eq!(reception.summary.total_rooms, 8);
+        assert!(reception.summary.arrivals >= 1, "a chegada de hoje do quarto 201");
+        assert!(reception.summary.occupied_rooms >= 1);
+        assert!(reception.at_risk.items.iter().any(|r| r.kind == "maintenance_conflict"), "{:?}", reception.at_risk);
+
+        let today = reception.date.clone();
+        let management = app.management.dashboard(&token, &today, &today).unwrap();
+        assert_eq!(management.rooms_total, 8);
+        assert_eq!(management.occupancy.len(), 1);
+        assert!(management.occupancy[0].occupied >= 1);
+        assert!(management.receipts_by_method.iter().any(|m| m.net_cents > 0), "recebimentos de hoje");
+        assert!(management.payables.overdue_count >= 1, "a conta vencida do seed");
+        assert!(management.in_house_now >= 1);
+    }
+
+    #[test]
     fn seed_refuses_a_database_that_already_has_rooms() {
         let (_dir, app) = fresh();
         run(&app, "admin", ADMIN, None).unwrap();

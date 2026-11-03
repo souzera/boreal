@@ -43,6 +43,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - **Alertas persistentes** com prioridade (Crítico, Alto e Normal, sempre com ícone e texto), tela **Alertas** com filtros e histórico, selo de contagem no menu e os mais urgentes na tela **Recepção**: chegadas e saídas de hoje, chegada atrasada, sinal vencido, saída atrasada, risco para a próxima reserva, reserva afetada por manutenção, limpeza urgente, conta vencida, saldo pendente na saída e fechamento de caixa pendente. Cada alerta abre o registro de origem e some sozinho quando o problema é resolvido.
 - **Dispensar alerta** com justificativa (fica no histórico e na auditoria); alertas críticos não podem ser dispensados; nenhum alerta é apagado.
 - **Busca global** por hóspedes, reservas, hospedagens e movimentos financeiros (nome sem acento, telefone, CPF mascarado, códigos, número do quarto), com resultados agrupados, limitados a 8 por grupo e respeitando permissões.
+- **Recepção** como tela inicial de trabalho: resumo do dia (chegadas, saídas, quartos ocupados e disponíveis, alertas críticos), mapa dos próximos 7 dias e abas **Chegadas**, **Saídas** e **Em risco**, com atraso e saldo em texto e ações rápidas (**Confirmar check-in**, **Registrar pagamento**, **Concluir check-out**) que abrem direto o diálogo certo.
+- **Painel lateral** que mostra o resumo de uma reserva, hospedagem, hóspede ou quarto sem esconder o mapa; fecha com **Fechar painel** ou `Esc` e volta a abrir ao recarregar a página.
+- **Visão gerencial** (só administrador): ocupação por dia, recebimentos líquidos por dia e por forma de pagamento, saldos a receber e créditos, contas vencidas e em aberto por categoria, com gráficos e a tabela equivalente de cada um; período padrão hoje.
 
 ### Changed
 - **Novo visual do Boreal**: identidade teal com neutros frios, fonte Onest, ícones Material Symbols (empacotados, funcionam sem internet) e cantos e sombras suaves. Os estados dos quartos, reservas, bloqueios, manutenção e contas continuam combinando cor, ícone e rótulo.
@@ -57,6 +60,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Ao bloquear a sessão por inatividade, a tela aberta é preservada e volta como estava após desbloquear.
 - O sinal da reserva passa a ser um recebimento de verdade e acompanha a hospedagem no check-in (antes era só um valor na reserva); o botão **Registrar sinal recebido** virou **Registrar pagamento**.
 - O cancelamento continua calculando a devolução pela política, mas a devolução em si passa a ser registrada à parte quando o dinheiro volta.
+
+- **Check-in** (`Alt+C`) e **Check-out** (`Alt+S`) do topo agora abrem as abas **Chegadas** e **Saídas** da Recepção, em vez das listas de reservas e hospedagens.
+- A tela inicial deixou de ser o Dashboard simples e passou a ser a Recepção completa.
 
 ### Fixed
 - Ao reiniciar com a chave de criptografia incorreta, o sistema agora explica o problema em vez de mostrar erro técnico.
