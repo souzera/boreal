@@ -1,12 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import DocumentActions from "@/components/DocumentActions";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { useOpenFromQuery } from "@/hooks/useOpenFromQuery";
 import { usePermissions } from "@/hooks/usePermissions";
 import {
   confirmReservation,
@@ -14,16 +16,21 @@ import {
   markReservationNoShow,
   setReservationNotes,
   type ApiError,
+  type PaymentSummary,
 } from "@/lib/api";
+import { describeComponents } from "@/lib/payment";
 import { formatDate, formatMoney, formatTime, toLocalIsoDate } from "@/lib/format";
 import { isOpen, ruleLabel, statusIcon, statusLabel } from "@/lib/reservation";
 import { useSessionStore } from "@/stores/session";
 import CancelDialog from "./CancelDialog";
 import ChangeDialog from "./ChangeDialog";
-import DepositDialog from "./DepositDialog";
+import PaymentDialog from "../payments/PaymentDialog";
+import RefundDialog from "../payments/RefundDialog";
+import CheckInDialog from "../stays/CheckInDialog";
 import DiscountDialog from "./DiscountDialog";
+import Icon from "@/components/Icon";
 
-type Dialogs = "change" | "cancel" | "discount" | "deposit" | "no_show" | null;
+type Dialogs = "change" | "cancel" | "discount" | "payment" | "no_show" | "check_in" | null;
 
 const kindLabel: Record<string, string> = {
   change: "Alteração de datas ou quarto",
@@ -49,9 +56,11 @@ export default function ReservationPage() {
   const reservationId = Number(id);
   const token = useSessionStore((s) => s.token) ?? "";
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { can } = usePermissions();
   const [dialog, setDialog] = useState<Dialogs>(null);
+  const [refunding, setRefunding] = useState<PaymentSummary | null>(null);
   const [notice, setNotice] = useState<string | null>((location.state as { notice?: string } | null)?.notice ?? null);
   const [error, setError] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState(false);
@@ -59,6 +68,16 @@ export default function ReservationPage() {
 
   const queryKey = ["reservation", reservationId];
   const { data, isError } = useQuery({ queryKey, queryFn: () => getReservation(token, reservationId) });
+
+  // Ações rápidas da Recepção chegam como ?abrir=checkin|pagamento.
+  useOpenFromQuery(["checkin", "pagamento"] as const, !!data, (action) => {
+    if (!data || !isOpen(data.reservation.status)) {
+      setError("Esta ação não está mais disponível para esta reserva.");
+      return false;
+    }
+    setDialog(action === "checkin" ? "check_in" : "payment");
+    return true;
+  });
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey });
@@ -84,7 +103,7 @@ export default function ReservationPage() {
   }
   if (!data) return null;
 
-  const { reservation: r, nights, history } = data;
+  const { reservation: r, nights, history, stay_id: stayId, payments } = data;
   const open = isOpen(r.status);
   const today = toLocalIsoDate(new Date());
   // A tolerância de chegada é aplicada pelo sistema ao marcar; a tela oferece a ação a partir do dia da chegada.
@@ -107,11 +126,23 @@ export default function ReservationPage() {
     <section className="grid gap-6">
       <PageHeader
         title={`Reserva ${r.code}`}
-        description={`${statusIcon[r.status]} ${statusLabel[r.status]}`}
+        description={
+          <>
+            <Icon name={statusIcon[r.status]} size="xs" className="mr-1 align-middle" />
+            {statusLabel[r.status]}
+          </>
+        }
         action={
-          <Button render={<Link to="/reservas" />} variant="outline">
-            Voltar
-          </Button>
+          <div className="flex gap-2">
+            {stayId !== null && (
+              <Button render={<Link to={`/hospedagens/${stayId}`} />} variant="outline">
+                Ver hospedagem
+              </Button>
+            )}
+            <Button render={<Link to="/reservas" />} variant="outline">
+              Voltar
+            </Button>
+          </div>
         }
       />
       {notice && (
@@ -122,6 +153,12 @@ export default function ReservationPage() {
       {error && (
         <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
           {error}
+        </p>
+      )}
+      {r.refund_due_cents > 0 && (
+        <p role="status" className="w-fit rounded border border-amber-500/60 px-2 py-1 text-sm font-medium">
+          <Icon name="undo" size="xs" className="mr-1 align-middle" />
+          {`Devolução a fazer: ${formatMoney(r.refund_due_cents)}`}
         </p>
       )}
       {r.deposit_overdue && (
@@ -152,6 +189,7 @@ export default function ReservationPage() {
       </div>
 
       <div className="flex flex-wrap gap-2">
+        {open && <Button onClick={() => setDialog("check_in")}>Confirmar check-in</Button>}
         {open && can("change_reservation") && <Button onClick={() => setDialog("change")}>Alterar datas ou quarto</Button>}
         {open && can("apply_discount") && (
           <Button variant="outline" onClick={() => setDialog("discount")}>
@@ -164,8 +202,8 @@ export default function ReservationPage() {
           </Button>
         )}
         {open && (
-          <Button variant="outline" onClick={() => setDialog("deposit")}>
-            Registrar sinal recebido
+          <Button variant="outline" onClick={() => setDialog("payment")}>
+            Registrar pagamento
           </Button>
         )}
         {open && arrivalPassed && (
@@ -200,6 +238,40 @@ export default function ReservationPage() {
             ))}
           </TableBody>
         </Table>
+      </section>
+
+      {["pending", "confirmed", "checked_in", "completed"].includes(r.status) && (
+        <section aria-label="Documentos">
+          <h2 className="mb-2 text-base font-semibold">Documentos</h2>
+          <DocumentActions kind="reservation_confirmation" sourceId={r.id} label="Emitir confirmação de reserva" fileStem={`confirmacao-${r.code}`} />
+        </section>
+      )}
+
+      <section aria-label="Recebimentos">
+        <h2 className="mb-2 text-base font-semibold">Recebimentos</h2>
+        {payments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum recebimento registrado.</p>
+        ) : (
+          <ul className="grid gap-1 text-sm">
+            {payments.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center gap-2">
+                <span>
+                  <span className="font-medium">{p.code}</span>
+                  {` · ${formatMoney(p.amount_cents)} (${describeComponents(p.components)}) · ${formatDate(p.received_at.slice(0, 10))}`}
+                  {p.refunded_cents > 0 && ` · devolvido ${formatMoney(p.refunded_cents)}`}
+                </span>
+                {p.refundable_cents > 0 && (
+                  <Button size="sm" variant="outline" onClick={() => setRefunding(p)}>
+                    Registrar devolução
+                  </Button>
+                )}
+                <div className="basis-full pl-3">
+                  <DocumentActions kind="payment_receipt" sourceId={p.id} label="Emitir comprovante" fileStem={`comprovante-${p.code}`} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section aria-label="Observações">
@@ -278,7 +350,36 @@ export default function ReservationPage() {
         onConflict={refresh}
       />
       <DiscountDialog open={dialog === "discount"} reservation={r} onClose={() => setDialog(null)} onDone={done} onConflict={refresh} />
-      <DepositDialog open={dialog === "deposit"} reservation={r} onClose={() => setDialog(null)} onDone={done} onConflict={refresh} />
+      <CheckInDialog
+        open={dialog === "check_in"}
+        reservation={r}
+        onClose={() => setDialog(null)}
+        onConflict={refresh}
+        onDone={(stayId) => {
+          setDialog(null);
+          refresh();
+          navigate(`/hospedagens/${stayId}`, { state: { notice: "Check-in confirmado e salvo neste computador." } });
+        }}
+      />
+      <PaymentDialog
+        open={dialog === "payment"}
+        target={{ kind: "reservation", reservationId: r.id, version: r.version }}
+        hint={`Sinal esperado: ${formatMoney(r.deposit_expected_cents)}. Já registrado: ${formatMoney(r.deposit_paid_cents)}. Ao atingir o valor esperado, a reserva passa a confirmada.`}
+        onClose={() => setDialog(null)}
+        onDone={done}
+        onConflict={refresh}
+      />
+      {refunding && (
+        <RefundDialog
+          open
+          payment={refunding}
+          onClose={() => setRefunding(null)}
+          onDone={(message) => {
+            setRefunding(null);
+            done(message);
+          }}
+        />
+      )}
       <ConfirmDialog
         open={dialog === "no_show"}
         title="Marcar como no-show?"

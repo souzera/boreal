@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { bootstrapAdmin, type ApiError } from "@/lib/api";
+import RecoverFromBackup from "./RecoverFromBackup";
 
 const schema = z
   .object({
@@ -24,6 +25,7 @@ type Values = z.infer<typeof schema>;
 export default function FirstRun() {
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
+  const [recovering, setRecovering] = useState(false);
   const {
     register,
     handleSubmit,
@@ -40,8 +42,11 @@ export default function FirstRun() {
     }
   });
 
+  // Troca de computador: em vez de criar um administrador novo, restaura um backup com a chave de recuperação.
+  if (recovering) return <RecoverFromBackup mode="new-computer" onBack={() => setRecovering(false)} />;
+
   return (
-    <main className="grid min-h-screen place-items-center bg-muted/40 p-4">
+    <main className="grid min-h-[calc(100vh-var(--titlebar-h))] place-items-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Configuração inicial</CardTitle>
@@ -71,6 +76,12 @@ export default function FirstRun() {
               Criar administrador
             </Button>
           </form>
+          <div className="mt-4 border-t pt-3 text-sm">
+            <p className="text-muted-foreground">Trocou de computador?</p>
+            <Button type="button" variant="outline" className="mt-1" onClick={() => setRecovering(true)}>
+              Já tenho um backup
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </main>

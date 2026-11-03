@@ -123,6 +123,7 @@ mod tests {
         assert_eq!(s.deposit_percent_bp, 3000);
         assert_eq!(s.deposit_due_days_after_booking, 3);
         assert_eq!(s.deposit_due_days_before_arrival, 1);
+        assert_eq!(s.late_checkout_fee_bp, 5000);
         assert_eq!(version, 1);
     }
 
@@ -156,6 +157,7 @@ mod tests {
             Box::new(|s| s.deposit_percent_bp = 10_001),
             Box::new(|s| s.deposit_due_days_after_booking = 61),
             Box::new(|s| s.deposit_due_days_before_arrival = 61),
+            Box::new(|s| s.late_checkout_fee_bp = 10_001),
         ];
         for mutate in cases {
             let mut s = base.clone();

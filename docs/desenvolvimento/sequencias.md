@@ -4,7 +4,7 @@ Registros mostrados ao usuário têm um **código sequencial** além do id inter
 
 ## Tabela `sequences`
 
-`(name TEXT PRIMARY KEY, next_value INTEGER)`, criada na migração 0002 com `guest`, `reservation`, `stay`, `payment`, `refund` em 1.
+`(name TEXT PRIMARY KEY, next_value INTEGER)`, criada na migração 0002 com `guest`, `reservation`, `stay`, `payment`, `refund` em 1 (a 0010 acrescenta `maintenance` e a 0011, `payable`: `CAP-000001`).
 
 ## API
 

@@ -127,6 +127,21 @@ A documentação para usuários finais deve:
 - Orientar como agir diante de erros comuns.
 - Usar imagens somente quando realmente ajudarem a concluir a tarefa.
 
+### Roteiro de treinamento
+
+Mantenha, em `docs/usuario/roteiro-de-treinamento.md`, um roteiro de apresentação das funcionalidades para treinar a equipe da pousada. Ele cresce junto com o sistema: a cada funcionalidade ou mudança de fluxo visível ao usuário, acrescente ou ajuste a parte correspondente no mesmo trabalho.
+
+O roteiro deve:
+
+- Seguir o dia de trabalho da recepção (chegada, hospedagem, limpeza, saída, fechamento), e não a estrutura técnica do sistema.
+- Dividir-se em módulos curtos, cada um com: objetivo, pré-requisitos (permissões e dados necessários), passo a passo da demonstração, o que o participante deve ver ao final e os erros comuns com a forma de agir.
+- Usar a linguagem da pousada e os rótulos exatos da interface (por exemplo, `Confirmar check-in`), com datas em `DD/MM/AAAA` e valores em reais.
+- Indicar o cenário de demonstração a preparar (o seed de desenvolvimento, quando servir) e quem faz o quê (recepção ou administrador).
+- Remeter ao guia detalhado em `docs/usuario/` em vez de repeti-lo.
+- Marcar o que ainda é provisório (valores e regras aguardando aprovação) para ninguém treinar a equipe numa regra que pode mudar.
+
+Não crie roteiro para alterações internas sem efeito para o usuário.
+
 ### Documentação para desenvolvimento
 
 Crie ou atualize arquivos em `docs/desenvolvimento/`.
@@ -198,6 +213,7 @@ Se a atualização falhar, informe a falha e não considere o grafo atualizado.
 - [ ] Foram adicionados ou atualizados testes adequados.
 - [ ] `CHANGELOG.md` foi atualizado quando aplicável.
 - [ ] A documentação para usuário e/ou desenvolvimento foi atualizada quando aplicável.
+- [ ] O roteiro de treinamento (`docs/usuario/roteiro-de-treinamento.md`) foi atualizado quando a mudança é visível ao usuário.
 - [ ] O plano em `docs/superpowers/plans/` foi atualizado (passos, status, desvios e pendências).
 - [ ] O Graphify foi atualizado após as mudanças.
 - [ ] Não foram incluídos dados reais, credenciais, bancos ou backups.

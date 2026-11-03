@@ -9,6 +9,10 @@ import Login from "@/pages/Login";
 import { useSessionStore } from "@/stores/session";
 import AppShell from "./AppShell";
 
+vi.mock("@/hooks/useAlertSummary", () => ({ useAlertSummary: () => ({ data: undefined }) }));
+
+vi.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ can: () => false, permissions: [], ready: true }) }));
+
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return { ...actual, logout: vi.fn().mockResolvedValue(null), sessionStatus: vi.fn().mockResolvedValue({ state: "active", user: null }), getSessionPolicy: vi.fn().mockResolvedValue({ idle_lock_minutes: 10 }) };
@@ -50,6 +54,23 @@ describe("AppShell", () => {
     expect(screen.getByRole("navigation", { name: "Menu principal" })).toBeInTheDocument();
     expect(screen.getByText("Conteúdo do dashboard")).toBeInTheDocument();
     expect(screen.getByText("Administrador")).toBeInTheDocument();
+  });
+
+  it("o cabeçalho traz a busca e as ações rápidas", () => {
+    renderShell();
+
+    expect(screen.getByRole("search")).toBeInTheDocument();
+    const toolbar = screen.getByRole("toolbar", { name: "Ações rápidas" });
+    expect(toolbar).toHaveTextContent("Nova reserva");
+    expect(toolbar).toHaveTextContent("Receber pagamento");
+  });
+
+  it("Buscar leva o foco ao campo de busca", async () => {
+    renderShell();
+
+    await userEvent.click(screen.getByRole("button", { name: /Buscar/ }));
+
+    expect(screen.getByLabelText("Busca geral")).toHaveFocus();
   });
 
   it("com sessão bloqueada oculta o conteúdo e pede a senha", () => {

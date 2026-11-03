@@ -41,6 +41,7 @@ pub fn load(conn: &Connection) -> Result<AppSettings, AppError> {
         deposit_percent_bp: get_u32(conn, "deposit_percent_bp")?,
         deposit_due_days_after_booking: get_u32(conn, "deposit_due_days_after_booking")?,
         deposit_due_days_before_arrival: get_u32(conn, "deposit_due_days_before_arrival")?,
+        late_checkout_fee_bp: get_u32(conn, "late_checkout_fee_bp")?,
     })
 }
 
@@ -60,6 +61,7 @@ pub fn save(tx: &Transaction, s: &AppSettings) -> Result<(), AppError> {
     set(tx, "deposit_percent_bp", &s.deposit_percent_bp.to_string())?;
     set(tx, "deposit_due_days_after_booking", &s.deposit_due_days_after_booking.to_string())?;
     set(tx, "deposit_due_days_before_arrival", &s.deposit_due_days_before_arrival.to_string())?;
+    set(tx, "late_checkout_fee_bp", &s.late_checkout_fee_bp.to_string())?;
     Ok(())
 }
 

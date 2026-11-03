@@ -1,3 +1,4 @@
+use super::room_status_service;
 use super::Ctx;
 use crate::domain::dates;
 use crate::error::AppError;
@@ -28,9 +29,21 @@ impl RoomMapService {
         let end = start + chrono::Duration::days(i64::from(days) - 1);
 
         let conn = self.ctx.conn()?;
+        let statuses = room_status_service::statuses(&self.ctx, &conn)?;
         let rooms = reservation_repo::map_rooms(&conn)?
             .into_iter()
-            .map(|(id, code, category_name, active)| RoomRow { id, code, category_name, active })
+            .map(|(id, code, category_name, active)| {
+                let status = statuses.iter().find(|s| s.room_id == id);
+                RoomRow {
+                    id,
+                    code,
+                    category_name,
+                    active,
+                    state: status.map(|s| s.state.clone()),
+                    state_label: status.map(|s| s.label_pt.clone()),
+                    free_at: status.and_then(|s| s.free_at.clone()),
+                }
+            })
             .collect();
 
         let mut cells = Vec::new();

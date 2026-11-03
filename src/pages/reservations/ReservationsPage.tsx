@@ -17,6 +17,7 @@ import {
 import { formatDate, formatMoney } from "@/lib/format";
 import { statusIcon, statusLabel } from "@/lib/reservation";
 import { useSessionStore } from "@/stores/session";
+import Icon from "@/components/Icon";
 
 const PAGE_SIZE = 20;
 const statuses = Object.keys(statusLabel) as ReservationStatus[];
@@ -59,7 +60,17 @@ export default function ReservationsPage() {
   });
 
   const columns: ColumnDef<Reservation>[] = [
-    { key: "code", header: "Código", sortable: true, render: (r) => <strong>{r.code}</strong> },
+    {
+      key: "code",
+      header: "Código",
+      sortable: true,
+      render: (r) => (
+        <span>
+          <strong>{r.code}</strong>
+          {r.origin === "walk_in" && <span className="block text-xs text-muted-foreground">Sem reserva</span>}
+        </span>
+      ),
+    },
     { key: "guest_name", header: "Hóspede", sortable: true, render: (r) => r.guest_name },
     { key: "room_code", header: "Quarto", sortable: true, render: (r) => r.room_code },
     { key: "check_in_date", header: "Entrada", sortable: true, render: (r) => formatDate(r.check_in_date) },
@@ -72,7 +83,7 @@ export default function ReservationsPage() {
       render: (r) => (
         <span className="flex flex-wrap items-center gap-2">
           <span>
-            <span aria-hidden="true">{statusIcon[r.status]} </span>
+            <Icon name={statusIcon[r.status]} size="xs" className="mr-1 align-middle" />
             {statusLabel[r.status]}
           </span>
           {r.deposit_overdue && <span className="text-xs font-medium text-destructive">Sinal vencido</span>}

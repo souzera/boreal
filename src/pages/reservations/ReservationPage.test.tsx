@@ -11,6 +11,7 @@ vi.mock("@/lib/api", async () => {
   return {
     ...actual,
     getReservation: vi.fn(),
+    listDocuments: vi.fn().mockResolvedValue([]),
     listRooms: vi.fn(),
     myPermissions: vi.fn(),
     previewReservationChange: vi.fn(),
@@ -20,7 +21,8 @@ vi.mock("@/lib/api", async () => {
     markReservationNoShow: vi.fn(),
     applyReservationDiscount: vi.fn(),
     confirmReservation: vi.fn(),
-    recordReservationDeposit: vi.fn(),
+    recordReservationPayment: vi.fn(),
+    recordRefund: vi.fn(),
     setReservationNotes: vi.fn(),
   };
 });
@@ -31,10 +33,16 @@ const reservation: api.Reservation = {
   expected_check_out_time: "12:00", nights: 3, occupants: 2, status: "pending", list_total_cents: 30000,
   discount_cents: 3000, discount_reason: "Cliente antigo", agreed_total_cents: 27000, deposit_expected_cents: 8100,
   deposit_paid_cents: 4000, deposit_due_date: "2099-10-24", deposit_overdue: false, notes: "Chegada tarde",
-  cancelled_at: null, cancellation_fee_cents: null, version: 3, created_at: "2099-10-01T12:00:00Z",
+  cancelled_at: null, cancellation_fee_cents: null, refund_due_cents: 0, version: 3, created_at: "2099-10-01T12:00:00Z", origin: "booking",
+};
+const sinal: api.PaymentSummary = {
+  id: 9, code: "PAG-000009", amount_cents: 4000, refunded_cents: 0, refundable_cents: 4000,
+  components: [{ method: "pix", amount_cents: 4000 }], received_at: "2099-10-02T15:00:00Z", stay_id: null,
 };
 const detail: api.ReservationDetail = {
   reservation,
+  stay_id: null,
+  payments: [sinal],
   nights: [
     { date: "2099-10-25", amount_cents: 10000, rule: "weekday" },
     { date: "2099-10-26", amount_cents: 10000, rule: "weekday" },
@@ -62,14 +70,14 @@ beforeEach(() => {
   vi.mocked(api.myPermissions).mockReset().mockResolvedValue(ALL);
   vi.mocked(api.listRooms).mockResolvedValue({
     items: [
-      { id: 1, code: "101", category_id: 1, category_name: "Standard", max_capacity: 2, description: "", notes: "", active: true, version: 1 },
-      { id: 2, code: "201", category_id: 2, category_name: "Luxo", max_capacity: 3, description: "", notes: "", active: true, version: 1 },
+      { id: 1, code: "101", category_id: 1, category_name: "Standard", max_capacity: 2, description: "", notes: "", active: true, cleaning_interval_minutes: null, version: 1 },
+      { id: 2, code: "201", category_id: 2, category_name: "Luxo", max_capacity: 3, description: "", notes: "", active: true, cleaning_interval_minutes: null, version: 1 },
     ],
     total: 2, page: 1, page_size: 100,
   });
   for (const fn of [
     api.applyReservationChange, api.cancelReservation, api.markReservationNoShow, api.applyReservationDiscount,
-    api.confirmReservation, api.recordReservationDeposit, api.setReservationNotes, api.previewReservationChange,
+    api.confirmReservation, api.recordReservationPayment, api.recordRefund, api.setReservationNotes, api.previewReservationChange,
     api.previewReservationCancellation,
   ]) {
     vi.mocked(fn as (...a: never[]) => Promise<unknown>).mockReset();
@@ -79,13 +87,13 @@ beforeEach(() => {
   vi.mocked(api.markReservationNoShow).mockResolvedValue(null);
   vi.mocked(api.applyReservationDiscount).mockResolvedValue(null);
   vi.mocked(api.confirmReservation).mockResolvedValue(null);
-  vi.mocked(api.recordReservationDeposit).mockResolvedValue(null);
+  vi.mocked(api.recordReservationPayment).mockResolvedValue({ id: 10, code: "PAG-000010", total_cents: 4100 });
 });
 
-async function open(state?: unknown) {
+async function open(state?: unknown, search = "") {
   const view = renderPage(<ReservationPage />, {
     path: "/reservas/:id",
-    entry: { pathname: "/reservas/5", state },
+    entry: { pathname: "/reservas/5", search, state },
     extraRoutes: routes,
   });
   await screen.findByRole("heading", { name: /RES-000005/ });
@@ -150,15 +158,62 @@ describe("ReservationPage — dados", () => {
     await open();
 
     expect(screen.getByRole("button", { name: "Cancelar reserva" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar check-in" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Alterar datas ou quarto" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Aplicar desconto" })).toBeNull();
+  });
+
+  it("?abrir=checkin abre o diálogo de check-in uma única vez", async () => {
+    await open(undefined, "?abrir=checkin");
+
+    expect(await screen.findByRole("dialog", { name: /Check-in da reserva RES-000005/ })).toBeInTheDocument();
+  });
+
+  it("?abrir=checkin numa reserva cancelada avisa em vez de abrir", async () => {
+    vi.mocked(api.getReservation).mockResolvedValue({ ...detail, reservation: { ...reservation, status: "cancelled" } });
+    await open(undefined, "?abrir=checkin");
+
+    expect(await screen.findByText("Esta ação não está mais disponível para esta reserva.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("?abrir=pagamento abre o registro de pagamento e valor desconhecido é ignorado", async () => {
+    await open(undefined, "?abrir=pagamento");
+    expect(await screen.findByRole("dialog", { name: "Registrar pagamento" })).toBeInTheDocument();
+  });
+
+  it("?abrir= desconhecido não abre nada", async () => {
+    await open(undefined, "?abrir=lixo");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("oferece emitir a confirmação de reserva e o comprovante de cada recebimento", async () => {
+    await open();
+
+    expect(screen.getByRole("button", { name: "Emitir confirmação de reserva" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Emitir comprovante" })).toBeInTheDocument();
+  });
+
+  it("não oferece a confirmação de reserva para reserva cancelada", async () => {
+    vi.mocked(api.getReservation).mockResolvedValue({ ...detail, reservation: { ...reservation, status: "cancelled" } });
+    await open();
+
+    expect(screen.queryByRole("button", { name: "Emitir confirmação de reserva" })).toBeNull();
+  });
+
+  it("reserva já hospedada leva à hospedagem e não oferece novo check-in", async () => {
+    vi.mocked(api.getReservation).mockResolvedValue({ ...detail, stay_id: 12, reservation: { ...reservation, status: "checked_in" } });
+    await open();
+
+    expect(screen.getByRole("link", { name: "Ver hospedagem" })).toHaveAttribute("href", "/hospedagens/12");
+    expect(screen.queryByRole("button", { name: "Confirmar check-in" })).toBeNull();
   });
 
   it("reserva cancelada não oferece ações", async () => {
     setDetail({ status: "cancelled" });
     await open();
 
-    for (const name of ["Cancelar reserva", "Alterar datas ou quarto", "Aplicar desconto", "Confirmar reserva", "Registrar sinal recebido"]) {
+    for (const name of ["Cancelar reserva", "Alterar datas ou quarto", "Aplicar desconto", "Confirmar reserva", "Registrar sinal recebido", "Confirmar check-in"]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
   });
@@ -389,18 +444,43 @@ describe("ReservationPage — desconto, confirmação, sinal e no-show", () => {
     expect(screen.queryByRole("button", { name: "Confirmar reserva" })).toBeNull();
   });
 
-  it("registra o sinal recebido em reais", async () => {
+  it("registra o pagamento do sinal com a versão da reserva", async () => {
     await open();
-    await userEvent.click(screen.getByRole("button", { name: "Registrar sinal recebido" }));
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pagamento" }));
     const dialog = within(await screen.findByRole("dialog"));
 
     await userEvent.type(dialog.getByLabelText(/Valor recebido/), "41,00");
-    await userEvent.click(dialog.getByRole("button", { name: "Registrar" }));
-    expect(api.recordReservationDeposit).not.toHaveBeenCalled();
-    expect(await dialog.findByText("Registrar sinal de R$ 41,00? Depois de salvo, o valor não pode ser corrigido nesta tela.")).toBeInTheDocument();
-    await userEvent.click(dialog.getByRole("button", { name: "Confirmar registro" }));
+    await userEvent.selectOptions(dialog.getByLabelText("Forma de pagamento"), "pix");
+    await userEvent.click(dialog.getByRole("button", { name: "Registrar pagamento" }));
+    expect(api.recordReservationPayment).not.toHaveBeenCalled();
+    expect(await dialog.findByText(/Registrar pagamento de R\$ 41,00 em Pix\?/)).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Confirmar pagamento" }));
 
-    await waitFor(() => expect(api.recordReservationDeposit).toHaveBeenCalledWith("t", 5, 4100, 3));
+    await waitFor(() =>
+      expect(api.recordReservationPayment).toHaveBeenCalledWith("t", 5, 3, { components: [{ method: "pix", amount_cents: 4100 }], note: "" }),
+    );
+  });
+
+  it("lista os recebimentos da reserva com as formas de pagamento", async () => {
+    await open();
+
+    expect(screen.getByText("PAG-000009")).toBeInTheDocument();
+    expect(screen.getByText(/Pix R\$ 40,00/)).toBeInTheDocument();
+  });
+
+  it("reserva cancelada mostra a devolução a fazer e permite registrá-la", async () => {
+    setDetail({ status: "cancelled", cancelled_at: "2099-10-10T12:00:00Z", cancellation_fee_cents: 0, refund_due_cents: 4000 });
+    await open();
+
+    expect(screen.getByText("Devolução a fazer: R$ 40,00")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Registrar devolução" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Recebimento PAG-000009 de R$ 40,00");
+  });
+
+  it("sem devolução pendente não mostra o aviso", async () => {
+    await open();
+
+    expect(screen.queryByText(/Devolução a fazer/)).toBeNull();
   });
 
   it("oferece no-show já no dia da chegada (o sistema aplica a tolerância)", async () => {

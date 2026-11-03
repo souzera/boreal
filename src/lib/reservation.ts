@@ -11,12 +11,12 @@ export const statusLabel: Record<ReservationStatus, string> = {
 
 /** Ícone curto junto do texto: a situação nunca depende só de cor. */
 export const statusIcon: Record<ReservationStatus, string> = {
-  pending: "◔",
-  confirmed: "✔",
-  checked_in: "●",
-  completed: "■",
-  cancelled: "✖",
-  no_show: "⚠",
+  pending: "schedule",
+  confirmed: "verified",
+  checked_in: "bed",
+  completed: "task_alt",
+  cancelled: "cancel",
+  no_show: "person_off",
 };
 
 export const ruleLabel: Record<AppliedRule, string> = {

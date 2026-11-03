@@ -19,6 +19,7 @@ import {
   type RoomInput,
 } from "@/lib/api";
 import { useSessionStore } from "@/stores/session";
+import CleaningIntervalDialog from "./CleaningIntervalDialog";
 import RoomForm from "./RoomForm";
 
 const PAGE_SIZE = 20;
@@ -33,6 +34,7 @@ export default function RoomsPage() {
   const [sort, setSort] = useState<SortState>({ key: "code", direction: "asc" });
   const [form, setForm] = useState<{ open: boolean; room: Room | null }>({ open: false, room: null });
   const [toDeactivate, setToDeactivate] = useState<Room | null>(null);
+  const [intervalRoom, setIntervalRoom] = useState<Room | null>(null);
   const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   const query = {
@@ -80,6 +82,11 @@ export default function RoomsPage() {
       render: (r) => `${r.max_capacity} ${r.max_capacity === 1 ? "pessoa" : "pessoas"}`,
     },
     { key: "description", header: "Descrição", render: (r) => r.description || "—" },
+    {
+      key: "cleaning_interval_minutes",
+      header: "Intervalo de limpeza",
+      render: (r) => (r.cleaning_interval_minutes === null ? "Padrão da pousada" : `${r.cleaning_interval_minutes} min`),
+    },
     { key: "active", header: "Situação", sortable: true, render: (r) => (r.active ? "Ativo" : "Inativo") },
   ];
   if (canManage) {
@@ -90,6 +97,9 @@ export default function RoomsPage() {
         <div className="flex gap-1">
           <Button size="sm" variant="outline" onClick={() => setForm({ open: true, room: r })}>
             Editar
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setIntervalRoom(r)}>
+            Intervalo de limpeza
           </Button>
           {r.active ? (
             <Button size="sm" variant="outline" onClick={() => setToDeactivate(r)}>
@@ -183,6 +193,15 @@ export default function RoomsPage() {
         categories={categories}
         onClose={() => setForm({ open: false, room: null })}
         onSubmit={save}
+      />
+      <CleaningIntervalDialog
+        room={intervalRoom}
+        onClose={() => setIntervalRoom(null)}
+        onDone={async (text) => {
+          setIntervalRoom(null);
+          await refresh();
+          setNotice({ kind: "ok", text });
+        }}
       />
       <ConfirmDialog
         open={toDeactivate !== null}

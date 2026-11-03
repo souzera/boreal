@@ -5,6 +5,7 @@ import { createHashRouter, RouterProvider } from "react-router-dom";
 import { needsBootstrap, startupStatus, type ApiError } from "@/lib/api";
 import FirstRun from "@/pages/FirstRun";
 import StartupError from "@/pages/StartupError";
+import TitleBar from "@/components/TitleBar";
 import { appRoutes } from "@/routes";
 
 async function loadStartup(): Promise<{ bootstrap: boolean }> {
@@ -16,11 +17,17 @@ export default function App() {
   const router = useMemo(() => createHashRouter(appRoutes), []);
   const startup = useQuery({ queryKey: ["startup"], queryFn: loadStartup, retry: false });
 
-  if (startup.isPending) return null;
-  if (startup.isError) {
-    return <StartupError message={(startup.error as ApiError).message} />;
-  }
-  if (startup.data.bootstrap) return <FirstRun />;
+  let body;
+  if (startup.isPending) body = null;
+  else if (startup.isError) body = <StartupError message={(startup.error as ApiError).message} code={(startup.error as ApiError).code} />;
+  else if (startup.data.bootstrap) body = <FirstRun />;
+  else body = <RouterProvider router={router} />;
 
-  return <RouterProvider router={router} />;
+  // A janela não tem moldura nativa: a barra própria acompanha qualquer tela.
+  return (
+    <>
+      <TitleBar />
+      {body}
+    </>
+  );
 }

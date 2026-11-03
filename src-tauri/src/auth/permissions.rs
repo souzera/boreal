@@ -14,6 +14,11 @@ pub enum Permission {
     RestoreBackup,
     ManageSettings,
     ManageCatalog,
+    EarlyCheckIn,
+    CheckoutWithBalance,
+    WaiveLateFee,
+    ReleaseDuplicatePayment,
+    ManagePayables,
 }
 
 impl Permission {
@@ -29,6 +34,11 @@ impl Permission {
         Permission::RestoreBackup,
         Permission::ManageSettings,
         Permission::ManageCatalog,
+        Permission::EarlyCheckIn,
+        Permission::CheckoutWithBalance,
+        Permission::WaiveLateFee,
+        Permission::ReleaseDuplicatePayment,
+        Permission::ManagePayables,
     ];
 
     /// Permissões que o administrador pode conceder individualmente à recepção.
@@ -40,6 +50,11 @@ impl Permission {
             Permission::CancellationException,
             Permission::ChangeReservation,
             Permission::ReleaseRoom,
+            Permission::EarlyCheckIn,
+            Permission::CheckoutWithBalance,
+            Permission::WaiveLateFee,
+            Permission::ReleaseDuplicatePayment,
+            Permission::ManagePayables,
         ]
     }
 
@@ -56,6 +71,11 @@ impl Permission {
             Permission::RestoreBackup => "restore_backup",
             Permission::ManageSettings => "manage_settings",
             Permission::ManageCatalog => "manage_catalog",
+            Permission::EarlyCheckIn => "early_check_in",
+            Permission::CheckoutWithBalance => "checkout_with_balance",
+            Permission::WaiveLateFee => "waive_late_fee",
+            Permission::ReleaseDuplicatePayment => "release_duplicate_payment",
+            Permission::ManagePayables => "manage_payables",
         }
     }
 
@@ -106,6 +126,42 @@ mod tests {
             assert!(!grantable.contains(&p), "{p:?} não pode ser concedida");
         }
         assert!(grantable.contains(&Permission::ApplyDiscount));
+    }
+
+    #[test]
+    fn grantable_includes_stay_permissions() {
+        for p in [Permission::EarlyCheckIn, Permission::CheckoutWithBalance, Permission::WaiveLateFee] {
+            assert!(Permission::grantable().contains(&p), "{p:?} deveria ser concedível");
+            assert!(Permission::ALL.contains(&p));
+        }
+        assert_eq!(Permission::EarlyCheckIn.as_str(), "early_check_in");
+        assert_eq!(Permission::CheckoutWithBalance.as_str(), "checkout_with_balance");
+        assert_eq!(Permission::WaiveLateFee.as_str(), "waive_late_fee");
+    }
+
+    #[test]
+    fn new_finance_permissions_are_grantable_and_parse() {
+        for (p, name) in [
+            (Permission::ReleaseDuplicatePayment, "release_duplicate_payment"),
+            (Permission::ManagePayables, "manage_payables"),
+        ] {
+            assert!(Permission::grantable().contains(&p), "{p:?} deveria ser concedível");
+            assert!(Permission::ALL.contains(&p));
+            assert_eq!(p.as_str(), name);
+            assert_eq!(Permission::parse(name), Some(p));
+            assert!(PermissionSet::empty().with(p).contains(p));
+            assert!(role_has(Role::Admin, p) && !role_has(Role::Recepcao, p));
+        }
+    }
+
+    #[test]
+    fn permission_set_holds_every_permission_independently() {
+        let all = Permission::ALL.iter().fold(PermissionSet::empty(), |set, p| set.with(*p));
+        for p in Permission::ALL {
+            assert!(all.contains(*p));
+            assert!(!PermissionSet::empty().contains(*p));
+        }
+        assert!(Permission::ALL.len() <= 32, "a máscara é um u32");
     }
 
     #[test]

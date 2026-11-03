@@ -97,7 +97,7 @@ pub fn count_active_rooms_in_category(conn: &Connection, category_id: i64) -> Re
 
 // ---- quartos ----
 
-const ROOM_SELECT: &str = "SELECT r.id, r.code, r.category_id, c.name, r.max_capacity, r.description, r.notes, r.active, r.version
+const ROOM_SELECT: &str = "SELECT r.id, r.code, r.category_id, c.name, r.max_capacity, r.description, r.notes, r.active, r.version, r.cleaning_interval_minutes
      FROM rooms r JOIN room_categories c ON c.id = r.category_id";
 
 fn map_room(r: &Row) -> rusqlite::Result<Room> {
@@ -111,7 +111,21 @@ fn map_room(r: &Row) -> rusqlite::Result<Room> {
         notes: r.get(6)?,
         active: r.get::<_, i64>(7)? == 1,
         version: r.get(8)?,
+        cleaning_interval_minutes: r.get(9)?,
     })
+}
+
+pub fn set_room_cleaning_interval(
+    tx: &Transaction,
+    id: i64,
+    minutes: Option<i64>,
+    expected_version: i64,
+    at: DateTime<Utc>,
+) -> Result<(), AppError> {
+    conflict_if_unchanged(tx.execute(
+        "UPDATE rooms SET cleaning_interval_minutes = ?1, version = version + 1, updated_at = ?2 WHERE id = ?3 AND version = ?4",
+        params![minutes, stamp(at), id, expected_version],
+    )?)
 }
 
 pub struct RoomFields<'a> {

@@ -34,6 +34,7 @@ const settings: api.AppSettings = {
   deposit_percent_bp: 3000,
   deposit_due_days_after_booking: 3,
   deposit_due_days_before_arrival: 1,
+  late_checkout_fee_bp: 5000,
 };
 
 beforeEach(() => {
@@ -198,6 +199,20 @@ describe("SettingsPage", () => {
 
     await waitFor(() =>
       expect(api.updateSettings).toHaveBeenCalledWith("t", { ...settings, deposit_percent_bp: 2550 }, 1),
+    );
+  });
+
+  it("mostra a cobrança de saída tardia em percentual e salva em pontos-base", async () => {
+    await open();
+    const field = screen.getByLabelText(/Cobrança de saída tardia/);
+    expect(field).toHaveValue(50);
+
+    await userEvent.clear(field);
+    await userEvent.type(field, "30");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar configurações" }));
+
+    await waitFor(() =>
+      expect(api.updateSettings).toHaveBeenCalledWith("t", { ...settings, late_checkout_fee_bp: 3000 }, 1),
     );
   });
 

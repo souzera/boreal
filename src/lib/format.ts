@@ -35,6 +35,21 @@ export function formatTime(utcIso: string, timeZone?: string): string {
   }).format(new Date(utcIso));
 }
 
+/** Exibe um instante UTC como "DD/MM/AAAA HH:MM" no fuso informado (padrão: o do computador). */
+export function formatInstant(utcIso: string, timeZone?: string): string {
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone,
+  }).formatToParts(new Date(utcIso));
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")}`;
+}
+
 /** Mantém só os dígitos de um texto. */
 export function onlyDigits(input: string): string {
   return input.replace(/\D/g, "");

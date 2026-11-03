@@ -19,6 +19,8 @@ pub struct AppSettings {
     pub deposit_due_days_after_booking: u32,
     /// O sinal vence, no máximo, este número de dias antes da chegada.
     pub deposit_due_days_before_arrival: u32,
+    /// Cobrança prevista de saída tardia, em pontos-base da última diária (5000 = 50%). Provisório (D-15).
+    pub late_checkout_fee_bp: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -71,6 +73,7 @@ impl AppSettings {
         in_range(self.deposit_percent_bp, 0, 10_000, "Sinal: informe de 0% a 100%.")?;
         in_range(self.deposit_due_days_after_booking, 0, 60, "Prazo do sinal após a reserva: informe de 0 a 60 dias.")?;
         in_range(self.deposit_due_days_before_arrival, 0, 60, "Prazo do sinal antes da chegada: informe de 0 a 60 dias.")?;
+        in_range(self.late_checkout_fee_bp, 0, 10_000, "Cobrança de saída tardia: informe de 0% a 100%.")?;
         Ok(())
     }
 }

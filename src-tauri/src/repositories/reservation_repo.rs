@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use rusqlite::{named_params, params, Connection, OptionalExtension, Row, Transaction};
 
 use crate::domain::availability::Booking;
@@ -22,7 +22,10 @@ const SELECT: &str = "SELECT r.id, r.code, r.room_id, rm.code, r.guest_id, g.ful
         r.occupants, r.status, r.list_total_cents, r.discount_cents, r.discount_reason, r.agreed_total_cents,
         r.deposit_expected_cents, r.deposit_paid_cents, r.deposit_due_date,
         (r.status = 'pending' AND r.deposit_paid_cents < r.deposit_expected_cents AND r.deposit_due_date < :today),
-        r.notes, r.cancelled_at, r.cancellation_fee_cents, r.version, r.created_at
+        r.notes, r.cancelled_at, r.cancellation_fee_cents, r.version, r.created_at, r.origin,
+        CASE WHEN r.status = 'cancelled' THEN MAX(0, r.cancellation_refund_cents
+            - (SELECT COALESCE(SUM(f.amount_cents), 0) FROM refunds f WHERE f.reservation_id = r.id AND f.id > r.cancel_refund_marker))
+            ELSE 0 END
      FROM reservations r
      JOIN rooms rm ON rm.id = r.room_id
      JOIN guests g ON g.id = r.guest_id";
@@ -55,6 +58,8 @@ fn map_reservation(r: &Row) -> rusqlite::Result<Reservation> {
         cancellation_fee_cents: r.get(23)?,
         version: r.get(24)?,
         created_at: r.get(25)?,
+        origin: r.get(26)?,
+        refund_due_cents: r.get(27)?,
     })
 }
 
@@ -73,18 +78,22 @@ pub struct NewRow<'a> {
     pub deposit_due_date: &'a str,
     pub notes: &'a str,
     pub created_by: i64,
+    /// `pending` (reserva) ou `checked_in` (hospedagem sem reserva).
+    pub status: &'a str,
+    /// `booking` ou `walk_in`.
+    pub origin: &'a str,
 }
 
 pub fn insert(tx: &Transaction, r: &NewRow, at: DateTime<Utc>) -> Result<i64, AppError> {
     tx.execute(
         "INSERT INTO reservations (code, room_id, guest_id, check_in_date, check_out_date, expected_check_in_time,
             expected_check_out_time, occupants, status, list_total_cents, agreed_total_cents, deposit_expected_cents,
-            deposit_due_date, notes, created_by, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending', ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
+            deposit_due_date, notes, created_by, created_at, updated_at, origin)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?16, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15, ?17)",
         params![
             r.code, r.room_id, r.guest_id, r.check_in, r.check_out, r.in_time, r.out_time, r.occupants,
             r.list_total_cents, r.agreed_total_cents, r.deposit_expected_cents, r.deposit_due_date, r.notes,
-            r.created_by, stamp(at)
+            r.created_by, stamp(at), r.status, r.origin
         ],
     )?;
     Ok(tx.last_insert_rowid())
@@ -105,6 +114,13 @@ pub fn find(conn: &Connection, id: i64, today: NaiveDate) -> Result<Option<Reser
             named_params! { ":today": dates::format(today), ":id": id },
             map_reservation,
         )
+        .optional()?)
+}
+
+/// Hospedagem aberta a partir da reserva, se já houve check-in.
+pub fn stay_id(conn: &Connection, reservation_id: i64) -> Result<Option<i64>, AppError> {
+    Ok(conn
+        .query_row("SELECT id FROM stays WHERE reservation_id = ?1", [reservation_id], |r| r.get(0))
         .optional()?)
 }
 
@@ -218,18 +234,23 @@ pub fn list(
 }
 
 /// Reservas que bloqueiam o quarto e tocam o período `from..=to` (com folga de um dia para a troca no mesmo dia).
+///
+/// Uma hospedagem em andamento (`checked_in`) bloqueia o quarto **enquanto o hóspede não sair**: ela é
+/// sempre devolvida, e se a saída prevista já passou, o fim da ocupação passa a ser `now`.
 pub fn blocking(
     conn: &Connection,
     room_id: i64,
     from: NaiveDate,
     to: NaiveDate,
+    now: NaiveDateTime,
 ) -> Result<Vec<(Booking, ConflictInfo)>, AppError> {
     let mut stmt = conn.prepare(
         "SELECT r.id, r.code, g.full_name, r.status, r.check_in_date, r.check_out_date,
                 r.expected_check_in_time, r.expected_check_out_time
          FROM reservations r JOIN guests g ON g.id = r.guest_id
-         WHERE r.room_id = ?1 AND r.status IN ('pending', 'confirmed', 'checked_in')
-           AND r.check_out_date >= ?2 AND r.check_in_date <= ?3
+         WHERE r.room_id = ?1
+           AND ((r.status IN ('pending', 'confirmed', 'checked_in') AND r.check_out_date >= ?2 AND r.check_in_date <= ?3)
+                OR r.status = 'checked_in')
          ORDER BY r.check_in_date, r.id",
     )?;
     let raw = stmt
@@ -260,6 +281,7 @@ pub fn blocking(
         ) else {
             return Err(AppError::Database(format!("reserva {code} com datas ou horários inválidos")));
         };
+        let (co, to_) = if status == "checked_in" && co.and_time(to_) < now { (now.date(), now.time()) } else { (co, to_) };
         out.push((
             Booking { id, check_in: ci, check_out: co, expected_in: ti, expected_out: to_ },
             ConflictInfo { reservation_id: id, code, guest_name, check_in_date: check_in, check_out_date: check_out, status },
@@ -327,25 +349,94 @@ pub fn insert_change(
     Ok(())
 }
 
+/// Muda a situação da reserva (check-in, conclusão) se a versão ainda for a consultada.
+pub fn set_status(tx: &Transaction, id: i64, status: &str, expected_version: i64, at: DateTime<Utc>) -> Result<(), AppError> {
+    expect_one(tx.execute(
+        "UPDATE reservations SET status = ?1, version = version + 1, updated_at = ?2 WHERE id = ?3 AND version = ?4",
+        params![status, stamp(at), id, expected_version],
+    )?)
+}
+
 /// Encerra a reserva (`cancelled` ou `no_show`) registrando o valor retido.
 pub fn set_closed(
     tx: &Transaction,
     id: i64,
     status: &str,
     retained_cents: i64,
+    refund_cents: i64,
     expected_version: i64,
     at: DateTime<Utc>,
 ) -> Result<(), AppError> {
     let changed = tx.execute(
         "UPDATE reservations SET status = ?1, cancelled_at = ?2, cancellation_fee_cents = ?3,
+                cancellation_refund_cents = ?6, cancel_refund_marker = (SELECT COALESCE(MAX(id), 0) FROM refunds),
                 version = version + 1, updated_at = ?2
          WHERE id = ?4 AND version = ?5",
-        params![status, stamp(at), retained_cents, id, expected_version],
+        params![status, stamp(at), retained_cents, id, expected_version, refund_cents],
     )?;
     if changed == 0 {
         return Err(AppError::Conflict);
     }
     Ok(())
+}
+
+/// Reservas ativas (pendentes, confirmadas ou hospedadas) que tocam as noites `[start, end)` do quarto
+/// (`end` ausente = sem fim). Uma hospedagem em curso ocupa o quarto, no mínimo, a noite de `today`.
+pub fn active_in_period(
+    conn: &Connection,
+    room_id: i64,
+    start: NaiveDate,
+    end: Option<NaiveDate>,
+    today: NaiveDate,
+) -> Result<Vec<ConflictInfo>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id, r.code, g.full_name, r.status, r.check_in_date, r.check_out_date
+         FROM reservations r JOIN guests g ON g.id = r.guest_id
+         WHERE r.room_id = ?1
+           AND (?3 IS NULL OR r.check_in_date < ?3)
+           AND ((r.status IN ('pending', 'confirmed') AND r.check_out_date > ?2)
+                OR (r.status = 'checked_in' AND MAX(r.check_out_date, ?4) > ?2))
+         ORDER BY r.check_in_date, r.id",
+    )?;
+    let rows = stmt
+        .query_map(params![room_id, dates::format(start), end.map(dates::format), dates::format(today + chrono::Duration::days(1))], |r| {
+            Ok(ConflictInfo {
+                reservation_id: r.get(0)?,
+                code: r.get(1)?,
+                guest_name: r.get(2)?,
+                status: r.get(3)?,
+                check_in_date: r.get(4)?,
+                check_out_date: r.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// O quarto tem hóspede em casa (reserva hospedada que ainda não fez o check-out)?
+pub fn has_in_house(conn: &Connection, room_id: i64) -> Result<bool, AppError> {
+    let n: i64 = conn.query_row("SELECT count(*) FROM reservations WHERE room_id = ?1 AND status = 'checked_in'", [room_id], |r| r.get(0))?;
+    Ok(n > 0)
+}
+
+/// Próxima chegada prevista (reserva pendente ou confirmada) no quarto; chegadas atrasadas contam.
+pub fn next_arrival(conn: &Connection, room_id: i64) -> Result<Option<NaiveDateTime>, AppError> {
+    let row: Option<(String, String)> = conn
+        .query_row(
+            "SELECT check_in_date, expected_check_in_time FROM reservations
+             WHERE room_id = ?1 AND status IN ('pending', 'confirmed')
+             ORDER BY check_in_date, expected_check_in_time LIMIT 1",
+            [room_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let Some((date, time)) = row else {
+        return Ok(None);
+    };
+    match (dates::parse(&date), NaiveTime::parse_from_str(&time, "%H:%M")) {
+        (Some(d), Ok(t)) => Ok(Some(d.and_time(t))),
+        _ => Err(AppError::Database("reserva com data ou horário de chegada inválidos".into())),
+    }
 }
 
 /// Reservas pendentes/confirmadas cuja chegada é hoje ou já passou, ou cujo sinal está vencido.
@@ -355,6 +446,18 @@ pub fn review_candidates(conn: &Connection, today: NaiveDate) -> Result<Vec<Rese
            AND (r.check_in_date <= :today
                 OR (r.deposit_paid_cents < r.deposit_expected_cents AND r.deposit_due_date < :today))
          ORDER BY r.check_in_date, r.id"
+    ))?;
+    let rows = stmt
+        .query_map(named_params! { ":today": dates::format(today) }, map_reservation)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Reservas pendentes/confirmadas cuja chegada é hoje ou já passou (a fila de chegadas da Recepção).
+pub fn pending_arrivals(conn: &Connection, today: NaiveDate) -> Result<Vec<Reservation>, AppError> {
+    let mut stmt = conn.prepare(&format!(
+        "{SELECT} WHERE r.status IN ('pending', 'confirmed') AND r.check_in_date <= :today
+         ORDER BY r.check_in_date, r.expected_check_in_time, r.id"
     ))?;
     let rows = stmt
         .query_map(named_params! { ":today": dates::format(today) }, map_reservation)?
@@ -457,4 +560,14 @@ pub fn map_reservations(conn: &Connection, from: NaiveDate, to: NaiveDate) -> Re
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+/// Uma devolução de sinal numa reserva ainda aberta reduz o sinal considerado pago (teto, cancelamento e alertas).
+pub fn lower_deposit_paid(tx: &Transaction, reservation_id: i64, cents: i64, at: DateTime<Utc>) -> Result<(), AppError> {
+    tx.execute(
+        "UPDATE reservations SET deposit_paid_cents = MAX(0, deposit_paid_cents - ?1), version = version + 1, updated_at = ?2
+         WHERE id = ?3 AND status IN ('pending', 'confirmed')",
+        params![cents, stamp(at), reservation_id],
+    )?;
+    Ok(())
 }

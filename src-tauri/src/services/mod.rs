@@ -1,12 +1,33 @@
+pub mod alert_service;
+pub mod backup_service;
+pub(crate) mod alert_detectors;
 pub mod auth_service;
+pub mod block_service;
 pub mod catalog_service;
+pub mod closing_service;
+pub mod document_service;
+pub mod cleaning_service;
 pub mod guest_service;
+pub mod health_service;
+pub mod item_service;
+pub mod maintenance_service;
+pub mod management_service;
+pub mod payable_service;
+pub mod payment_service;
 pub mod policy_service;
 pub mod pousada_service;
 pub mod rate_service;
+pub mod recovery_service;
+pub mod refund_service;
+pub mod report_service;
+pub mod reception_service;
 pub mod reservation_service;
 pub mod room_map_service;
+pub mod room_status_service;
+pub(crate) mod room_rules;
+pub mod search_service;
 pub mod settings_service;
+pub mod stay_service;
 pub mod user_service;
 
 #[cfg(test)]
@@ -19,6 +40,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::auth::session::{Clock, SessionManager, SystemClock};
+use crate::domain::secret::SecretKey;
 use crate::error::AppError;
 use crate::repositories::settings_repo;
 
@@ -40,6 +62,19 @@ impl UtcClock for SystemUtc {
     }
 }
 
+/// Espaço livre em disco, injetável nos testes.
+pub trait DiskProbe: Send + Sync {
+    fn free_bytes(&self, path: &std::path::Path) -> Result<u64, AppError>;
+}
+
+pub struct SystemDisk;
+
+impl DiskProbe for SystemDisk {
+    fn free_bytes(&self, path: &std::path::Path) -> Result<u64, AppError> {
+        fs4::available_space(path).map_err(|_| AppError::Validation("Não foi possível consultar o espaço em disco.".into()))
+    }
+}
+
 /// Dependências compartilhadas pelos serviços.
 #[derive(Clone)]
 pub struct Ctx {
@@ -47,6 +82,15 @@ pub struct Ctx {
     pub sessions: Arc<SessionManager>,
     pub clock: Arc<dyn Clock>,
     pub utc: Arc<dyn UtcClock>,
+    /// Chave do banco em memória (backup e chave de recuperação); zerada ao ser solta.
+    pub key: Arc<SecretKey>,
+    pub disk: Arc<dyn DiskProbe>,
+    /// Pasta do banco (espaço em disco e backups padrão).
+    pub data_dir: Arc<std::path::PathBuf>,
+    /// Liga os alertas de backup, disco e atualização (desligado nos testes que não tratam disso).
+    pub system_alerts: bool,
+    /// Logs técnicos (separados da auditoria).
+    pub log: Arc<crate::logging::Logger>,
 }
 
 impl Ctx {
@@ -70,8 +114,9 @@ impl Ctx {
         (self.utc.now_utc() + chrono::Duration::seconds(offset)).date_naive()
     }
 
-    pub fn production(conn: Connection) -> Result<Self, AppError> {
-        let idle_minutes = settings_repo::get_u32(&conn, "idle_lock_minutes")?;
+    pub fn production(conn: Connection, key: SecretKey, data_dir: std::path::PathBuf) -> Result<Self, AppError> {
+        // Antes das migrações a tabela pode não existir (banco novo): usa o padrão e a abertura relê depois de migrar.
+        let idle_minutes = settings_repo::get_u32(&conn, "idle_lock_minutes").unwrap_or(10);
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
             sessions: Arc::new(SessionManager::new(Duration::from_secs(
@@ -79,6 +124,11 @@ impl Ctx {
             ))),
             clock: Arc::new(SystemClock),
             utc: Arc::new(SystemUtc),
+            key: Arc::new(key),
+            disk: Arc::new(SystemDisk),
+            log: Arc::new(crate::logging::Logger::new(data_dir.join("logs"))),
+            data_dir: Arc::new(data_dir),
+            system_alerts: true,
         })
     }
 }

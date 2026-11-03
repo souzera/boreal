@@ -2,6 +2,7 @@ use chrono::{NaiveDate, NaiveTime};
 use serde_json::json;
 
 use super::rate_service::quote_in;
+use super::room_rules;
 use super::Ctx;
 use crate::audit::{self, AuditEntry};
 use crate::auth::permissions::Permission;
@@ -16,32 +17,32 @@ use crate::models::reservation::{
     ReservationQuery, ReviewItem,
 };
 use crate::repositories::reservation_repo::{self, ChangedFields, NewRow};
-use crate::repositories::{catalog_repo, guest_repo, policy_repo, sequence_repo, settings_repo};
+use crate::repositories::{block_repo, catalog_repo, guest_repo, payment_repo, policy_repo, sequence_repo, settings_repo};
 
 fn invalid(message: impl Into<String>) -> AppError {
     AppError::Validation(message.into())
 }
 
 /// `HH:MM` estrito (cinco caracteres).
-fn parse_time(text: &str) -> Option<NaiveTime> {
+pub(crate) fn parse_time(text: &str) -> Option<NaiveTime> {
     if text.len() != 5 {
         return None;
     }
     NaiveTime::parse_from_str(text, "%H:%M").ok()
 }
 
-fn parse_date(text: &str, label: &str) -> Result<NaiveDate, AppError> {
+pub(crate) fn parse_date(text: &str, label: &str) -> Result<NaiveDate, AppError> {
     dates::parse(text).ok_or_else(|| invalid(format!("{label} inválida. Use uma data válida.")))
 }
 
-fn br(date: &str) -> String {
+pub(crate) fn br(date: &str) -> String {
     match dates::parse(date) {
         Some(d) => d.format("%d/%m/%Y").to_string(),
         None => date.to_string(),
     }
 }
 
-fn conflict_message(conflicts: &[ConflictInfo]) -> String {
+pub(crate) fn conflict_message(conflicts: &[ConflictInfo]) -> String {
     let list = conflicts
         .iter()
         .map(|c| format!("{} ({}, {} a {})", c.code, c.guest_name, br(&c.check_in_date), br(&c.check_out_date)))
@@ -51,7 +52,7 @@ fn conflict_message(conflicts: &[ConflictInfo]) -> String {
 }
 
 /// Horários previstos (os informados ou os padrão das configurações).
-fn resolve_times(
+pub(crate) fn resolve_times(
     in_time: Option<&str>,
     out_time: Option<&str>,
     default_in: &str,
@@ -131,9 +132,10 @@ impl ReservationService {
             )));
         }
 
-        let existing = reservation_repo::blocking(&tx, room.id, check_in, check_out)?;
+        room_rules::ensure_no_blocks(&tx, room.id, check_in, Some(check_out), false)?;
+        let existing = reservation_repo::blocking(&tx, room.id, check_in, check_out, self.ctx.local_now())?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
-        let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, settings.cleaning_interval_minutes, None);
+        let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, room_rules::cleaning_minutes(&tx, room.id, &settings)?, None);
         if !clashes.is_empty() {
             let infos: Vec<ConflictInfo> =
                 existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
@@ -169,6 +171,8 @@ impl ReservationService {
                 deposit_due_date: &due_s,
                 notes: &notes,
                 created_by: actor.user_id,
+                status: "pending",
+                origin: "booking",
             },
             self.ctx.utc.now_utc(),
         )?;
@@ -213,6 +217,8 @@ impl ReservationService {
         Ok(ReservationDetail {
             nights: reservation_repo::nights(&conn, id)?,
             history: reservation_repo::changes(&conn, id)?,
+            stay_id: reservation_repo::stay_id(&conn, id)?,
+            payments: payment_repo::summaries_for_reservation(&conn, id)?,
             reservation,
         })
     }
@@ -249,7 +255,7 @@ impl ReservationService {
         let settings = settings_repo::load(&conn)?;
         let (in_time, out_time) =
             resolve_times(None, None, &settings.default_check_in_time, &settings.default_check_out_time)?;
-        let existing = reservation_repo::blocking(&conn, room_id, check_in, check_out)?;
+        let existing = reservation_repo::blocking(&conn, room_id, check_in, check_out, self.ctx.local_now())?;
         let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
         let clashes = find_conflicts(
             &bookings,
@@ -257,12 +263,25 @@ impl ReservationService {
             in_time,
             check_out,
             out_time,
-            settings.cleaning_interval_minutes,
+            room_rules::cleaning_minutes(&conn, room_id, &settings)?,
             ignore_reservation_id,
         );
         let conflicts: Vec<ConflictInfo> =
             existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
-        Ok(AvailabilityResult { available: conflicts.is_empty(), conflicts })
+        let blocks = block_repo::overlapping(&conn, room_id, check_in, Some(check_out), false)?;
+        let not_ready = if check_in <= self.ctx.today() {
+            let offset = i64::from(self.ctx.utc.local_offset().local_minus_utc());
+            let minutes = room_rules::cleaning_minutes(&conn, room_id, &settings)?;
+            let code = catalog_repo::find_room(&conn, room_id)?.map(|r| r.code).unwrap_or_default();
+            match room_rules::ensure_room_clean(&conn, room_id, &code, minutes, self.ctx.local_now(), offset) {
+                Err(AppError::Validation(message)) => Some(message),
+                Err(other) => return Err(other),
+                Ok(()) => None,
+            }
+        } else {
+            None
+        };
+        Ok(AvailabilityResult { available: conflicts.is_empty() && blocks.is_empty(), conflicts, blocks, not_ready })
     }
 }
 
@@ -325,6 +344,7 @@ impl ChangePlan {
 fn plan_change(
     conn: &rusqlite::Connection,
     today: NaiveDate,
+    now: chrono::NaiveDateTime,
     id: i64,
     request: &ChangeRequest,
 ) -> Result<ChangePlan, AppError> {
@@ -401,11 +421,16 @@ fn plan_change(
         &settings.default_check_in_time,
         &settings.default_check_out_time,
     )?;
-    let existing = reservation_repo::blocking(conn, new_room.id, check_in, check_out)?;
+    let existing = reservation_repo::blocking(conn, new_room.id, check_in, check_out, now)?;
     let bookings: Vec<_> = existing.iter().map(|(b, _)| b.clone()).collect();
-    let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, settings.cleaning_interval_minutes, Some(id));
+    let clashes = find_conflicts(&bookings, check_in, in_time, check_out, out_time, room_rules::cleaning_minutes(conn, new_room.id, &settings)?, Some(id));
     let conflicts: Vec<ConflictInfo> =
         existing.into_iter().filter(|(b, _)| clashes.contains(&b.id)).map(|(_, info)| info).collect();
+
+    let blocks = block_repo::overlapping(conn, new_room.id, check_in, Some(check_out), false)?;
+    if !blocks.is_empty() {
+        problems.push(room_rules::blocks_message(&blocks));
+    }
 
     Ok(ChangePlan {
         old_room_code: old_room.code.clone(),
@@ -430,7 +455,7 @@ impl ReservationService {
         let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
         require(&actor, Permission::ChangeReservation)?;
         let conn = self.ctx.conn()?;
-        let plan = plan_change(&conn, self.ctx.today(), id, &request)?;
+        let plan = plan_change(&conn, self.ctx.today(), self.ctx.local_now(), id, &request)?;
         Ok(ChangePreview {
             feasible: plan.feasible(),
             fingerprint: plan.fingerprint(),
@@ -465,7 +490,7 @@ impl ReservationService {
 
         let mut conn = self.ctx.conn()?;
         let tx = conn.transaction()?;
-        let plan = plan_change(&tx, self.ctx.today(), id, &request)?;
+        let plan = plan_change(&tx, self.ctx.today(), self.ctx.local_now(), id, &request)?;
         if plan.reservation.version != expected_version {
             return Err(AppError::Conflict);
         }
@@ -602,7 +627,7 @@ impl ReservationService {
         let refund = money::sub(reservation.deposit_paid_cents, retained)?;
 
         let at = self.ctx.utc.now_utc();
-        reservation_repo::set_closed(&tx, id, "cancelled", retained, expected_version, at)?;
+        reservation_repo::set_closed(&tx, id, "cancelled", retained, refund, expected_version, at)?;
         let before = json!({ "status": reservation.status, "deposit_paid_cents": reservation.deposit_paid_cents });
         let after = json!({
             "status": "cancelled", "refund_cents": refund, "retained_cents": retained,
@@ -653,7 +678,7 @@ impl ReservationService {
         }
 
         let at = self.ctx.utc.now_utc();
-        reservation_repo::set_closed(&tx, id, "no_show", reservation.deposit_paid_cents, expected_version, at)?;
+        reservation_repo::set_closed(&tx, id, "no_show", reservation.deposit_paid_cents, 0, expected_version, at)?;
         let before = json!({ "status": reservation.status });
         let after = json!({ "status": "no_show", "retained_cents": reservation.deposit_paid_cents });
         reservation_repo::insert_change(&tx, id, at, actor.user_id, "no_show", &before.to_string(), &after.to_string(), None, None, None)?;
@@ -812,48 +837,6 @@ impl ReservationService {
         Ok(())
     }
 
-    /// Registra um valor de sinal recebido. (Provisório até o módulo de recebimentos, Marco 5.)
-    /// Ao atingir o sinal esperado, a reserva pendente passa a confirmada.
-    pub fn record_deposit(&self, token: &str, id: i64, amount_cents: i64, expected_version: i64) -> Result<(), AppError> {
-        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
-        if amount_cents <= 0 {
-            return Err(invalid("Informe um valor maior que zero."));
-        }
-        let mut conn = self.ctx.conn()?;
-        let tx = conn.transaction()?;
-        let reservation = self.load_open(&tx, id, expected_version, "registro de sinal")?;
-        let paid = money::add(reservation.deposit_paid_cents, amount_cents)?;
-        if paid > reservation.agreed_total_cents {
-            return Err(invalid("O sinal recebido não pode passar do valor total da reserva."));
-        }
-        let new_status = if reservation.status == "pending" && paid >= reservation.deposit_expected_cents {
-            "confirmed"
-        } else {
-            reservation.status.as_str()
-        };
-        let at = self.ctx.utc.now_utc();
-        reservation_repo::update_payment_state(&tx, id, paid, new_status, expected_version, at)?;
-        let before = json!({ "deposit_paid_cents": reservation.deposit_paid_cents, "status": reservation.status });
-        let after = json!({ "deposit_paid_cents": paid, "status": new_status, "received_cents": amount_cents });
-        reservation_repo::insert_change(&tx, id, at, actor.user_id, "deposit", &before.to_string(), &after.to_string(), None, None, None)?;
-        audit::record(
-            &tx,
-            &AuditEntry {
-                at,
-                user_id: Some(actor.user_id),
-                module: "reservations",
-                operation: "record_deposit",
-                entity: "reservation",
-                entity_id: Some(id),
-                before: Some(before),
-                after: Some(after),
-                justification: None,
-            },
-        )?;
-        tx.commit()?;
-        Ok(())
-    }
-
     pub fn set_notes(&self, token: &str, id: i64, notes: &str, expected_version: i64) -> Result<(), AppError> {
         let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
         let notes = notes.trim();
@@ -925,7 +908,7 @@ mod tests {
     use crate::models::rate::NewRateRule;
     use crate::models::reservation::{CancellationOverride, ChangeRequest, DiscountInput, NewReservation, ReservationQuery};
     use crate::services::guest_service::CreateGuestOutcome;
-    use crate::services::test_support::{admin_token, harness, recepcao_token, Harness};
+    use crate::services::test_support::{admin_token, deposit, harness, recepcao_token, Harness};
     use std::time::Duration;
 
     // "Hoje" nos testes é 21/10/2026 (relógio injetado, fuso -03:00).
@@ -1032,6 +1015,17 @@ mod tests {
     }
 
     #[test]
+    fn a_booked_reservation_has_origin_booking_and_no_stay() {
+        let w = world();
+        let created = w.h.reservations.create(&w.admin, booking(&w, "2026-10-25", "2026-10-28")).unwrap();
+
+        let detail = w.h.reservations.get(&w.admin, created.id).unwrap();
+
+        assert_eq!(detail.reservation.origin, "booking");
+        assert_eq!(detail.stay_id, None);
+    }
+
+    #[test]
     fn a_second_reservation_for_the_same_room_and_period_is_refused() {
         let w = world();
         w.h.reservations.create(&w.admin, booking(&w, "2026-10-25", "2026-10-28")).unwrap();
@@ -1085,6 +1079,24 @@ mod tests {
         w.h.reservations.create(&w.admin, booking(&w, "2026-11-03", "2026-11-05")).unwrap();
         too_early.expected_check_in_time = Some("12:30".into());
         assert!(matches!(w.h.reservations.create(&w.admin, too_early), Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn room_interval_override_changes_the_same_day_turnover() {
+        let w = world();
+        w.h.reservations.create(&w.admin, booking(&w, "2026-10-25", "2026-10-27")).unwrap(); // sai 12:00
+        w.h.catalog.set_room_cleaning_interval(&w.admin, w.room, Some(180), 1).unwrap();
+
+        // Entrada 14:00 = 120 min depois da saída: cabe no padrão (60), não em 180.
+        assert!(matches!(
+            w.h.reservations.create(&w.admin, booking(&w, "2026-10-27", "2026-10-29")),
+            Err(AppError::Validation(_))
+        ));
+        let free = w.h.reservations.check_availability(&w.admin, w.room, "2026-10-27", "2026-10-29", None).unwrap();
+        assert!(!free.available);
+
+        w.h.catalog.set_room_cleaning_interval(&w.admin, w.room, None, 2).unwrap();
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-27", "2026-10-29")).is_ok());
     }
 
     #[test]
@@ -1266,6 +1278,90 @@ mod tests {
         assert_eq!(busy.conflicts[0].guest_name, "Ana Souza");
         assert!(free.available && free.conflicts.is_empty());
         assert!(itself.available);
+    }
+
+    // ---- bloqueios (Marco 4) ----
+
+    fn block(w: &World, from: &str, to: Option<&str>) -> i64 {
+        w.h.blocks
+            .create(
+                &w.admin,
+                crate::models::block::NewBlockInput {
+                    room_id: w.room,
+                    start_date: from.into(),
+                    end_date: to.map(String::from),
+                    reason: "Pintura".into(),
+                },
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn reservation_over_a_block_is_refused() {
+        let w = world();
+        block(&w, "2026-10-25", Some("2026-10-28"));
+
+        let result = w.h.reservations.create(&w.admin, booking(&w, "2026-10-24", "2026-10-26"));
+
+        match result {
+            Err(AppError::Validation(m)) => assert!(m.contains("bloqueado") && m.contains("Pintura"), "{m}"),
+            other => panic!("esperava recusa: {other:?}"),
+        }
+        assert_eq!(counts(&w).0, 0);
+    }
+
+    #[test]
+    fn reservation_ending_the_day_the_block_starts_is_allowed() {
+        let w = world();
+        block(&w, "2026-10-25", Some("2026-10-28"));
+
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-23", "2026-10-25")).is_ok());
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-28", "2026-10-29")).is_ok());
+    }
+
+    #[test]
+    fn open_ended_block_blocks_every_future_date() {
+        let w = world();
+        block(&w, "2026-11-01", None);
+
+        let result = w.h.reservations.create(&w.admin, booking(&w, "2027-06-01", "2027-06-03"));
+
+        assert!(matches!(result, Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn released_block_stops_refusing_reservations() {
+        let w = world();
+        let id = block(&w, "2026-10-25", Some("2026-10-28"));
+        w.h.blocks.release(&w.admin, id, "Obra terminou".into(), 1).unwrap();
+
+        assert!(w.h.reservations.create(&w.admin, booking(&w, "2026-10-25", "2026-10-27")).is_ok());
+    }
+
+    #[test]
+    fn change_into_a_blocked_period_is_unfeasible() {
+        let w = world();
+        let id = reservation(&w, "2026-10-22", "2026-10-24");
+        block(&w, "2026-10-26", Some("2026-10-29"));
+
+        let preview = w.h.reservations.preview_change(&w.admin, id, change(None, Some("2026-10-27"), Some("2026-10-28"))).unwrap();
+
+        assert!(!preview.feasible);
+        assert!(preview.problems.iter().any(|p| p.contains("bloqueado")), "{:?}", preview.problems);
+    }
+
+    #[test]
+    fn check_availability_reports_the_block() {
+        let w = world();
+        block(&w, "2026-10-25", Some("2026-10-28"));
+
+        let busy = w.h.reservations.check_availability(&w.admin, w.room, "2026-10-27", "2026-10-30", None).unwrap();
+        let free = w.h.reservations.check_availability(&w.admin, w.room, "2026-10-28", "2026-10-30", None).unwrap();
+
+        assert!(!busy.available);
+        assert_eq!(busy.blocks.len(), 1);
+        assert_eq!(busy.blocks[0].reason, "Pintura");
+        assert!(free.available && free.blocks.is_empty());
     }
 
     // ---- alteração de datas ou quarto ----
@@ -1823,11 +1919,11 @@ mod tests {
         let w = world();
         let id = reservation(&w, "2026-10-25", "2026-10-28"); // sinal esperado R$ 90,00
 
-        w.h.reservations.record_deposit(&w.admin, id, 4_000, 1).unwrap();
+        deposit(&w.h, &w.admin, id, 4_000, 1).unwrap();
         let partial = w.h.reservations.get(&w.admin, id).unwrap().reservation;
         assert_eq!((partial.status.as_str(), partial.deposit_paid_cents), ("pending", 4_000));
 
-        w.h.reservations.record_deposit(&w.admin, id, 5_000, 2).unwrap();
+        deposit(&w.h, &w.admin, id, 5_000, 2).unwrap();
         let full = w.h.reservations.get(&w.admin, id).unwrap().reservation;
         assert_eq!((full.status.as_str(), full.deposit_paid_cents), ("confirmed", 9_000));
         assert!(!full.deposit_overdue);
@@ -1838,11 +1934,11 @@ mod tests {
         let w = world();
         let id = reservation(&w, "2026-10-25", "2026-10-28"); // total R$ 300,00
 
-        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 0, 1), Err(AppError::Validation(_))));
-        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, -100, 1), Err(AppError::Validation(_))));
-        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 30_001, 1), Err(AppError::Validation(_))));
-        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 1_000, 9), Err(AppError::Conflict)));
+        assert!(matches!(deposit(&w.h, &w.admin, id, 0, 1), Err(AppError::Validation(_))));
+        assert!(matches!(deposit(&w.h, &w.admin, id, -100, 1), Err(AppError::Validation(_))));
+        assert!(matches!(deposit(&w.h, &w.admin, id, 30_001, 1), Err(AppError::Validation(_))));
+        assert!(matches!(deposit(&w.h, &w.admin, id, 1_000, 9), Err(AppError::Conflict)));
         set_status(&w, id, "cancelled");
-        assert!(matches!(w.h.reservations.record_deposit(&w.admin, id, 1_000, 1), Err(AppError::Validation(_))));
+        assert!(matches!(deposit(&w.h, &w.admin, id, 1_000, 1), Err(AppError::Validation(_))));
     }
 }

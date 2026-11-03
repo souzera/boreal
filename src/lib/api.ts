@@ -8,6 +8,8 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public until?: string,
+    /** Dados extras do erro (por exemplo, o recebimento parecido em `duplicate_payment`). */
+    public details?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -17,8 +19,8 @@ export class ApiError extends Error {
 function toApiError(e: unknown): ApiError {
   if (e instanceof ApiError) return e;
   if (e && typeof e === "object" && "code" in e && "message" in e) {
-    const { code, message, until } = e as { code: string; message: string; until?: string };
-    return new ApiError(code, message, until);
+    const { code, message, until, details } = e as { code: string; message: string; until?: string; details?: unknown };
+    return new ApiError(code, message, until, details);
   }
   return new ApiError("unknown", "Ocorreu um erro inesperado. Tente novamente.");
 }
@@ -45,6 +47,8 @@ export interface AppInfo {
   app_version: string;
   schema_version: number;
   last_migration_at: string | null;
+  /** Instante UTC do último backup válido. */
+  last_valid_backup_at?: string | null;
 }
 
 export const startupStatus = () => call<null>("startup_status");
@@ -75,6 +79,7 @@ export interface AppSettings {
   deposit_percent_bp: number;
   deposit_due_days_after_booking: number;
   deposit_due_days_before_arrival: number;
+  late_checkout_fee_bp: number;
 }
 
 export interface SettingsView {
@@ -193,6 +198,7 @@ export interface Room {
   description: string;
   notes: string;
   active: boolean;
+  cleaning_interval_minutes: number | null;
   version: number;
 }
 
@@ -222,6 +228,28 @@ export const updateCategory = (token: string, id: number, input: CategoryInput, 
   call<null>("update_category", { token, id, input, expectedVersion });
 export const setCategoryActive = (token: string, id: number, active: boolean) =>
   call<null>("set_category_active", { token, id, active });
+// ---- Itens e serviços (catálogo de lançamentos) ----
+
+export interface Item {
+  id: number;
+  name: string;
+  default_price_cents: number;
+  active: boolean;
+  version: number;
+}
+
+export interface ItemInput {
+  name: string;
+  default_price_cents: number;
+}
+
+export const listItems = (token: string, onlyActive: boolean) => call<Item[]>("list_items", { token, onlyActive });
+export const createItem = (token: string, input: ItemInput) => call<number>("create_item", { token, input });
+export const updateItem = (token: string, id: number, input: ItemInput, expectedVersion: number) =>
+  call<null>("update_item", { token, id, input, expectedVersion });
+export const setItemActive = (token: string, id: number, active: boolean, expectedVersion: number) =>
+  call<null>("set_item_active", { token, id, active, expectedVersion });
+
 export const listRooms = (token: string, query: RoomQuery) => call<Page<Room>>("list_rooms", { token, query });
 export const createRoom = (token: string, input: RoomInput) => call<number>("create_room", { token, input });
 export const updateRoom = (token: string, id: number, input: RoomInput, expectedVersion: number) =>
@@ -392,8 +420,12 @@ export interface Reservation {
   notes: string;
   cancelled_at: string | null;
   cancellation_fee_cents: number | null;
+  /** Devolução do cancelamento ainda não registrada (zero fora de reservas canceladas). */
+  refund_due_cents: number;
   version: number;
   created_at: string;
+  /** `booking` (reserva) ou `walk_in` (hospedagem sem reserva prévia). */
+  origin: "booking" | "walk_in";
 }
 
 export interface ReservationNight {
@@ -419,6 +451,10 @@ export interface ReservationDetail {
   reservation: Reservation;
   nights: ReservationNight[];
   history: ReservationChange[];
+  /** Hospedagem aberta a partir desta reserva, se houver. */
+  stay_id: number | null;
+  /** Recebimentos da reserva (sinal e conta), com o que ainda pode ser devolvido. */
+  payments: PaymentSummary[];
 }
 
 export interface ReservationQuery {
@@ -465,6 +501,9 @@ export interface ConflictInfo {
 export interface AvailabilityResult {
   available: boolean;
   conflicts: ConflictInfo[];
+  blocks: RoomBlock[];
+  /** Motivo de o quarto não estar pronto para hospedar hoje (limpeza pendente ou intervalo). */
+  not_ready: string | null;
 }
 
 export interface ChangeRequest {
@@ -569,8 +608,6 @@ export const applyReservationDiscount = (token: string, id: number, input: Disco
   call<null>("apply_reservation_discount", { token, id, input, expectedVersion });
 export const confirmReservation = (token: string, id: number, expectedVersion: number) =>
   call<null>("confirm_reservation", { token, id, expectedVersion });
-export const recordReservationDeposit = (token: string, id: number, amountCents: number, expectedVersion: number) =>
-  call<null>("record_reservation_deposit", { token, id, amountCents, expectedVersion });
 export const setReservationNotes = (token: string, id: number, notes: string, expectedVersion: number) =>
   call<null>("set_reservation_notes", { token, id, notes, expectedVersion });
 
@@ -585,6 +622,9 @@ export interface RoomMapRoom {
   code: string;
   category_name: string;
   active: boolean;
+  state: RoomStateKey | null;
+  state_label: string | null;
+  free_at: string | null;
 }
 
 export interface RoomMapCell {
@@ -606,3 +646,978 @@ export interface RoomMap {
 }
 
 export const roomMap = (token: string, from: string, days: number) => call<RoomMap>("room_map", { token, from, days });
+
+// ---- Hospedagens e conta do hóspede ----
+
+export type StayStatus = "in_house" | "checked_out";
+export type ChargeKind = "night" | "consumption" | "extra" | "discount" | "adjustment" | "late_fee" | "reversal";
+/** `unspecified` só existe em dados anteriores ao módulo financeiro e nunca é oferecido. */
+export type PaymentMethod = "cash" | "pix" | "debit" | "credit" | "transfer" | "unspecified";
+export type SelectableMethod = Exclude<PaymentMethod, "unspecified">;
+
+export interface ComponentInput {
+  method: SelectableMethod;
+  amount_cents: number;
+}
+
+export interface ComponentLine {
+  method: PaymentMethod;
+  amount_cents: number;
+}
+
+export interface Stay {
+  id: number;
+  code: string;
+  reservation_id: number;
+  status: StayStatus;
+  room_id: number;
+  room_code: string;
+  guest_id: number;
+  guest_name: string;
+  check_in_date: string;
+  check_out_date: string;
+  expected_check_in_time: string;
+  expected_check_out_time: string;
+  checked_in_at: string;
+  checked_out_at: string | null;
+  early_check_in: boolean;
+  late_tolerance_minutes: number | null;
+  version: number;
+}
+
+export interface Occupant {
+  id: number;
+  full_name: string;
+  guest_id: number | null;
+  document: string;
+  is_holder: boolean;
+}
+
+export interface ChargeLine {
+  id: number;
+  kind: ChargeKind;
+  description: string;
+  amount_cents: number;
+  night_date: string | null;
+  justification: string | null;
+  reverses_charge_id: number | null;
+  reversed: boolean;
+  created_by_name: string;
+  created_at: string;
+}
+
+export interface PaymentLine {
+  id: number;
+  code: string;
+  amount_cents: number;
+  components: ComponentLine[];
+  received_at: string;
+  received_by_name: string;
+  /** Foi gravado depois de liberado como possível duplicado. */
+  released_duplicate: boolean;
+  refunded_cents: number;
+  /** Quanto deste recebimento ainda pode ser devolvido. */
+  refundable_cents: number;
+}
+
+export interface PaymentSummary {
+  id: number;
+  code: string;
+  amount_cents: number;
+  refunded_cents: number;
+  refundable_cents: number;
+  components: ComponentLine[];
+  received_at: string;
+  stay_id: number | null;
+}
+
+export interface RefundLine {
+  id: number;
+  code: string;
+  payment_code: string;
+  amount_cents: number;
+  components: ComponentLine[];
+  reason: string;
+  refunded_at: string;
+}
+
+export interface StayAccount {
+  charges: ChargeLine[];
+  payments: PaymentLine[];
+  refunds: RefundLine[];
+  charges_total_cents: number;
+  received_cents: number;
+  refunded_cents: number;
+  balance_cents: number;
+}
+
+export interface StayDetail {
+  stay: Stay;
+  occupants: Occupant[];
+  account: StayAccount;
+}
+
+export interface DepartureRisk {
+  next_reservation_id: number;
+  next_code: string;
+  next_start: string;
+  ready_at: string;
+  overrun_minutes: number;
+}
+
+export interface StaySummary {
+  stay: Stay;
+  balance_cents: number;
+  minutes_late: number;
+  risk: DepartureRisk | null;
+}
+
+export interface StayQuery {
+  text?: string;
+  status?: StayStatus;
+  page: number;
+  page_size: number;
+}
+
+export interface OccupantInput {
+  full_name: string;
+  guest_id: number | null;
+  document: string;
+}
+
+export interface CheckInInput {
+  reservation_id: number;
+  expected_version: number;
+  occupants: OccupantInput[];
+  exceed_capacity: boolean;
+}
+
+export interface WalkInInput {
+  room_id: number;
+  guest_id: number;
+  check_out_date: string;
+  expected_check_out_time: string | null;
+  occupants: OccupantInput[];
+  exceed_capacity: boolean;
+}
+
+export interface ChargeInput {
+  kind: "consumption" | "extra";
+  description: string;
+  amount_cents: number;
+  item_id: number | null;
+}
+
+export interface AdjustmentInput {
+  description: string;
+  amount_cents: number;
+  justification: string;
+}
+
+export interface PaymentInput {
+  components: ComponentInput[];
+  note: string;
+  /** Liberação de um possível duplicado; exige a permissão `release_duplicate_payment`. */
+  duplicate_release?: { justification: string };
+}
+
+export interface PaymentReceipt {
+  id: number;
+  code: string;
+  total_cents: number;
+}
+
+/** O recebimento parecido que bloqueou a gravação (`details` do erro `duplicate_payment`). */
+export interface DuplicateInfo {
+  code: string;
+  received_at: string;
+  total_cents: number;
+  methods: PaymentMethod[];
+}
+
+export interface LateInfo {
+  minutes_late: number;
+  tolerance_minutes: number;
+  applies: boolean;
+  fee_cents: number;
+}
+
+export interface CheckoutPreview {
+  stay: Stay;
+  account: StayAccount;
+  late: LateInfo;
+  balance_cents: number;
+  balance_with_late_fee_cents: number;
+  risk: DepartureRisk | null;
+}
+
+export type LateFeeChoice = "not_applicable" | "charge" | { waive: { justification: string } };
+
+export interface CheckoutInput {
+  stay_id: number;
+  expected_version: number;
+  late_fee: LateFeeChoice;
+  balance_exception: { justification: string } | null;
+}
+
+export const checkInReservation = (token: string, input: CheckInInput) =>
+  call<number>("check_in_reservation", { token, input });
+export const walkIn = (token: string, input: WalkInInput) => call<number>("walk_in", { token, input });
+export const getStay = (token: string, id: number) => call<StayDetail>("get_stay", { token, id });
+export const listStays = (token: string, query: StayQuery) => call<Page<StaySummary>>("list_stays", { token, query });
+export const addStayCharge = (token: string, stayId: number, input: ChargeInput) =>
+  call<number>("add_stay_charge", { token, stayId, input });
+export const addStayAdjustment = (token: string, stayId: number, input: AdjustmentInput) =>
+  call<number>("add_stay_adjustment", { token, stayId, input });
+export const reverseStayCharge = (
+  token: string,
+  stayId: number,
+  chargeId: number,
+  justification: string,
+  replacement: ChargeInput | null,
+) => call<null>("reverse_stay_charge", { token, stayId, chargeId, justification, replacement });
+export const recordStayPayment = (token: string, stayId: number, input: PaymentInput) =>
+  call<PaymentReceipt>("record_stay_payment", { token, stayId, input });
+export const recordReservationPayment = (token: string, reservationId: number, expectedVersion: number, input: PaymentInput) =>
+  call<PaymentReceipt>("record_reservation_payment", { token, reservationId, expectedVersion, input });
+
+// ---- Devoluções ----
+
+export interface RefundInput {
+  payment_id: number;
+  components: ComponentInput[];
+  reason: string;
+}
+
+export const recordRefund = (token: string, input: RefundInput) => call<PaymentReceipt>("record_refund", { token, input });
+
+// ---- Contas a pagar ----
+
+export type PayableStatus = "pending" | "partial" | "paid" | "overdue";
+
+export interface ExpenseCategory {
+  id: number;
+  name: string;
+  active: boolean;
+  version: number;
+}
+
+export interface NewPayable {
+  supplier: string;
+  description: string;
+  amount_cents: number;
+  competence_date: string;
+  due_date: string;
+  category_id: number;
+  notes: string;
+  /** Pagamento à vista: a conta já nasce paga com esta modalidade. */
+  paid_now?: { method: SelectableMethod } | null;
+}
+
+export interface PayInput {
+  amount_cents: number;
+  method: SelectableMethod;
+  note: string;
+}
+
+export interface PayableQuery {
+  status?: PayableStatus;
+  category_id?: number;
+  due_from?: string;
+  due_to?: string;
+  page: number;
+  page_size: number;
+}
+
+export interface PayableView {
+  id: number;
+  code: string;
+  supplier: string;
+  description: string;
+  amount_cents: number;
+  paid_cents: number;
+  balance_cents: number;
+  status: PayableStatus;
+  status_label: string;
+  competence_date: string;
+  due_date: string;
+  category_id: number;
+  category_name: string;
+  notes: string;
+  version: number;
+  created_at: string;
+}
+
+export interface PayablePaymentLine {
+  id: number;
+  amount_cents: number;
+  method: SelectableMethod;
+  paid_at: string;
+  paid_by_name: string;
+  note: string;
+}
+
+export interface PayableDetail {
+  payable: PayableView;
+  payments: PayablePaymentLine[];
+}
+
+export interface SummaryQuery {
+  from: string;
+  to: string;
+  basis: "competence" | "payment";
+  category_id?: number;
+}
+
+export interface CategoryTotal {
+  category_id: number;
+  category_name: string;
+  total_cents: number;
+}
+
+export const listPayables = (token: string, query: PayableQuery) => call<Page<PayableView>>("list_payables", { token, query });
+export const getPayable = (token: string, id: number) => call<PayableDetail>("get_payable", { token, id });
+export const createPayable = (token: string, input: NewPayable) => call<number>("create_payable", { token, input });
+export const payPayable = (token: string, id: number, input: PayInput, expectedVersion: number) =>
+  call<number>("pay_payable", { token, id, input, expectedVersion });
+export const payablesSummary = (token: string, query: SummaryQuery) => call<CategoryTotal[]>("payables_summary", { token, query });
+export const listExpenseCategories = (token: string, onlyActive: boolean) =>
+  call<ExpenseCategory[]>("list_expense_categories", { token, onlyActive });
+export const createExpenseCategory = (token: string, name: string) => call<number>("create_expense_category", { token, name });
+export const renameExpenseCategory = (token: string, id: number, name: string, expectedVersion: number) =>
+  call<null>("rename_expense_category", { token, id, name, expectedVersion });
+export const setExpenseCategoryActive = (token: string, id: number, active: boolean, expectedVersion: number) =>
+  call<null>("set_expense_category_active", { token, id, active, expectedVersion });
+
+// ---- Fechamento de caixa ----
+
+export interface ExpectedLineView {
+  method: PaymentMethod;
+  label: string;
+  received_cents: number;
+  refunded_cents: number;
+  expected_cents: number;
+}
+
+export interface ClosingLineView {
+  method: PaymentMethod;
+  label: string;
+  expected_cents: number;
+  counted_cents: number;
+  difference_cents: number;
+  justification: string | null;
+}
+
+export interface ClosingView {
+  id: number;
+  closing_date: string;
+  closed_at: string;
+  closed_by_name: string;
+  lines: ClosingLineView[];
+}
+
+export interface ClosingPreview {
+  date: string;
+  closed: ClosingView | null;
+  expected: ExpectedLineView[];
+  /** Pagamentos a fornecedores no dia: informativo, não entra no esperado. */
+  supplier_payments_cents: number;
+  /** Com o dia fechado: quanto mudou por movimentos feitos depois do fechamento. */
+  after_closing_cents: number | null;
+}
+
+export interface CountedInput {
+  method: PaymentMethod;
+  counted_cents: number;
+  justification: string | null;
+}
+
+export interface CloseInput {
+  date: string;
+  counted: CountedInput[];
+}
+
+export const closingPreview = (token: string, date: string) => call<ClosingPreview>("closing_preview", { token, date });
+export const closeCash = (token: string, input: CloseInput) => call<ClosingView>("close_cash", { token, input });
+export const closingPendingDates = (token: string) => call<string[]>("closing_pending_dates", { token });
+export const previewStayCheckout = (token: string, stayId: number) =>
+  call<CheckoutPreview>("preview_stay_checkout", { token, stayId });
+export const checkoutStay = (token: string, input: CheckoutInput) => call<null>("checkout_stay", { token, input });
+export const setStayLateTolerance = (token: string, stayId: number, minutes: number | null, expectedVersion: number) =>
+  call<null>("set_stay_late_tolerance", { token, stayId, minutes, expectedVersion });
+
+// ---- Limpeza, bloqueios e manutenção ----
+
+export type RoomStateKey =
+  | "occupied"
+  | "awaiting_cleaning"
+  | "cleaning"
+  | "clean_waiting_interval"
+  | "available"
+  | "blocked";
+export type CleaningPriority = "urgent" | "high" | "normal" | "low";
+export type CleaningStatus = "awaiting" | "in_progress" | "done";
+
+export interface RoomStatus {
+  room_id: number;
+  code: string;
+  category_name: string;
+  state: RoomStateKey;
+  label_pt: string;
+  free_at: string | null;
+  cleaning_task_id: number | null;
+}
+
+export interface CleaningTask {
+  id: number;
+  room_id: number;
+  room_code: string;
+  stay_id: number | null;
+  status: CleaningStatus;
+  ready_since: string;
+  priority_override: CleaningPriority | null;
+  priority_justification: string | null;
+  started_at: string | null;
+  started_by: number | null;
+  completed_at: string | null;
+  completed_by: number | null;
+  version: number;
+}
+
+export interface CleaningItem {
+  task: CleaningTask;
+  priority: CleaningPriority;
+  suggested_priority: CleaningPriority;
+  next_arrival: string | null;
+}
+
+export const cleaningQueue = (token: string) => call<CleaningItem[]>("cleaning_queue", { token });
+export const startCleaning = (token: string, taskId: number, expectedVersion: number) =>
+  call<null>("start_cleaning", { token, taskId, expectedVersion });
+export const completeCleaning = (token: string, taskId: number, expectedVersion: number) =>
+  call<null>("complete_cleaning", { token, taskId, expectedVersion });
+export const setCleaningPriority = (
+  token: string,
+  taskId: number,
+  priority: CleaningPriority | null,
+  justification: string,
+  expectedVersion: number,
+) => call<null>("set_cleaning_priority", { token, taskId, priority, justification, expectedVersion });
+export const listRoomStatus = (token: string) => call<RoomStatus[]>("list_room_status", { token });
+export const setRoomCleaningInterval = (
+  token: string,
+  roomId: number,
+  minutes: number | null,
+  expectedVersion: number,
+) => call<null>("set_room_cleaning_interval", { token, roomId, minutes, expectedVersion });
+
+export type BlockKind = "manual" | "preventive" | "maintenance";
+export type BlockStatus = "preventive" | "active" | "awaiting_release" | "released";
+
+export interface RoomBlock {
+  id: number;
+  room_id: number;
+  room_code: string;
+  kind: BlockKind;
+  status: BlockStatus;
+  start_date: string;
+  end_date: string | null;
+  reason: string;
+  maintenance_order_id: number | null;
+  released_at: string | null;
+  release_justification: string | null;
+  version: number;
+}
+
+export interface NewBlockInput {
+  room_id: number;
+  start_date: string;
+  end_date: string | null;
+  reason: string;
+}
+
+export const listBlocks = (token: string, includeReleased: boolean) =>
+  call<RoomBlock[]>("list_blocks", { token, includeReleased });
+export const createBlock = (token: string, input: NewBlockInput) => call<number>("create_block", { token, input });
+export const releaseBlock = (token: string, blockId: number, justification: string, expectedVersion: number) =>
+  call<null>("release_block", { token, blockId, justification, expectedVersion });
+
+export type MaintenanceStatus = "open" | "in_progress" | "awaiting_resolution" | "completed";
+
+export interface MaintenanceOrder {
+  id: number;
+  code: string;
+  room_id: number;
+  room_code: string;
+  description: string;
+  priority: CleaningPriority;
+  status: MaintenanceStatus;
+  planned_start: string;
+  planned_end: string | null;
+  actual_start: string | null;
+  actual_end: string | null;
+  responsible: string;
+  notes: string;
+  version: number;
+}
+
+export interface MaintenanceConflict {
+  id: number;
+  order_id: number;
+  reservation_id: number;
+  reservation_code: string;
+  guest_name: string;
+  check_in_date: string;
+  check_out_date: string;
+  reservation_status: ReservationStatus;
+  status: "open" | "resolved";
+  resolution_note: string | null;
+}
+
+export interface NewOrderInput {
+  room_id: number;
+  description: string;
+  priority: CleaningPriority;
+  planned_start: string;
+  planned_end: string | null;
+  responsible: string;
+  notes: string;
+}
+
+export interface OpenedOrder {
+  id: number;
+  code: string;
+  conflicts: ConflictInfo[];
+}
+
+export interface ApplyResult {
+  still_open: MaintenanceConflict[];
+  effective: boolean;
+}
+
+export interface OrderDetail {
+  order: MaintenanceOrder;
+  conflicts: MaintenanceConflict[];
+  block: RoomBlock | null;
+}
+
+export const listMaintenance = (token: string, onlyOpen: boolean) =>
+  call<MaintenanceOrder[]>("list_maintenance", { token, onlyOpen });
+export const getMaintenance = (token: string, id: number) => call<OrderDetail>("get_maintenance", { token, id });
+export const openMaintenance = (token: string, input: NewOrderInput) =>
+  call<OpenedOrder>("open_maintenance", { token, input });
+export const applyMaintenanceUnavailability = (token: string, orderId: number, expectedVersion: number) =>
+  call<ApplyResult>("apply_maintenance_unavailability", { token, orderId, expectedVersion });
+export const resolveMaintenanceConflict = (token: string, conflictId: number, note: string) =>
+  call<null>("resolve_maintenance_conflict", { token, conflictId, note });
+export const startMaintenance = (token: string, orderId: number, expectedVersion: number) =>
+  call<null>("start_maintenance", { token, orderId, expectedVersion });
+export const requestMaintenanceResolution = (token: string, orderId: number, expectedVersion: number) =>
+  call<null>("request_maintenance_resolution", { token, orderId, expectedVersion });
+export const completeMaintenance = (token: string, orderId: number, expectedVersion: number) =>
+  call<null>("complete_maintenance", { token, orderId, expectedVersion });
+
+// ---- Alertas ----
+
+export type AlertSeverity = "critical" | "high" | "normal";
+export type AlertStatus = "active" | "resolved" | "dismissed";
+export type AlertKind =
+  | "arrival_today"
+  | "departure_today"
+  | "arrival_overdue"
+  | "deposit_overdue"
+  | "departure_late"
+  | "departure_risk"
+  | "maintenance_conflict"
+  | "cleaning_urgent"
+  | "payable_overdue"
+  | "checkout_balance"
+  | "closing_pending"
+  | "backup_missing"
+  | "disk_low"
+  | "update_failed";
+
+export interface AlertView {
+  id: number;
+  kind: AlertKind;
+  kind_label: string;
+  severity: AlertSeverity;
+  severity_label: string;
+  title: string;
+  detail: string;
+  /** Rota da tela do registro relacionado. */
+  link: string;
+  status: AlertStatus;
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+  resolved_by_name: string | null;
+  resolution_note: string | null;
+  version: number;
+}
+
+export interface AlertEvent {
+  id: number;
+  at: string;
+  user_name: string | null;
+  event: "raised" | "updated" | "resolved" | "dismissed";
+  note: string | null;
+}
+
+export interface AlertSummary {
+  critical: number;
+  high: number;
+  normal: number;
+  total: number;
+  /** Os alertas ativos mais urgentes (até 5). */
+  top: AlertView[];
+}
+
+export interface AlertQuery {
+  /** `active` (padrão) ou `history` (resolvidos e dispensados). */
+  status?: "active" | "history";
+  kind?: AlertKind;
+  severity?: AlertSeverity;
+  page: number;
+  page_size: number;
+}
+
+export const refreshAlerts = (token: string) => call<null>("refresh_alerts", { token });
+export const listAlerts = (token: string, query: AlertQuery) => call<Page<AlertView>>("list_alerts", { token, query });
+export const alertSummary = (token: string) => call<AlertSummary>("alert_summary", { token });
+export const alertHistory = (token: string, alertId: number) => call<AlertEvent[]>("alert_history", { token, alertId });
+export const dismissAlert = (token: string, alertId: number, note: string, expectedVersion: number) =>
+  call<null>("dismiss_alert", { token, alertId, note, expectedVersion });
+
+// ---- Busca global ----
+
+export interface SearchGroup<T> {
+  items: T[];
+  total: number;
+}
+
+export interface GuestHit {
+  id: number;
+  code: string;
+  name: string;
+  phone: string;
+  /** CPF sempre mascarado. */
+  cpf_masked: string | null;
+  active: boolean;
+}
+
+export interface ReservationHit {
+  id: number;
+  code: string;
+  guest_name: string;
+  room_code: string;
+  check_in_date: string;
+  check_out_date: string;
+  status: ReservationStatus;
+}
+
+export interface StayHit {
+  id: number;
+  code: string;
+  guest_name: string;
+  room_code: string;
+  status: StayStatus;
+}
+
+export interface MovementHit {
+  kind: "payment" | "refund" | "payable";
+  code: string;
+  label: string;
+  amount_cents: number;
+  at: string;
+  /** Rota da tela do registro relacionado. */
+  link: string;
+}
+
+export interface SearchResults {
+  query: string;
+  guests: SearchGroup<GuestHit>;
+  reservations: SearchGroup<ReservationHit>;
+  stays: SearchGroup<StayHit>;
+  movements: SearchGroup<MovementHit>;
+}
+
+export const globalSearch = (token: string, text: string) => call<SearchResults>("global_search", { token, text });
+
+// ---- Recepção e visão gerencial ----
+
+export interface ReceptionSummary {
+  arrivals: number;
+  departures: number;
+  occupied_rooms: number;
+  available_rooms: number;
+  total_rooms: number;
+  critical_alerts: number;
+}
+
+export interface ArrivalItem {
+  reservation_id: number;
+  code: string;
+  guest_name: string;
+  room_code: string;
+  check_in_date: string;
+  expected_time: string;
+  status: string;
+  overdue: boolean;
+  deposit_overdue: boolean;
+}
+
+export interface DepartureItem {
+  stay_id: number;
+  code: string;
+  guest_name: string;
+  room_code: string;
+  check_out_date: string;
+  expected_time: string;
+  balance_cents: number;
+  minutes_late: number;
+}
+
+export interface RiskItem {
+  kind: string;
+  title: string;
+  detail: string;
+  link: string;
+}
+
+export interface ReceptionOverview {
+  date: string;
+  summary: ReceptionSummary;
+  arrivals: SearchGroup<ArrivalItem>;
+  departures: SearchGroup<DepartureItem>;
+  at_risk: SearchGroup<RiskItem>;
+}
+
+export const receptionOverview = (token: string) => call<ReceptionOverview>("reception_overview", { token });
+
+export interface DayOccupancy {
+  date: string;
+  occupied: number;
+  rooms: number;
+  /** Pontos-base: 10000 = 100%. */
+  rate_bp: number;
+}
+
+export interface MethodNet {
+  method: string;
+  label: string;
+  received_cents: number;
+  refunded_cents: number;
+  net_cents: number;
+}
+
+export interface DayNet {
+  date: string;
+  net_cents: number;
+}
+
+export interface BalanceSummary {
+  to_receive_count: number;
+  to_receive_cents: number;
+  credit_count: number;
+  credit_cents: number;
+}
+
+export interface CategoryOpen {
+  category_name: string;
+  open_cents: number;
+}
+
+export interface PayablesSummary {
+  overdue_count: number;
+  overdue_cents: number;
+  open_cents: number;
+  by_category: CategoryOpen[];
+}
+
+export interface ManagementDashboard {
+  from: string;
+  to: string;
+  rooms_total: number;
+  occupancy: DayOccupancy[];
+  arrivals: number;
+  departures: number;
+  in_house_now: number;
+  receipts_by_method: MethodNet[];
+  receipts_daily: DayNet[];
+  balances: BalanceSummary;
+  payables: PayablesSummary;
+}
+
+export const managementDashboard = (token: string, from: string, to: string) =>
+  call<ManagementDashboard>("management_dashboard", { token, from, to });
+
+// ---- Relatórios ----
+
+export type ReportKind =
+  | "occupancy"
+  | "reservations"
+  | "stays"
+  | "cancellations"
+  | "receipts"
+  | "balances"
+  | "guest_expenses"
+  | "property_expenses"
+  | "payables"
+  | "closings";
+
+export interface ReportQuery {
+  kind: ReportKind;
+  from?: string;
+  to?: string;
+  status?: string;
+  room_id?: number;
+  method?: string;
+  category_id?: number;
+  text?: string;
+}
+
+export type ReportColumnKind = "text" | "date" | "time" | "int" | "money" | "percent";
+
+export interface ReportColumn {
+  key: string;
+  label: string;
+  kind: ReportColumnKind;
+}
+
+/** Dinheiro em centavos; percentual em pontos-base (10000 = 100%). */
+export type ReportCell =
+  | { kind: "text"; value: string }
+  | { kind: "int"; value: number }
+  | { kind: "money"; value: number }
+  | { kind: "percent"; value: number }
+  | { kind: "empty" };
+
+export interface ReportTable {
+  kind: ReportKind;
+  title: string;
+  filters: string[];
+  columns: ReportColumn[];
+  rows: ReportCell[][];
+  totals: ReportCell[] | null;
+  truncated: boolean;
+}
+
+export interface ExportResult {
+  path: string;
+  bytes: number;
+}
+
+export const runReport = (token: string, query: ReportQuery) => call<ReportTable>("run_report", { token, query });
+export const exportReportCsv = (token: string, query: ReportQuery, delimiter: ";" | ",", path: string) =>
+  call<ExportResult>("export_report_csv", { token, query, delimiter, path });
+export const exportReportPdf = (token: string, query: ReportQuery, path: string) =>
+  call<ExportResult>("export_report_pdf", { token, query, path });
+export const openExportedFile = (token: string, path: string) => call<null>("open_exported_file", { token, path });
+
+// ---- Documentos internos ----
+
+export type DocumentKind = "reservation_confirmation" | "payment_receipt" | "stay_record" | "final_statement";
+
+export interface DocumentView {
+  id: number;
+  kind: DocumentKind;
+  kind_label: string;
+  source_id: number;
+  version: number;
+  /** Instante UTC da emissão. */
+  issued_at: string;
+  issued_by_name: string;
+  /** A versão mais nova. */
+  current: boolean;
+}
+
+export const issueDocument = (token: string, kind: DocumentKind, sourceId: number) => call<DocumentView>("issue_document", { token, kind, sourceId });
+export const listDocuments = (token: string, kind: DocumentKind, sourceId: number) => call<DocumentView[]>("list_documents", { token, kind, sourceId });
+export const saveDocumentPdf = (token: string, documentId: number, path: string) => call<ExportResult>("save_document_pdf", { token, documentId, path });
+
+// ---- Backup e recuperação ----
+
+/** Chave de recuperação (9 grupos); só o administrador, com a senha. */
+export const revealRecoveryKey = (token: string, password: string) => call<string>("reveal_recovery_key", { token, password });
+
+export interface BackupRunView {
+  id: number;
+  kind: "manual" | "auto" | "pre_migration" | "pre_restore";
+  kind_label: string;
+  status: "ok" | "failed";
+  finished_at: string;
+  file_name: string | null;
+  bytes: number;
+  message: string;
+}
+
+export interface BackupFileView {
+  file_name: string;
+  /** Cópia de segurança de antes de restaurar ou atualizar (não é um backup diário). */
+  safety: boolean;
+  /** `DD/MM/AAAA HH:MM`, do nome do arquivo. */
+  at: string;
+  bytes: number;
+}
+
+export interface BackupDestination {
+  path: string;
+  is_default: boolean;
+}
+
+export interface BackupCounts {
+  reservations: number;
+  stays: number;
+  payments: number;
+  guests: number;
+}
+
+export interface RestorePreview {
+  file_name: string;
+  backup_at: string;
+  schema_version: number;
+  app_schema_version: number;
+  restorable: boolean;
+  problem: string | null;
+  counts: BackupCounts;
+  current_counts: BackupCounts;
+  loses_recent_data: boolean;
+}
+
+export interface RestoreResult {
+  safety_copy: string;
+  backup_at: string;
+}
+
+export interface DiskStatus {
+  free_bytes: number;
+  db_bytes: number;
+  threshold_bytes: number;
+  low: boolean;
+}
+
+export interface StartupReport {
+  checked_at: string;
+  integrity_ok: boolean;
+  problems: string[];
+  app_version: string;
+  schema_version: number;
+}
+
+export const runBackup = (token: string) => call<BackupRunView>("run_backup", { token });
+export const listBackupFiles = (token: string) => call<BackupFileView[]>("list_backup_files", { token });
+export const recentBackupRuns = (token: string, limit: number) => call<BackupRunView[]>("recent_backup_runs", { token, limit });
+export const backupDestination = (token: string) => call<BackupDestination>("backup_destination", { token });
+export const setBackupDestination = (token: string, dir: string) => call<BackupDestination>("set_backup_destination", { token, dir });
+export const previewRestore = (token: string, path: string) => call<RestorePreview>("preview_restore", { token, path });
+export const restoreBackup = (token: string, path: string, confirmation: string, password: string) =>
+  call<RestoreResult>("restore_backup", { token, path, confirmation, password });
+export const diskStatus = (token: string) => call<DiskStatus>("disk_status", { token });
+export const lastStartupReport = (token: string) => call<StartupReport | null>("last_startup_report", { token });
+export const logFolder = (token: string) => call<string>("log_folder", { token });
+export const restoreOnNewComputer = (backupPath: string, recoveryKey: string) =>
+  call<null>("restore_on_new_computer", { backupPath, recoveryKey });
+export const recoverCorrupted = (backupPath: string, recoveryKey: string, confirmation: string) =>
+  call<null>("recover_corrupted", { backupPath, recoveryKey, confirmation });
+export const unlockWithRecoveryKey = (recoveryKey: string) => call<null>("unlock_with_recovery_key", { recoveryKey });

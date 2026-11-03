@@ -1,18 +1,36 @@
+use crate::domain::secret::SecretKey;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
+use super::alert_service::AlertService;
+use super::document_service::DocumentService;
+use super::management_service::ManagementService;
+use super::reception_service::ReceptionService;
+use super::recovery_service::RecoveryService;
+use super::report_service::ReportService;
 use super::auth_service::AuthService;
+use super::block_service::BlockService;
+use super::maintenance_service::MaintenanceService;
+use super::payable_service::PayableService;
+use super::payment_service::PaymentService;
+use super::refund_service::RefundService;
+use super::room_status_service::RoomStatusService;
 use super::catalog_service::CatalogService;
+use super::cleaning_service::CleaningService;
+use super::closing_service::ClosingService;
 use super::guest_service::GuestService;
+use super::item_service::ItemService;
 use super::rate_service::RateService;
 use super::reservation_service::ReservationService;
 use super::room_map_service::RoomMapService;
 use super::policy_service::PolicyService;
 use super::pousada_service::PousadaService;
+use super::search_service::SearchService;
 use super::settings_service::SettingsService;
+use super::stay_service::StayService;
 use super::user_service::UserService;
 use super::{Ctx, UtcClock};
 use crate::auth::session::{Clock, SessionManager};
@@ -61,16 +79,101 @@ pub struct Harness {
     pub pousada: PousadaService,
     pub catalog: CatalogService,
     pub guests: GuestService,
+    pub items: ItemService,
     pub rates: RateService,
     pub policy: PolicyService,
     pub reservations: ReservationService,
     pub room_map: RoomMapService,
+    pub stays: StayService,
+    pub cleaning: CleaningService,
+    pub blocks: BlockService,
+    pub maintenance: MaintenanceService,
+    pub room_status: RoomStatusService,
+    pub payments: PaymentService,
+    pub refunds: RefundService,
+    pub payables: PayableService,
+    pub closing: ClosingService,
+    pub alerts: AlertService,
+    pub search: SearchService,
+    pub reception: ReceptionService,
+    pub management: ManagementService,
+    pub reports: ReportService,
+    pub documents: DocumentService,
+    pub recovery: RecoveryService,
     pub utc: Arc<FakeUtc>,
     pub clock: Arc<FakeClock>,
     pub db: Arc<Mutex<Connection>>,
 }
 
 pub const ADMIN_PASSWORD: &str = "Admin-Senha-1";
+
+/// Espaço livre simulado.
+pub struct FakeDisk(Mutex<u64>);
+
+impl FakeDisk {
+    pub fn set(&self, bytes: u64) {
+        *self.0.lock().unwrap() = bytes;
+    }
+}
+
+impl super::DiskProbe for FakeDisk {
+    fn free_bytes(&self, _: &std::path::Path) -> Result<u64, crate::error::AppError> {
+        Ok(*self.0.lock().unwrap())
+    }
+}
+
+/// Mundo com banco **em arquivo e criptografado** numa pasta temporária (backup e restauração de verdade).
+pub struct DiskWorld {
+    pub ctx: Ctx,
+    pub utc: Arc<FakeUtc>,
+    pub disk: Arc<FakeDisk>,
+    pub dir: tempfile::TempDir,
+    pub db_path: std::path::PathBuf,
+    pub admin: String,
+    pub reception: String,
+}
+
+pub fn disk_world() -> DiskWorld {
+    use crate::db::keystore::MemoryKeyStore;
+    use crate::models::user::Role;
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("dados");
+    std::fs::create_dir_all(&data).unwrap();
+    let db_path = data.join("boreal.db");
+    let mut conn = crate::db::open_database(&db_path, &MemoryKeyStore::with_key(&TEST_KEY)).unwrap();
+    run_migrations(&mut conn).unwrap();
+    let utc = Arc::new(FakeUtc(Mutex::new(t0())));
+    let clock = Arc::new(FakeClock(Mutex::new(Instant::now())));
+    let disk = Arc::new(FakeDisk(Mutex::new(u64::MAX / 2)));
+    let ctx = Ctx {
+        db: Arc::new(Mutex::new(conn)),
+        sessions: Arc::new(SessionManager::new(Duration::from_secs(600))),
+        clock: clock.clone(),
+        utc: utc.clone(),
+        key: Arc::new(SecretKey::new(TEST_KEY.to_vec())),
+        disk: disk.clone(),
+        data_dir: Arc::new(data.clone()),
+        system_alerts: true,
+        log: Arc::new(crate::logging::Logger::new(data.join("logs"))),
+    };
+    ctx.conn()
+        .unwrap()
+        .execute_batch(
+            &format!(
+                "INSERT INTO users (id, username, display_name, password_hash, role, active, must_change_password, created_at, updated_at)
+                   VALUES (1, 'admin', 'Administrador', '{}', 'admin', 1, 0, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z'),
+                          (2, 'rec', 'Recepção', 'x', 'recepcao', 1, 0, '2026-10-21T12:00:00Z', '2026-10-21T12:00:00Z');",
+                crate::auth::password::hash_password(ADMIN_PASSWORD).unwrap()
+            ),
+        )
+        .unwrap();
+    let admin = ctx.sessions.create(1, Role::Admin, ctx.clock.now());
+    let reception = ctx.sessions.create(2, Role::Recepcao, ctx.clock.now());
+    DiskWorld { ctx, utc, disk, dir, db_path, admin, reception }
+}
+
+/// Chave fixa dos testes (não é segredo).
+pub const TEST_KEY: [u8; 32] = [0x2A; 32];
 
 pub fn t0() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 10, 21, 12, 0, 0).unwrap()
@@ -87,6 +190,11 @@ pub fn harness() -> Harness {
         sessions: Arc::new(SessionManager::new(Duration::from_secs(600))),
         clock: clock.clone(),
         utc: utc.clone(),
+        key: Arc::new(SecretKey::new(TEST_KEY.to_vec())),
+        disk: Arc::new(FakeDisk(Mutex::new(u64::MAX / 2))),
+        data_dir: Arc::new(std::env::temp_dir()),
+        system_alerts: false,
+        log: Arc::new(crate::logging::Logger::disabled()),
     };
     Harness {
         auth: AuthService::new(ctx.clone()),
@@ -95,14 +203,53 @@ pub fn harness() -> Harness {
         pousada: PousadaService::new(ctx.clone()),
         catalog: CatalogService::new(ctx.clone()),
         guests: GuestService::new(ctx.clone()),
+        items: ItemService::new(ctx.clone()),
         rates: RateService::new(ctx.clone()),
         policy: PolicyService::new(ctx.clone()),
         reservations: ReservationService::new(ctx.clone()),
-        room_map: RoomMapService::new(ctx),
+        room_map: RoomMapService::new(ctx.clone()),
+        stays: StayService::new(ctx.clone()),
+        cleaning: CleaningService::new(ctx.clone()),
+        blocks: BlockService::new(ctx.clone()),
+        maintenance: MaintenanceService::new(ctx.clone()),
+        room_status: RoomStatusService::new(ctx.clone()),
+        payments: PaymentService::new(ctx.clone()),
+        refunds: RefundService::new(ctx.clone()),
+        payables: PayableService::new(ctx.clone()),
+        closing: ClosingService::new(ctx.clone()),
+        alerts: AlertService::new(ctx.clone()),
+        search: SearchService::new(ctx.clone()),
+        reception: ReceptionService::new(ctx.clone()),
+        management: ManagementService::new(ctx.clone()),
+        reports: ReportService::new(ctx.clone()),
+        documents: DocumentService::new(ctx.clone()),
+        recovery: RecoveryService::new(ctx),
         utc,
         clock,
         db,
     }
+}
+
+/// Recebimento em uma modalidade só na conta da hospedagem.
+pub fn pay(h: &Harness, token: &str, stay_id: i64, cents: i64, method: &str) -> Result<crate::models::payment::PaymentReceipt, crate::error::AppError> {
+    use crate::models::payment::{ComponentInput, PaymentInput, PaymentTarget};
+    h.payments.record(
+        token,
+        PaymentTarget::Stay { stay_id },
+        PaymentInput { components: vec![ComponentInput { method: method.into(), amount_cents: cents }], note: String::new(), duplicate_release: None },
+    )
+}
+
+/// Sinal em dinheiro de uma reserva (a versão é a que a tela viu).
+pub fn deposit(h: &Harness, token: &str, reservation_id: i64, cents: i64, expected_version: i64) -> Result<(), crate::error::AppError> {
+    use crate::models::payment::{ComponentInput, PaymentInput, PaymentTarget};
+    h.payments
+        .record(
+            token,
+            PaymentTarget::Reservation { reservation_id, expected_version },
+            PaymentInput { components: vec![ComponentInput { method: "cash".into(), amount_cents: cents }], note: String::new(), duplicate_release: None },
+        )
+        .map(|_| ())
 }
 
 /// Cria o administrador inicial (`admin`) e entra com ele; retorna o token.
@@ -133,4 +280,117 @@ pub fn recepcao_token(h: &Harness, admin: &str) -> String {
         .change_own_password(&token, "Temp-Senha-123", "Definitiva-456")
         .unwrap();
     token
+}
+
+/// Categoria, quarto "101", hóspede e tarifa de todos os dias da semana, para testes que precisam de reservas.
+pub struct Seed {
+    pub category_id: i64,
+    pub room_id: i64,
+    pub guest_id: i64,
+}
+
+pub fn seed(h: &Harness, admin: &str, nightly_cents: i64, capacity: i64) -> Seed {
+    use crate::models::catalog::{NewCategory, NewRoom};
+    use crate::models::guest::GuestInput;
+    use crate::models::rate::NewRateRule;
+    use crate::services::guest_service::CreateGuestOutcome;
+
+    let category_id = h
+        .catalog
+        .create_category(admin, NewCategory { name: "Standard".into(), description: String::new() })
+        .unwrap();
+    for day in 0..7 {
+        h.rates
+            .create_rule(
+                admin,
+                NewRateRule {
+                    category_id,
+                    rule_type: "weekday".into(),
+                    weekday: Some(day),
+                    start_date: None,
+                    end_date: None,
+                    date: None,
+                    amount_cents: nightly_cents,
+                    label: String::new(),
+                },
+            )
+            .unwrap();
+    }
+    let room_id = h
+        .catalog
+        .create_room(
+            admin,
+            NewRoom {
+                code: "101".into(),
+                category_id,
+                max_capacity: capacity,
+                description: String::new(),
+                notes: String::new(),
+            },
+        )
+        .unwrap();
+    let guest_id = match h
+        .guests
+        .create(
+            admin,
+            GuestInput {
+                full_name: "Ana Souza".into(),
+                phone: "(11) 99999-0000".into(),
+                cpf: None,
+                email: String::new(),
+                address: String::new(),
+            },
+            true,
+        )
+        .unwrap()
+    {
+        CreateGuestOutcome::Created { id, .. } => id,
+        other => panic!("{other:?}"),
+    };
+    Seed { category_id, room_id, guest_id }
+}
+
+/// Cria uma reserva pendente do hóspede do `Seed` no quarto "101" e devolve o id.
+pub fn book(h: &Harness, admin: &str, seed: &Seed, from: &str, to: &str) -> i64 {
+    use crate::models::reservation::NewReservation;
+    h.reservations
+        .create(
+            admin,
+            NewReservation {
+                room_id: seed.room_id,
+                guest_id: seed.guest_id,
+                check_in_date: from.into(),
+                check_out_date: to.into(),
+                expected_check_in_time: None,
+                expected_check_out_time: None,
+                occupants: 1,
+                notes: String::new(),
+                exceed_capacity: false,
+            },
+        )
+        .unwrap()
+        .id
+}
+
+/// Hospedagem em 21→23/10 com a conta quitada e o check-out feito no horário previsto (23/10 12:00 locais).
+/// O relógio fica em 23/10 15:00Z. Devolve (reserva, hospedagem).
+pub fn checked_out_stay(h: &Harness, admin: &str, seed: &Seed) -> (i64, i64) {
+    use crate::models::stay::{CheckInInput, CheckoutInput, LateFeeChoice, OccupantInput};
+    let set = |rfc3339: &str| h.utc.set(DateTime::parse_from_rfc3339(rfc3339).unwrap().with_timezone(&Utc));
+    let reservation = book(h, admin, seed, "2026-10-21", "2026-10-23");
+    set("2026-10-21T17:00:00Z");
+    let version = h.reservations.get(admin, reservation).unwrap().reservation.version;
+    let holder = OccupantInput { full_name: "Ana Souza".into(), guest_id: Some(seed.guest_id), document: String::new() };
+    let stay = h
+        .stays
+        .check_in(admin, CheckInInput { reservation_id: reservation, expected_version: version, occupants: vec![holder], exceed_capacity: false })
+        .unwrap();
+    let balance = h.stays.get(admin, stay).unwrap().account.balance_cents;
+    pay(h, admin, stay, balance, "cash").unwrap();
+    set("2026-10-23T15:00:00Z");
+    let stay_version = h.stays.get(admin, stay).unwrap().stay.version;
+    h.stays
+        .checkout(admin, CheckoutInput { stay_id: stay, expected_version: stay_version, late_fee: LateFeeChoice::NotApplicable, balance_exception: None })
+        .unwrap();
+    (reservation, stay)
 }

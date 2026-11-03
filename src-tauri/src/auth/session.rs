@@ -152,6 +152,11 @@ impl SessionManager {
     pub fn destroy(&self, token: &str) {
         self.sessions().remove(token);
     }
+
+    /// Encerra todas as sessões (depois de restaurar um backup, os usuários podem ser outros).
+    pub fn destroy_all(&self) {
+        self.sessions().clear();
+    }
 }
 
 pub fn require(info: &SessionInfo, permission: Permission) -> Result<(), AppError> {

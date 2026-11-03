@@ -40,9 +40,10 @@ const base: api.Reservation = {
   deposit_overdue: false,
   notes: "",
   cancelled_at: null,
-  cancellation_fee_cents: null,
+  cancellation_fee_cents: null, refund_due_cents: 0,
   version: 1,
   created_at: "2026-10-21T12:00:00Z",
+  origin: "booking",
 };
 const confirmed: api.Reservation = {
   ...base, id: 2, code: "RES-000002", guest_name: "Bruno Lima", status: "confirmed", deposit_overdue: false,
@@ -62,7 +63,7 @@ beforeEach(() => {
   vi.mocked(api.listReservationsNeedingReview).mockReset().mockResolvedValue([]);
   vi.mocked(api.listRooms).mockResolvedValue({
     items: [
-      { id: 1, code: "101", category_id: 1, category_name: "Standard", max_capacity: 2, description: "", notes: "", active: true, version: 1 },
+      { id: 1, code: "101", category_id: 1, category_name: "Standard", max_capacity: 2, description: "", notes: "", active: true, cleaning_interval_minutes: null, version: 1 },
     ],
     total: 1,
     page: 1,

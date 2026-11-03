@@ -1,5 +1,7 @@
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 
+use crate::models::payment::DuplicateInfo;
+
 /// Erro único exposto pelo backend. As mensagens são em linguagem simples e
 /// nunca carregam senhas ou dados de autenticação.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -16,6 +18,15 @@ pub enum AppError {
     StalePreview,
     #[error("Não foi possível concluir a operação. Tente novamente.")]
     Database(String),
+    #[error("Sem espaço em disco. Libere espaço e tente de novo. Nada foi salvo.")]
+    DiskFull,
+    #[error("Não foi possível fazer o backup antes de atualizar o banco de dados. Seus dados estão intactos. Libere espaço ou verifique a pasta de backup e abra o aplicativo de novo.")]
+    UpdateBackupFailed,
+    #[error("A atualização do banco de dados não pôde ser concluída. Seus dados foram preservados e há uma cópia de segurança. Reinstale a versão anterior do aplicativo ou procure o suporte.")]
+    UpdateFailed(String),
+    /// O texto técnico (nomes de tabelas, no máximo) fica só no `Debug`; a mensagem é sempre a mesma.
+    #[error("O banco de dados apresenta problemas de integridade. Os dados não foram alterados; restaure o último backup válido.")]
+    IntegrityProblem(String),
     #[error("{0}")]
     Validation(String),
     #[error("É preciso entrar no sistema para continuar.")]
@@ -30,6 +41,8 @@ pub enum AppError {
     Forbidden,
     #[error("O registro foi alterado por outra operação. Revise e tente novamente.")]
     Conflict,
+    #[error("Possível recebimento duplicado: já existe o {} com o mesmo valor e as mesmas formas de pagamento no mesmo dia.", .0.code)]
+    DuplicatePayment(Box<DuplicateInfo>),
 }
 
 impl AppError {
@@ -41,6 +54,10 @@ impl AppError {
             AppError::PasswordChangeRequired => "password_change_required",
             AppError::StalePreview => "stale_preview",
             AppError::Database(_) => "database",
+            AppError::DiskFull => "disk_full",
+            AppError::IntegrityProblem(_) => "integrity",
+            AppError::UpdateBackupFailed => "update_backup_failed",
+            AppError::UpdateFailed(_) => "update_failed",
             AppError::Validation(_) => "validation",
             AppError::Unauthorized => "unauthorized",
             AppError::InvalidCredentials => "invalid_credentials",
@@ -48,12 +65,19 @@ impl AppError {
             AppError::Locked => "locked",
             AppError::Forbidden => "forbidden",
             AppError::Conflict => "conflict",
+            AppError::DuplicatePayment(_) => "duplicate_payment",
         }
     }
 }
 
 impl From<rusqlite::Error> for AppError {
     fn from(e: rusqlite::Error) -> Self {
+        // Disco cheio: o SQLite já desfez a transação inteira; só traduzimos para uma mensagem clara.
+        if let rusqlite::Error::SqliteFailure(failure, _) = &e
+            && failure.code == rusqlite::ErrorCode::DiskFull
+        {
+            return AppError::DiskFull;
+        }
         AppError::Database(e.to_string())
     }
 }
@@ -64,11 +88,18 @@ impl Serialize for AppError {
             AppError::AccountLocked { until } => Some(until),
             _ => None,
         };
-        let mut s = serializer.serialize_struct("AppError", if until.is_some() { 3 } else { 2 })?;
+        let duplicate = match self {
+            AppError::DuplicatePayment(info) => Some(info),
+            _ => None,
+        };
+        let mut s = serializer.serialize_struct("AppError", if until.is_some() || duplicate.is_some() { 3 } else { 2 })?;
         s.serialize_field("code", self.code())?;
         s.serialize_field("message", &self.to_string())?;
         if let Some(until) = until {
             s.serialize_field("until", until)?;
+        }
+        if let Some(info) = duplicate {
+            s.serialize_field("details", info)?;
         }
         s.end()
     }
@@ -77,6 +108,31 @@ impl Serialize for AppError {
 #[cfg(test)]
 mod tests {
     use super::AppError;
+
+    #[test]
+    fn sqlite_full_becomes_a_plain_disk_full_error_and_the_transaction_leaves_nothing() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('antes');").unwrap();
+        let pages: i64 = conn.query_row("PRAGMA page_count", [], |r| r.get(0)).unwrap();
+        conn.execute_batch(&format!("PRAGMA max_page_count = {};", pages + 2)).unwrap();
+
+        let tx = conn.transaction().unwrap();
+        let mut failure = None;
+        for _ in 0..200 {
+            if let Err(e) = tx.execute("INSERT INTO t VALUES (?1)", ["x".repeat(2_000)]) {
+                failure = Some(AppError::from(e));
+                break;
+            }
+        }
+        drop(tx);
+
+        let error = failure.expect("o banco devia encher");
+        assert!(matches!(error, AppError::DiskFull), "{error:?}");
+        assert_eq!(error.code(), "disk_full");
+        assert!(error.to_string().contains("Nada foi salvo"));
+        let count: i64 = conn.query_row("SELECT count(*) FROM t", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1, "a transação inteira foi desfeita");
+    }
 
     #[test]
     fn database_error_message_is_plain() {
