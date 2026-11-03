@@ -8,6 +8,7 @@ import CategoriesPage from "@/pages/catalog/CategoriesPage";
 import RoomsPage from "@/pages/catalog/RoomsPage";
 import ManagementPage from "@/pages/management/ManagementPage";
 import ReceptionPage from "@/pages/reception/ReceptionPage";
+import ReportsPage from "@/pages/reports/ReportsPage";
 import GuestFormPage from "@/pages/guests/GuestFormPage";
 import GuestsPage from "@/pages/guests/GuestsPage";
 import AlertsPage from "@/pages/alerts/AlertsPage";
@@ -70,6 +71,7 @@ export const appRoutes: RouteObject[] = [
           { path: "/hospedes/:id", element: <GuestFormPage /> },
           { path: "/mapa", element: <RoomMapPage /> },
           { path: "/gerencial", element: <ManagementPage /> },
+          { path: "/relatorios", element: <ReportsPage /> },
           { path: "/reservas", element: <ReservationsPage /> },
           { path: "/reservas/nova", element: <ReservationFormPage /> },
           { path: "/reservas/:id", element: <ReservationPage /> },

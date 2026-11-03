@@ -50,7 +50,7 @@ export const NAV: NavEntry[] = [
       { label: "Contas a pagar", to: "/contas-a-pagar", icon: "receipt_long", permission: "manage_payables" },
     ],
   },
-  { label: "Relatórios", icon: "bar_chart", soon: true },
+  { label: "Relatórios", to: "/relatorios", icon: "bar_chart" },
   { label: "Visão gerencial", to: "/gerencial", icon: "monitoring", admin: true },
   { label: "Alertas", to: "/alertas", icon: "notifications" },
   {

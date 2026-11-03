@@ -95,14 +95,11 @@ describe("Sidebar", () => {
     for (const link of screen.getAllByRole("link")) expect(link.querySelector("[data-icon]")).not.toBeNull();
   });
 
-  it("Relatórios aparece desabilitado, com 'Em breve'", () => {
+  it("Relatórios é um link para a tela de relatórios", () => {
     signIn(recepcaoUser);
     renderSidebar();
 
-    const item = screen.getByText("Relatórios", { selector: "span" }).closest("[aria-disabled]") as HTMLElement;
-    expect(item).toHaveAttribute("aria-disabled", "true");
-    expect(item).toHaveAttribute("title", "Em breve");
-    expect(screen.queryByRole("link", { name: "Relatórios" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Relatórios" })).toHaveAttribute("href", "/relatorios");
   });
 
   it("Alertas é um link para a tela de alertas, com selo e texto acessível quando há alertas", async () => {

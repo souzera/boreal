@@ -37,10 +37,11 @@ describe("menu lateral", () => {
     for (const leaf of leaves(NAV)) expect(leaf.icon, leaf.label).toMatch(/^[a-z][a-z0-9_]*$/);
   });
 
-  it("Relatórios aparece como 'em breve' e sem destino; Alertas já tem tela", () => {
+  it("Relatórios e Alertas já têm tela e todos veem Relatórios", () => {
     const reports = leaves(NAV).find((l) => l.label === "Relatórios");
-    expect(reports?.soon).toBe(true);
-    expect(reports?.to).toBeUndefined();
+    expect(reports?.soon).toBeFalsy();
+    expect(reports?.to).toBe("/relatorios");
+    expect(labels(visibleNav(NAV, recepcao))).toContain("Relatórios");
     const alerts = leaves(NAV).find((l) => l.label === "Alertas");
     expect(alerts?.soon).toBeFalsy();
     expect(alerts?.to).toBe("/alertas");
