@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 
 import { FormField, RequiredLegend } from "@/components/FormField";
+import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,10 +52,12 @@ export default function Login() {
   });
 
   return (
-    <main className="grid min-h-screen place-items-center bg-muted/40 p-4">
+    <main className="grid min-h-[calc(100vh-var(--titlebar-h))] place-items-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Boreal PMS</CardTitle>
+          <CardTitle>
+            <Logo size={32} className="text-xl" />
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} noValidate className="grid gap-4">

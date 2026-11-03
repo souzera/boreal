@@ -35,6 +35,16 @@ Tamanhos: `xs` 14 px (ações compactas), `sm` 16 px (padrão: botões e tabelas
 
 Os mapas de estado em `src/lib/{roomState,reservation,stay,blocks}.ts` e `PayablesPage` guardam **nomes de símbolo**. `src/lib/statusIcons.test.ts` garante que todo estado tem ícone e rótulo, que os estados dos quartos usam as classes de token, e que **nenhum símbolo de texto antigo** (`●◐◑◔○■✓✔✖⚠▲▽↩⏸`) sobra no código.
 
+## Logo, ícone e barra de título
+
+- **Fonte do desenho:** `src-tauri/icons/source/boreal.svg` (quadrado arredondado com gradiente teal `#0F766E → #0B3F3B`, três fitas de aurora e uma estrela). O mesmo desenho está em `src/components/Logo.tsx` (`LogoMark` decorativo; `Logo` com o nome "Boreal PMS" como texto acessível) e em `public/boreal.svg` (favicon).
+- **Regenerar os ícones do aplicativo** depois de mudar o SVG: `npx tauri icon src-tauri/icons/source/boreal.svg -o src-tauri/icons` e apagar as pastas `android/` e `ios/` (e `64x64.png`) que o comando também cria, porque o app é só desktop.
+- **Barra de título** (`src/components/TitleBar.tsx`): a janela usa `decorations: false` em `tauri.conf.json` (com `minWidth` 1024 e `minHeight` 640) e a barra desenha o papel dela. Fica `sticky` no topo, **acima dos diálogos** (`z-[60]`), para minimizar e fechar nunca ficarem inacessíveis. Só aparece dentro do Tauri (`__TAURI_INTERNALS__`); no navegador e nos testes não renderiza nada.
+- **Altura da barra:** a `TitleBar` define `--titlebar-h` (36px) no `:root`; as telas de altura total usam `min-h-[calc(100vh-var(--titlebar-h))]` em vez de `min-h-screen`. Em tela nova de página inteira, use o mesmo padrão.
+- **Permissões** (`capabilities/default.json`): `core:window:allow-minimize`, `-toggle-maximize`, `-internal-toggle-maximize` (duplo clique), `-is-maximized`, `-close` e `-start-dragging`.
+- **Limitações:** sem a moldura nativa, o Windows 11 não mostra os *snap layouts* ao passar o mouse no botão de maximizar (arrastar para as bordas e `Win+setas` continuam funcionando); fechar pela barra não passa pelo aviso de alterações não salvas, como já era com o botão nativo.
+- **Pendente de conferência manual:** arrastar, redimensionar pelas bordas, maximizar/restaurar e o contraste dos botões em `npm run tauri dev`.
+
 ## Menu e ações globais
 
 - O menu é dado, não JSX: `src/components/layout/NavItems.ts` (`NAV`, `visibleNav`). Para acrescentar um item, inclua-o em `NAV` com `icon` (nome do símbolo) e `to`; use `admin: true` ou `permission: "..."` para restringir. `NavItems.test.ts` falha se um destino não existir em `appRoutes`, se houver destino repetido ou se um item não tiver ícone.

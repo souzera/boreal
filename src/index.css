@@ -90,6 +90,8 @@
 
 /* Identidade Boreal: teal sobre neutros frios (Cool Neutral). Valores de local/brief.md §5, validados por src/theme.test.ts. */
 :root {
+    /* Altura da barra de título própria; a TitleBar a define quando roda dentro do aplicativo. */
+    --titlebar-h: 0px;
     --background: #F4F7FA;
     --foreground: #172033;
     --card: #FFFFFF;

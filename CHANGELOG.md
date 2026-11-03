@@ -46,6 +46,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - **Recepção** como tela inicial de trabalho: resumo do dia (chegadas, saídas, quartos ocupados e disponíveis, alertas críticos), mapa dos próximos 7 dias e abas **Chegadas**, **Saídas** e **Em risco**, com atraso e saldo em texto e ações rápidas (**Confirmar check-in**, **Registrar pagamento**, **Concluir check-out**) que abrem direto o diálogo certo.
 - **Painel lateral** que mostra o resumo de uma reserva, hospedagem, hóspede ou quarto sem esconder o mapa; fecha com **Fechar painel** ou `Esc` e volta a abrir ao recarregar a página.
 - **Visão gerencial** (só administrador): ocupação por dia, recebimentos líquidos por dia e por forma de pagamento, saldos a receber e créditos, contas vencidas e em aberto por categoria, com gráficos e a tabela equivalente de cada um; período padrão hoje.
+- **Logo e ícone do Boreal**: fitas de aurora em teal, usadas no ícone do aplicativo (janela, barra de tarefas e instalador), no menu lateral, na tela de entrada e na aba do navegador.
+- **Barra de título própria**: a janela deixou de ter a moldura padrão do Windows e ganhou uma barra com o logo, área para arrastar (duplo clique maximiza) e os botões **Minimizar**, **Maximizar/Restaurar** e **Fechar**, sempre visível, inclusive na tela de entrada e sobre os diálogos.
 
 ### Changed
 - **Novo visual do Boreal**: identidade teal com neutros frios, fonte Onest, ícones Material Symbols (empacotados, funcionam sem internet) e cantos e sombras suaves. Os estados dos quartos, reservas, bloqueios, manutenção e contas continuam combinando cor, ícone e rótulo.

@@ -41,7 +41,7 @@ export default function FirstRun() {
   });
 
   return (
-    <main className="grid min-h-screen place-items-center bg-muted/40 p-4">
+    <main className="grid min-h-[calc(100vh-var(--titlebar-h))] place-items-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Configuração inicial</CardTitle>

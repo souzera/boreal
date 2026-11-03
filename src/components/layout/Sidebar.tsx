@@ -1,3 +1,4 @@
+import { Logo } from "@/components/Logo";
 import { NavLink } from "react-router-dom";
 
 import Icon from "@/components/Icon";
@@ -67,7 +68,7 @@ export default function Sidebar() {
 
   return (
     <nav aria-label="Menu principal" className="flex w-60 shrink-0 flex-col gap-1 border-r bg-sidebar p-3">
-      <p className="px-2.5 pb-3 pt-1 text-lg font-semibold text-primary">Boreal PMS</p>
+      <Logo className="px-2.5 pb-3 pt-1 text-lg" />
       {entries.map((entry) =>
         "items" in entry ? (
           <div key={entry.label} role="group" aria-label={entry.label} className="mt-2 grid gap-0.5">

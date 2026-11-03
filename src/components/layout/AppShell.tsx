@@ -19,7 +19,7 @@ export default function AppShell() {
 
   return (
     <LockGate>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-[calc(100vh-var(--titlebar-h))]">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-4 py-2 shadow-card">

@@ -19,6 +19,7 @@ Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de traba
   1. Entre com usuário e senha. No primeiro acesso, o sistema pede a troca da senha.
   2. Mostre o menu lateral, agrupado: **Recepção**; **Reservas** (Reservas, Hóspedes); **Hospedagens**; **Quartos** (Mapa de quartos, Limpeza, Bloqueios, Manutenção, Cadastro de quartos); **Financeiro** (Fechamento de caixa e, com permissão, Contas a pagar); **Configurações** (Tarifas e Itens e serviços; Configurações e Usuários só para o administrador). **Alertas** mostra um selo com a contagem; **Relatórios** aparece esmaecido com "Em breve". A tela atual fica destacada no menu.
   2b. Mostre as ações do topo e seus atalhos: **Nova reserva** (`Alt+N`), **Buscar** (`Ctrl+K`), **Check-in** (`Alt+C`, abre a aba Chegadas da Recepção), **Receber pagamento** (`Alt+R`, lista de hospedagens) e **Check-out** (`Alt+S`, abre a aba Saídas).
+  2c. Mostre a barra no topo da janela: arraste-a para mover, dê duplo clique para maximizar e use **Minimizar**, **Maximizar/Restaurar** e **Fechar**. Ela aparece também na tela de entrada.
   3. Mostre a busca no topo e a tela **Recepção** (o Módulo 13 explica cada parte). O item **Visão gerencial** só aparece para o administrador.
   4. Deixe a tela parada até o bloqueio por inatividade e desbloqueie com a senha: o que estava aberto volta como estava.
 - **O participante deve ver:** que a sessão bloqueada esconde os dados e que nada digitado se perde.

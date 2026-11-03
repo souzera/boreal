@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function StartupError({ message }: { message: string }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-muted/40 p-4">
+    <main className="grid min-h-[calc(100vh-var(--titlebar-h))] place-items-center bg-muted/40 p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Não foi possível iniciar o sistema</CardTitle>
