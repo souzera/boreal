@@ -80,3 +80,49 @@ fn full_flow() {
     );
     assert!(matches!(denied, Err(AppError::Forbidden)));
 }
+
+#[test]
+fn startup_checks_integrity_and_reports_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = initialize(&dir.path().join("boreal.db"), &MemoryKeyStore::empty()).unwrap();
+    app.auth.bootstrap_admin("admin", "Administrador", ADMIN_PASSWORD).unwrap();
+    let admin = app.auth.login("admin", ADMIN_PASSWORD).unwrap();
+
+    let report = app.health.last_startup(&admin.token).unwrap().expect("há relatório da abertura");
+
+    assert!(report.integrity_ok && report.problems.is_empty());
+    assert_eq!(report.app_version, env!("CARGO_PKG_VERSION"));
+    assert!(report.schema_version >= 14);
+}
+
+#[test]
+fn a_corrupted_database_does_not_open_normally_and_the_file_is_not_modified() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("boreal.db");
+    let keys = MemoryKeyStore::empty();
+    drop(initialize(&path, &keys).unwrap());
+    let mut bytes = std::fs::read(&path).unwrap();
+    let len = bytes.len();
+    for b in &mut bytes[len / 2..len / 2 + 4096] {
+        *b ^= 0xA5;
+    }
+    std::fs::write(&path, &bytes).unwrap();
+    let before = std::fs::read(&path).unwrap();
+
+    let result = initialize(&path, &keys);
+
+    assert!(matches!(result, Err(AppError::IntegrityProblem(_)) | Err(AppError::KeyInvalid)), "{:?}", result.err());
+    assert_eq!(std::fs::read(&path).unwrap(), before, "o arquivo com problema não é alterado");
+}
+
+#[test]
+fn the_app_state_can_be_replaced_after_a_recovery() {
+    use boreal_pms_lib::app::App;
+    let dir = tempfile::tempdir().unwrap();
+    let app = App::new(Err(AppError::IntegrityProblem("x".into())));
+    assert!(matches!(app.state(), Err(AppError::IntegrityProblem(_))));
+
+    app.replace(initialize(&dir.path().join("boreal.db"), &MemoryKeyStore::empty()));
+
+    assert!(app.state().unwrap().auth.needs_bootstrap().unwrap());
+}

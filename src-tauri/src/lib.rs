@@ -32,7 +32,7 @@ pub fn run() {
                 // Se o último backup válido tem mais de 24 h, faz um agora, sem atrasar a abertura.
                 state.backup.catch_up();
             }
-            tauri_app.manage(app::App(state));
+            tauri_app.manage(app::App::new(state));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -150,6 +150,8 @@ pub fn run() {
             commands::reception::reception_overview,
             commands::management::management_dashboard,
             commands::recovery::reveal_recovery_key,
+            commands::health::disk_status,
+            commands::health::last_startup_report,
             commands::backup::run_backup,
             commands::backup::list_backup_files,
             commands::backup::recent_backup_runs,

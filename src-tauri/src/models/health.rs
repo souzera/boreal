@@ -9,3 +9,15 @@ pub struct DiskStatus {
     pub threshold_bytes: u64,
     pub low: bool,
 }
+
+/// Resultado da verificação feita ao abrir o aplicativo.
+#[derive(Debug, Clone, Serialize)]
+pub struct StartupReport {
+    /// Instante UTC da verificação.
+    pub checked_at: String,
+    pub integrity_ok: bool,
+    /// Descrições curtas, sem dados de hóspedes (no máximo 20).
+    pub problems: Vec<String>,
+    pub app_version: String,
+    pub schema_version: u32,
+}

@@ -20,6 +20,9 @@ pub enum AppError {
     Database(String),
     #[error("Sem espaço em disco. Libere espaço e tente de novo. Nada foi salvo.")]
     DiskFull,
+    /// O texto técnico (nomes de tabelas, no máximo) fica só no `Debug`; a mensagem é sempre a mesma.
+    #[error("O banco de dados apresenta problemas de integridade. Os dados não foram alterados; restaure o último backup válido.")]
+    IntegrityProblem(String),
     #[error("{0}")]
     Validation(String),
     #[error("É preciso entrar no sistema para continuar.")]
@@ -48,6 +51,7 @@ impl AppError {
             AppError::StalePreview => "stale_preview",
             AppError::Database(_) => "database",
             AppError::DiskFull => "disk_full",
+            AppError::IntegrityProblem(_) => "integrity",
             AppError::Validation(_) => "validation",
             AppError::Unauthorized => "unauthorized",
             AppError::InvalidCredentials => "invalid_credentials",

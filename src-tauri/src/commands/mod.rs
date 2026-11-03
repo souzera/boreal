@@ -10,6 +10,7 @@ pub mod closing;
 pub mod room_status;
 pub mod backup;
 pub mod documents;
+pub mod health;
 pub mod management;
 pub mod reception;
 pub mod recovery;
