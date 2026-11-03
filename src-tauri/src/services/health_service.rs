@@ -92,6 +92,13 @@ impl HealthService {
         self
     }
 
+    /// Pasta dos logs técnicos, para o administrador abrir ou mandar ao suporte.
+    pub fn log_folder(&self, token: &str) -> Result<String, AppError> {
+        let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
+        require(&actor, Permission::ManageSettings)?;
+        Ok(self.ctx.log.dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default())
+    }
+
     pub fn last_startup(&self, token: &str) -> Result<Option<StartupReport>, AppError> {
         let actor = self.ctx.sessions.touch(token, self.ctx.clock.now())?;
         require(&actor, Permission::ManageSettings)?;

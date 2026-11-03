@@ -306,9 +306,10 @@ impl BackupService {
         }
 
         // A cópia de segurança do estado atual é obrigatória: sem ela nada é alterado.
-        let safety = self
-            .execute(BackupKind::PreRestore)
-            .map_err(|_| invalid("Não foi possível fazer a cópia de segurança do estado atual. A restauração foi cancelada e nada foi alterado."))?;
+        let safety = self.execute(BackupKind::PreRestore).map_err(|_| {
+            self.ctx.log.warn("restauracao.falhou", "sem cópia de segurança do estado atual; nada foi alterado");
+            invalid("Não foi possível fazer a cópia de segurança do estado atual. A restauração foi cancelada e nada foi alterado.")
+        })?;
         let safety_file = safety.file_name.clone().unwrap_or_default();
 
         if self.copy_into_live(Path::new(path)).is_err() {
@@ -318,6 +319,7 @@ impl BackupService {
                 self.dest_dir(&conn)?
             };
             let _ = self.copy_into_live(&dir.join(&safety_file));
+            self.ctx.log.error("restauracao.falhou", "a cópia para dentro do banco falhou; o estado anterior foi recuperado");
             return Err(invalid("A restauração não pôde ser concluída. O estado anterior foi recuperado."));
         }
 
@@ -357,6 +359,7 @@ impl BackupService {
             },
         )?;
         tx.commit()?;
+        self.ctx.log.info("restauracao.ok", &format!("backup de {} restaurado; cópia de segurança {safety_file}", preview.backup_at));
         Ok(RestoreResult { safety_copy: safety_file, backup_at: preview.backup_at })
     }
 
@@ -411,6 +414,7 @@ impl BackupService {
                     },
                 )
                 .unwrap_or(0);
+                self.ctx.log.info("backup.ok", &format!("{} {} {} bytes", kind.as_str(), done.file_name, done.bytes));
                 Ok(BackupRunView {
                     id,
                     kind: kind.as_str().into(),
@@ -428,6 +432,7 @@ impl BackupService {
                     AppError::Validation(m) => m.clone(),
                     _ => "Não foi possível concluir o backup.".to_string(),
                 };
+                self.ctx.log.warn("backup.falhou", &format!("{} {message}", kind.as_str()));
                 let _ = backup_repo::insert_run(
                     &conn,
                     &NewRun { kind: kind.as_str(), status: "failed", started_at: &started, finished_at: &finished, file_name: None, bytes: 0, schema_version: None, message: &message },
@@ -972,6 +977,28 @@ mod restore_tests {
         assert!(!after.contains(ADMIN_PASSWORD) && !after.to_uppercase().contains("2A2A2A2A"));
         let events: i64 = conn.query_row("SELECT count(*) FROM system_events WHERE kind = 'restore'", [], |r| r.get(0)).unwrap();
         assert_eq!(events, 1);
+    }
+
+    #[test]
+    fn backup_restore_and_key_reveal_are_logged_without_any_secret() {
+        use crate::domain::recovery_key;
+        use crate::services::recovery_service::RecoveryService;
+        let w = disk_world();
+        add_guests(&w, 1, 2);
+        let backup = make_backup(&w);
+        restore(&w, &backup).unwrap();
+        let admin = w.ctx.sessions.create(1, crate::models::user::Role::Admin, w.ctx.clock.now());
+        let shown = RecoveryService::new(w.ctx.clone()).reveal(&admin, ADMIN_PASSWORD).unwrap();
+
+        let dir = w.db_path.parent().unwrap().join("logs");
+        let logs: String = std::fs::read_dir(&dir).unwrap().map(|e| std::fs::read_to_string(e.unwrap().path()).unwrap()).collect();
+
+        for expected in ["backup.ok", "restauracao.ok", "chave.exibida"] {
+            assert!(logs.contains(expected), "falta {expected}: {logs}");
+        }
+        for forbidden in [w.ctx.key.hex(), recovery_key::format(w.ctx.key.as_bytes()), shown, ADMIN_PASSWORD.to_string(), w.dir.path().to_string_lossy().to_string()] {
+            assert!(!logs.contains(&forbidden), "o log tem {forbidden}");
+        }
     }
 
     #[test]

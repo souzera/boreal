@@ -128,6 +128,8 @@ pub(crate) fn initialize_with(db_path: &Path, keys: &dyn KeyStore, migrations: &
     // Verificação de integridade a cada abertura: banco com problema não abre normalmente (modo de recuperação).
     let integrity = check_database(&conn);
     if !integrity.ok {
+        let dir = db_path.parent().map_or_else(|| std::path::PathBuf::from("."), std::path::Path::to_path_buf);
+        crate::logging::Logger::new(dir.join("logs")).error("integridade.problema", &integrity.problems.join(" | "));
         return Err(AppError::IntegrityProblem(integrity.problems.join(" | ")));
     }
     // O banco só abre com a chave; ela fica em memória (zerada ao sair) para backup e chave de recuperação.
@@ -148,6 +150,7 @@ pub(crate) fn initialize_with(db_path: &Path, keys: &dyn KeyStore, migrations: &
             Ok(run) => pre_migration = Some(run),
             Err(_) => {
                 write_failure(&data_dir, &now_text(), "Não foi possível fazer o backup antes de atualizar o banco.");
+                ctx.log.error("atualizacao.sem_backup", "o backup antes de atualizar falhou; nada foi migrado");
                 return Err(AppError::UpdateBackupFailed);
             }
         }
@@ -160,6 +163,7 @@ pub(crate) fn initialize_with(db_path: &Path, keys: &dyn KeyStore, migrations: &
             }
             let step = version_or_zero(&conn) + 1;
             write_failure(&data_dir, &now_text(), &format!("A etapa {step} da atualização do banco falhou."));
+            ctx.log.error("atualizacao.falhou", &format!("a etapa {step} da atualização do banco falhou; o banco anterior foi preservado"));
             return Err(AppError::UpdateFailed(format!("etapa {step}")));
         }
     }
@@ -188,6 +192,7 @@ pub(crate) fn initialize_with(db_path: &Path, keys: &dyn KeyStore, migrations: &
         }
         if pending_count > 0 {
             let _ = backup_repo::insert_event(&conn, "update_ok", &now_text(), "");
+            ctx.log.info("atualizacao.ok", &format!("banco atualizado da versão {before} para {}", migrations.iter().map(|m| m.version).max().unwrap_or(0)));
         }
     }
     let schema_version = {

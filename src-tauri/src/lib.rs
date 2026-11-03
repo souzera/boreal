@@ -5,6 +5,7 @@ pub mod commands;
 pub mod db;
 pub mod domain;
 pub mod error;
+pub mod logging;
 pub mod migrations;
 pub mod models;
 #[cfg(feature = "dev-seed")]
@@ -26,7 +27,7 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let state = app::initialize(&dir.join("boreal.db"), &OsKeyStore::new());
             if let Err(e) = &state {
-                eprintln!("falha ao iniciar: {e}");
+                logging::Logger::new(dir.join("logs")).error("inicio.falhou", &format!("{} ({})", e, e.code()));
             }
             if let Ok(state) = &state {
                 // Se o último backup válido tem mais de 24 h, faz um agora, sem atrasar a abertura.
@@ -156,6 +157,7 @@ pub fn run() {
             commands::backup::restore_backup,
             commands::health::disk_status,
             commands::health::last_startup_report,
+            commands::health::log_folder,
             commands::backup::run_backup,
             commands::backup::list_backup_files,
             commands::backup::recent_backup_runs,

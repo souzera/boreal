@@ -131,6 +131,7 @@ impl RecoveryService {
             },
         )?;
         tx.commit()?;
+        self.ctx.log.info("chave.exibida", "o administrador consultou a chave de recuperação");
         Ok(recovery_key::format(self.ctx.key.as_bytes()))
     }
 }

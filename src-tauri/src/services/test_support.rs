@@ -154,6 +154,7 @@ pub fn disk_world() -> DiskWorld {
         disk: disk.clone(),
         data_dir: Arc::new(data.clone()),
         system_alerts: true,
+        log: Arc::new(crate::logging::Logger::new(data.join("logs"))),
     };
     ctx.conn()
         .unwrap()
@@ -193,6 +194,7 @@ pub fn harness() -> Harness {
         disk: Arc::new(FakeDisk(Mutex::new(u64::MAX / 2))),
         data_dir: Arc::new(std::env::temp_dir()),
         system_alerts: false,
+        log: Arc::new(crate::logging::Logger::disabled()),
     };
     Harness {
         auth: AuthService::new(ctx.clone()),

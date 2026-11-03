@@ -89,6 +89,8 @@ pub struct Ctx {
     pub data_dir: Arc<std::path::PathBuf>,
     /// Liga os alertas de backup, disco e atualização (desligado nos testes que não tratam disso).
     pub system_alerts: bool,
+    /// Logs técnicos (separados da auditoria).
+    pub log: Arc<crate::logging::Logger>,
 }
 
 impl Ctx {
@@ -124,6 +126,7 @@ impl Ctx {
             utc: Arc::new(SystemUtc),
             key: Arc::new(key),
             disk: Arc::new(SystemDisk),
+            log: Arc::new(crate::logging::Logger::new(data_dir.join("logs"))),
             data_dir: Arc::new(data_dir),
             system_alerts: true,
         })
