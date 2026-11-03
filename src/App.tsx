@@ -19,7 +19,7 @@ export default function App() {
 
   let body;
   if (startup.isPending) body = null;
-  else if (startup.isError) body = <StartupError message={(startup.error as ApiError).message} />;
+  else if (startup.isError) body = <StartupError message={(startup.error as ApiError).message} code={(startup.error as ApiError).code} />;
   else if (startup.data.bootstrap) body = <FirstRun />;
   else body = <RouterProvider router={router} />;
 

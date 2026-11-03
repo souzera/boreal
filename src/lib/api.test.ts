@@ -6,6 +6,19 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
 import {
+  backupDestination,
+  diskStatus,
+  lastStartupReport,
+  listBackupFiles,
+  logFolder,
+  previewRestore,
+  recentBackupRuns,
+  recoverCorrupted,
+  restoreBackup,
+  restoreOnNewComputer,
+  runBackup,
+  setBackupDestination,
+  unlockWithRecoveryKey,
   revealRecoveryKey,
   issueDocument,
   listDocuments,
@@ -297,5 +310,43 @@ describe("chave de recuperação", () => {
     await revealRecoveryKey("t", "minha-senha");
 
     expect(invoke).toHaveBeenLastCalledWith("reveal_recovery_key", { token: "t", password: "minha-senha" });
+  });
+});
+
+describe("backup, restauração e saúde do sistema", () => {
+  it("cada função chama o comando certo", async () => {
+    invoke.mockResolvedValue(null);
+
+    await runBackup("t");
+    expect(invoke).toHaveBeenLastCalledWith("run_backup", { token: "t" });
+    await listBackupFiles("t");
+    expect(invoke).toHaveBeenLastCalledWith("list_backup_files", { token: "t" });
+    await recentBackupRuns("t", 10);
+    expect(invoke).toHaveBeenLastCalledWith("recent_backup_runs", { token: "t", limit: 10 });
+    await backupDestination("t");
+    expect(invoke).toHaveBeenLastCalledWith("backup_destination", { token: "t" });
+    await setBackupDestination("t", "D:/backups");
+    expect(invoke).toHaveBeenLastCalledWith("set_backup_destination", { token: "t", dir: "D:/backups" });
+    await previewRestore("t", "D:/b.bak");
+    expect(invoke).toHaveBeenLastCalledWith("preview_restore", { token: "t", path: "D:/b.bak" });
+    await restoreBackup("t", "D:/b.bak", "RESTAURAR", "senha");
+    expect(invoke).toHaveBeenLastCalledWith("restore_backup", { token: "t", path: "D:/b.bak", confirmation: "RESTAURAR", password: "senha" });
+    await diskStatus("t");
+    expect(invoke).toHaveBeenLastCalledWith("disk_status", { token: "t" });
+    await lastStartupReport("t");
+    expect(invoke).toHaveBeenLastCalledWith("last_startup_report", { token: "t" });
+    await logFolder("t");
+    expect(invoke).toHaveBeenLastCalledWith("log_folder", { token: "t" });
+  });
+
+  it("os comandos de recuperação não levam token (ainda não há sessão)", async () => {
+    invoke.mockResolvedValue(null);
+
+    await restoreOnNewComputer("D:/b.bak", "AAAA");
+    expect(invoke).toHaveBeenLastCalledWith("restore_on_new_computer", { backupPath: "D:/b.bak", recoveryKey: "AAAA" });
+    await recoverCorrupted("D:/b.bak", "AAAA", "RESTAURAR");
+    expect(invoke).toHaveBeenLastCalledWith("recover_corrupted", { backupPath: "D:/b.bak", recoveryKey: "AAAA", confirmation: "RESTAURAR" });
+    await unlockWithRecoveryKey("AAAA");
+    expect(invoke).toHaveBeenLastCalledWith("unlock_with_recovery_key", { recoveryKey: "AAAA" });
   });
 });

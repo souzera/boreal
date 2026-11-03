@@ -54,6 +54,13 @@ describe("menu lateral", () => {
     expect(labels(visibleNav(NAV, { role: "admin", can: () => true }))).toContain("Visão gerencial");
   });
 
+  it("Saúde do sistema é só do administrador", () => {
+    const leaf = leaves(NAV).find((l) => l.label === "Saúde do sistema");
+    expect(leaf?.to).toBe("/saude");
+    expect(labels(visibleNav(NAV, recepcao))).not.toContain("Saúde do sistema");
+    expect(labels(visibleNav(NAV, admin))).toContain("Saúde do sistema");
+  });
+
   it("a recepção vê o dia a dia e continua vendo Tarifas e Itens e serviços, mas não Configurações nem Usuários", () => {
     const seen = labels(visibleNav(NAV, recepcao));
     for (const label of ["Recepção", "Reservas", "Hóspedes", "Hospedagens", "Mapa de quartos", "Limpeza", "Bloqueios", "Manutenção", "Cadastro de quartos", "Fechamento de caixa", "Tarifas", "Itens e serviços"]) {

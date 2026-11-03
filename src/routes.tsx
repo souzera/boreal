@@ -6,6 +6,7 @@ import RoomMapPage from "@/pages/calendar/RoomMapPage";
 import ChangePassword from "@/pages/ChangePassword";
 import CategoriesPage from "@/pages/catalog/CategoriesPage";
 import RoomsPage from "@/pages/catalog/RoomsPage";
+import HealthPage from "@/pages/health/HealthPage";
 import ManagementPage from "@/pages/management/ManagementPage";
 import ReceptionPage from "@/pages/reception/ReceptionPage";
 import ReportsPage from "@/pages/reports/ReportsPage";
@@ -66,6 +67,7 @@ export const appRoutes: RouteObject[] = [
           { path: "/", element: <ReceptionPage /> },
           { path: "/configuracoes", element: <SettingsPage /> },
           { path: "/usuarios", element: <UsersPage /> },
+          { path: "/saude", element: <HealthPage /> },
           { path: "/busca", element: <Search /> },
           { path: "/hospedes", element: <GuestsPage /> },
           { path: "/hospedes/:id", element: <GuestFormPage /> },

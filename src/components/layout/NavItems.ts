@@ -60,6 +60,7 @@ export const NAV: NavEntry[] = [
       { label: "Itens e serviços", to: "/itens", icon: "inventory_2" },
       { label: "Configurações", to: "/configuracoes", icon: "settings", admin: true },
       { label: "Usuários", to: "/usuarios", icon: "manage_accounts", admin: true },
+      { label: "Saúde do sistema", to: "/saude", icon: "health_and_safety", admin: true },
     ],
   },
 ];

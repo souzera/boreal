@@ -47,6 +47,8 @@ export interface AppInfo {
   app_version: string;
   schema_version: number;
   last_migration_at: string | null;
+  /** Instante UTC do último backup válido. */
+  last_valid_backup_at?: string | null;
 }
 
 export const startupStatus = () => call<null>("startup_status");
@@ -1538,3 +1540,84 @@ export const saveDocumentPdf = (token: string, documentId: number, path: string)
 
 /** Chave de recuperação (9 grupos); só o administrador, com a senha. */
 export const revealRecoveryKey = (token: string, password: string) => call<string>("reveal_recovery_key", { token, password });
+
+export interface BackupRunView {
+  id: number;
+  kind: "manual" | "auto" | "pre_migration" | "pre_restore";
+  kind_label: string;
+  status: "ok" | "failed";
+  finished_at: string;
+  file_name: string | null;
+  bytes: number;
+  message: string;
+}
+
+export interface BackupFileView {
+  file_name: string;
+  /** Cópia de segurança de antes de restaurar ou atualizar (não é um backup diário). */
+  safety: boolean;
+  /** `DD/MM/AAAA HH:MM`, do nome do arquivo. */
+  at: string;
+  bytes: number;
+}
+
+export interface BackupDestination {
+  path: string;
+  is_default: boolean;
+}
+
+export interface BackupCounts {
+  reservations: number;
+  stays: number;
+  payments: number;
+  guests: number;
+}
+
+export interface RestorePreview {
+  file_name: string;
+  backup_at: string;
+  schema_version: number;
+  app_schema_version: number;
+  restorable: boolean;
+  problem: string | null;
+  counts: BackupCounts;
+  current_counts: BackupCounts;
+  loses_recent_data: boolean;
+}
+
+export interface RestoreResult {
+  safety_copy: string;
+  backup_at: string;
+}
+
+export interface DiskStatus {
+  free_bytes: number;
+  db_bytes: number;
+  threshold_bytes: number;
+  low: boolean;
+}
+
+export interface StartupReport {
+  checked_at: string;
+  integrity_ok: boolean;
+  problems: string[];
+  app_version: string;
+  schema_version: number;
+}
+
+export const runBackup = (token: string) => call<BackupRunView>("run_backup", { token });
+export const listBackupFiles = (token: string) => call<BackupFileView[]>("list_backup_files", { token });
+export const recentBackupRuns = (token: string, limit: number) => call<BackupRunView[]>("recent_backup_runs", { token, limit });
+export const backupDestination = (token: string) => call<BackupDestination>("backup_destination", { token });
+export const setBackupDestination = (token: string, dir: string) => call<BackupDestination>("set_backup_destination", { token, dir });
+export const previewRestore = (token: string, path: string) => call<RestorePreview>("preview_restore", { token, path });
+export const restoreBackup = (token: string, path: string, confirmation: string, password: string) =>
+  call<RestoreResult>("restore_backup", { token, path, confirmation, password });
+export const diskStatus = (token: string) => call<DiskStatus>("disk_status", { token });
+export const lastStartupReport = (token: string) => call<StartupReport | null>("last_startup_report", { token });
+export const logFolder = (token: string) => call<string>("log_folder", { token });
+export const restoreOnNewComputer = (backupPath: string, recoveryKey: string) =>
+  call<null>("restore_on_new_computer", { backupPath, recoveryKey });
+export const recoverCorrupted = (backupPath: string, recoveryKey: string, confirmation: string) =>
+  call<null>("recover_corrupted", { backupPath, recoveryKey, confirmation });
+export const unlockWithRecoveryKey = (recoveryKey: string) => call<null>("unlock_with_recovery_key", { recoveryKey });

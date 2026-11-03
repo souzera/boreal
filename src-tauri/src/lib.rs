@@ -153,6 +153,7 @@ pub fn run() {
             commands::recovery::reveal_recovery_key,
             commands::recovery::restore_on_new_computer,
             commands::recovery::recover_corrupted,
+            commands::recovery::unlock_with_recovery_key,
             commands::backup::preview_restore,
             commands::backup::restore_backup,
             commands::health::disk_status,

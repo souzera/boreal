@@ -74,6 +74,19 @@ impl RecoveryService {
         Ok(())
     }
 
+    /// Perda da credencial do Windows (ou troca de usuário): o banco existe mas a chave não está no cofre. A chave de
+    /// recuperação só é guardada depois de abrir o banco existente.
+    pub fn unlock_with_recovery_key(db_path: &Path, recovery_key_text: &str, keys: &dyn KeyStore) -> Result<(), AppError> {
+        let key = recovery_key::parse(recovery_key_text)?;
+        if !db_path.is_file() {
+            return Err(AppError::Validation("Não há banco de dados neste computador para desbloquear.".into()));
+        }
+        let secret = SecretKey::new(key.clone());
+        super::backup_service::open_with_key(db_path, &secret)
+            .map_err(|_| AppError::Validation("A chave de recuperação não abre o banco de dados deste computador.".into()))?;
+        keys.set(&key)
+    }
+
     /// Banco com problema de integridade: troca o arquivo pelo backup, guardando o antigo ao lado
     /// (`boreal-com-problema-…`). Exige a chave de recuperação e a confirmação digitada.
     pub fn recover_corrupted(backup: &Path, recovery_key_text: &str, confirmation: &str, db_path: &Path, keys: &dyn KeyStore, now_local: chrono::NaiveDateTime) -> Result<(), AppError> {
@@ -210,6 +223,23 @@ mod new_computer_tests {
 
     fn local(hour: u32) -> chrono::NaiveDateTime {
         chrono::NaiveDate::from_ymd_opt(2026, 10, 22).unwrap().and_hms_opt(hour, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn the_recovery_key_unlocks_an_existing_database_and_only_then_is_stored() {
+        let w = disk_world();
+        let empty = MemoryKeyStore::empty();
+
+        let wrong = RecoveryService::unlock_with_recovery_key(&w.db_path, &recovery_key::format(&[9u8; 32]), &empty);
+        assert!(matches!(&wrong, Err(AppError::Validation(m)) if m.contains("não abre o banco")), "{wrong:?}");
+        assert!(empty.get().unwrap().is_none(), "chave errada não vai para o cofre");
+
+        RecoveryService::unlock_with_recovery_key(&w.db_path, &key_text(), &empty).unwrap();
+        assert_eq!(empty.get().unwrap().unwrap(), TEST_KEY.to_vec());
+        assert!(crate::db::open_database(&w.db_path, &empty).is_ok());
+
+        let none = RecoveryService::unlock_with_recovery_key(&w.dir.path().join("nada.db"), &key_text(), &MemoryKeyStore::empty());
+        assert!(matches!(none, Err(AppError::Validation(_))));
     }
 
     #[test]

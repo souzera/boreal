@@ -28,6 +28,16 @@ pub fn restore_on_new_computer(handle: AppHandle, app: State<'_, App>, backup_pa
     app.state().map(|_| ())
 }
 
+/// Perda da credencial do Windows: a chave de recuperação reabre o banco que já existe neste computador.
+#[tauri::command]
+pub fn unlock_with_recovery_key(handle: AppHandle, app: State<'_, App>, recovery_key: String) -> Result<(), AppError> {
+    let db = database_path(&handle)?;
+    let keys = OsKeyStore::new();
+    RecoveryService::unlock_with_recovery_key(&db, &recovery_key, &keys)?;
+    app.replace(initialize(&db, &keys));
+    app.state().map(|_| ())
+}
+
 /// Modo de recuperação (banco com problema): backup + chave de recuperação + confirmação digitada.
 #[tauri::command]
 pub fn recover_corrupted(handle: AppHandle, app: State<'_, App>, backup_path: String, recovery_key: String, confirmation: String) -> Result<(), AppError> {

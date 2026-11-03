@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAppInfo } from "@/lib/api";
-import { formatDate, toLocalIsoDate } from "@/lib/format";
+import { formatDate, formatInstant, toLocalIsoDate } from "@/lib/format";
 
 /** Versão do aplicativo, do banco e data da última atualização concluída (spec §16.2). */
 export default function AboutCard() {
@@ -20,6 +20,8 @@ export default function AboutCard() {
             <dd>{data.app_version}</dd>
             <dt className="text-muted-foreground">Versão do banco de dados</dt>
             <dd>{data.schema_version}</dd>
+            <dt className="text-muted-foreground">Último backup válido</dt>
+            <dd>{data.last_valid_backup_at ? formatInstant(data.last_valid_backup_at) : "Nenhum ainda"}</dd>
             <dt className="text-muted-foreground">Última atualização</dt>
             <dd>
               {data.last_migration_at
