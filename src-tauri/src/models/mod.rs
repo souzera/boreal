@@ -1,6 +1,7 @@
 pub mod alert;
 pub mod block;
 pub mod catalog;
+pub mod document;
 pub mod closing;
 pub mod cleaning;
 pub mod guest;

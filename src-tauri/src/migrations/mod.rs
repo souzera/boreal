@@ -57,6 +57,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 12,
         sql: include_str!("sql/0012_alerts.sql"),
     },
+    Migration {
+        version: 13,
+        sql: include_str!("sql/0013_documents.sql"),
+    },
 ];
 
 /// Versão atual do esquema (0 se nenhuma migração foi aplicada).
@@ -256,7 +260,7 @@ mod tests {
 
         let next: i64 = conn.query_row("SELECT next_value FROM sequences WHERE name='maintenance'", [], |r| r.get(0)).unwrap();
         assert_eq!(next, 1);
-        assert_eq!(super::current_version(&conn).unwrap(), 12);
+        assert_eq!(super::current_version(&conn).unwrap(), 13);
     }
 
     /// Usuário, hóspede, categoria, quarto, reserva e hospedagem mínimos para exercitar as restrições.
@@ -300,7 +304,7 @@ mod tests {
             assert_eq!(n, 1, "tabela {table} ausente");
         }
         let latest: i64 = conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).unwrap();
-        assert_eq!(latest, 12);
+        assert_eq!(latest, 13);
         let fee: String = conn
             .query_row("SELECT value FROM settings WHERE key = 'late_checkout_fee_bp'", [], |r| r.get(0))
             .unwrap();
@@ -327,7 +331,7 @@ mod tests {
         assert_eq!(next, 1);
         let categories: i64 = conn.query_row("SELECT count(*) FROM expense_categories WHERE active = 1", [], |r| r.get(0)).unwrap();
         assert_eq!(categories, 9);
-        assert_eq!(super::current_version(&conn).unwrap(), 12);
+        assert_eq!(super::current_version(&conn).unwrap(), 13);
     }
 
     #[test]
@@ -452,7 +456,7 @@ mod tests {
             let n: i64 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0)).unwrap();
             assert_eq!(n, 1, "{table}");
         }
-        assert_eq!(super::current_version(&conn).unwrap(), 12);
+        assert_eq!(super::current_version(&conn).unwrap(), 13);
         let insert = |kind: &str, key: &str, status: &str| {
             conn.execute(
                 "INSERT INTO alerts (kind, subject_key, severity, title, detail, link, status, first_seen_at, last_seen_at)
