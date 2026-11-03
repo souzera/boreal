@@ -2,7 +2,7 @@
 
 Roteiro para apresentar o sistema à equipe da pousada, na ordem do dia de trabalho da recepção. Ele cresce junto com o sistema: cada módulo novo entra aqui quando a funcionalidade fica pronta. Os detalhes de cada tela estão nos guias de [docs/usuario](README.md); aqui está só o que mostrar, em que ordem e o que observar.
 
-**Estado atual:** módulos 0 a 12 (até o Marco 6.2). Ainda **não existem** relatórios e documentos internos (6.4), a Recepção completa (6.3) nem backup e restauração. Avise isso à equipe.
+**Estado atual:** módulos 0 a 17 (até o Marco 7). Instalação e implantação ainda **não existem** (Marco 8). Avise isso à equipe.
 
 ## Antes de começar
 

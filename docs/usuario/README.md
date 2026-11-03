@@ -32,4 +32,4 @@ Guias passo a passo para a equipe da pousada. Cada guia explica o objetivo, quan
 - [Alertas](alertas.md) — pendências persistentes, prioridades, como dispensar e abrir o registro.
 - [Busca](busca.md) — encontrar hóspedes, reservas, hospedagens e movimentos.
 
-_Os demais guias serão adicionados à medida que os módulos forem entregues (relatórios e documentos…)._
+Para uma visão geral do sistema com imagens das telas, veja [Como o Boreal funciona](../como-funciona.md).

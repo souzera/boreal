@@ -2,6 +2,8 @@
 
 Regras de negócio, decisões técnicas, permissões, auditoria e efeitos no banco de dados.
 
+Novo no projeto? Comece por [Como o Boreal funciona](../como-funciona.md), que apresenta o produto com imagens das telas.
+
 ## Índice
 
 - [Cadastros (Marco 1)](cadastros.md) — entidades, migrações, regras de edição, duplicidade de hóspedes, configurações.

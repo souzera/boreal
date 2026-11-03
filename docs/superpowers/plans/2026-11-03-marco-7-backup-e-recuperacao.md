@@ -297,6 +297,10 @@ docs/desenvolvimento/{backup-e-recuperacao,seguranca-operacional}.md
 Corrigido (com teste): **C1** a troca de computador falhava no fluxo real (a primeira abertura já cria um banco vazio): agora o banco virgem é substituído e banco com dados é recusado; **I1** comandos de recuperação sem sessão só rodam no estado que os justifica (`guard`) e soltam a conexão antes de trocar o arquivo; **I2** falha da volta pela cópia de segurança vira mensagem que aponta o arquivo; **I3** cópia de segurança cai na pasta padrão se a configurada sumiu; **I4** tela de erro permite alternar desbloquear ↔ restaurar e cobre `schema_too_new`; menores: mutex de backup, `.partial` antigos, WAL no espaço, `version_checked`, `-wal/-shm` no modo de recuperação, reinício do diálogo de restauração, `queryClient.clear()` após restaurar, registro pós-restauração com mensagem própria.
 **Aceitos/adiados:** menores 6 e 11 (sem limite de tentativas da chave de recuperação, já documentado; ensaio com antivírus de terceiros). Testes: `cargo test --features dev-seed --lib` 692, clippy limpo, vitest das telas (377 + novos) verdes.
 
+## Depois do fechamento do marco
+
+Documentação de apresentação, fora das tarefas deste plano: novo `README.md`, `docs/como-funciona.md` e prints em `docs/imagens/` (procedimento em `docs/imagens/README.md`). Sem mudança de produto, por isso sem entrada no `CHANGELOG.md`. O badge de CI ficou de fora porque o `main` no GitHub ainda não tem o workflow.
+
 ## Marcos seguintes
 
 - **Marco 8:** qualidade, empacotamento e implantação (instalador, assinatura, ensaio de implantação, treinamento).
